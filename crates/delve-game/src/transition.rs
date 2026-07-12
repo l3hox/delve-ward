@@ -2,6 +2,8 @@
 //! its fade-to-black overlay: fade out, swap the level scene at the
 //! midpoint, fade back in. Input systems check `Transition::is_active`.
 
+use crate::blocks::BlockHandles;
+use crate::chests::ChestHandles;
 use crate::doors::DoorPanels;
 use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
@@ -16,6 +18,7 @@ use crate::sconces::SconceParts;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use crate::textures::DungeonMaterials;
 use crate::tripwires::TripwireHandles;
+use crate::wall_entities::WallEntityHandles;
 use bevy::ecs::system::SystemParam;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
@@ -130,6 +133,9 @@ pub struct SwapWorld<'w, 's> {
     projectiles: ResMut<'w, ProjectileManagerRes>,
     projectile_billboards: ResMut<'w, ProjectileBillboards>,
     blocked_doors: ResMut<'w, crate::session::BlockedDoors>,
+    chest_handles: ResMut<'w, ChestHandles>,
+    block_handles: ResMut<'w, BlockHandles>,
+    wall_entity_handles: ResMut<'w, WallEntityHandles>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -271,6 +277,9 @@ pub fn perform_level_swap(
     *world.lever_handles = handles.lever_handles;
     *world.plate_handles = handles.plate_handles;
     *world.tripwire_handles = handles.tripwire_handles;
+    *world.chest_handles = handles.chest_handles;
+    *world.block_handles = handles.block_handles;
+    *world.wall_entity_handles = handles.wall_entity_handles;
 
     let Session { game, grid, .. } = session;
     // TS reveals with the target stair's facing; only the player's

@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 mod billboard;
+mod blocks;
 mod char_creation;
+mod chests;
 mod damage_numbers;
 mod doors;
 mod dungeon;
@@ -19,12 +21,14 @@ mod player;
 mod projectiles;
 mod sconces;
 mod session;
+mod signs;
 mod stairs;
 mod status_effects;
 mod textures;
 mod torch;
 mod transition;
 mod tripwires;
+mod wall_entities;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::pbr::{DistanceFog, FogFalloff};
@@ -178,6 +182,9 @@ fn setup(
     commands.insert_resource(handles.lever_handles);
     commands.insert_resource(handles.plate_handles);
     commands.insert_resource(handles.tripwire_handles);
+    commands.insert_resource(handles.chest_handles);
+    commands.insert_resource(handles.block_handles);
+    commands.insert_resource(handles.wall_entity_handles);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
@@ -359,6 +366,8 @@ fn main() {
                 )
                     .chain(),
                 (
+                    chests::animate_chest_lids,
+                    blocks::animate_blocks,
                     damage_numbers::update_damage_numbers,
                     hud::draw_hud,
                     transition::tick_transition,

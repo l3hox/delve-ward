@@ -2,8 +2,10 @@
 //! resources, plus the input/update systems that connect the player
 //! controller, interaction, and world events to rendering.
 
+use crate::blocks::{self, BlockRender};
+use crate::chests::{self, ChestHandles, ChestLid};
 use crate::doors::{DoorPanel, DoorPanels};
-use crate::ground_items::{self, GroundItemRender};
+use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverRender};
 use crate::plates::{self, PlateRender};
@@ -11,9 +13,12 @@ use crate::player::Player;
 use crate::sconces::{self, SconceRender};
 use crate::transition::Transition;
 use crate::tripwires::{self, TripwireHandles};
+use crate::wall_entities::{self, WallEntityHandles};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::{DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent};
+use delve_core::game_state::{
+    DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent, door_key,
+};
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::random::Mulberry32;
@@ -93,11 +98,74 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
     })
 }
 
+/// Rendering-side handles for revealing a secret wall's floor/ceiling/inward
+/// walls once it's opened.
+#[derive(SystemParam)]
+pub struct WallEntityRender<'w, 's> {
+    pub handles: Res<'w, WallEntityHandles>,
+    pub visibility: Query<'w, 's, &'static mut Visibility>,
+}
+
+/// Walking straight into an unopened secret wall reveals it — the only way
+/// TS triggers a reveal (there is no facing-and-interact path for secret
+/// walls). Detected by comparing the player's cell before and after the
+/// move: if forward movement was blocked and a secret wall sits in the
+/// facing cell, open it and retry the move once, matching the TS
+/// `setOnMoveBlocked` → `openSecretWall` → `retry()` flow. Multi-layer
+/// neighbor rebuilds are skipped — see `wall_entities`'s module doc comment.
+fn move_forward_with_secret_wall_reveal(
+    session: &mut Session,
+    player: &mut Player,
+    wall_entities: &mut WallEntityRender,
+    hud: &mut crate::hud::HudState,
+) {
+    let before = player.grid_state();
+    let (before_col, before_row, before_facing) = (before.col, before.row, before.facing);
+
+    with_move_rules(&session.game, |rules| player.move_forward(rules));
+
+    let after = player.grid_state();
+    if (after.col, after.row) != (before_col, before_row) {
+        return; // moved normally, nothing was blocking
+    }
+
+    let (delta_col, delta_row) = before_facing.delta();
+    let (col, row) = (
+        i64::from(before_col + delta_col),
+        i64::from(before_row + delta_row),
+    );
+    let should_open = session
+        .game
+        .get_secret_wall(col, row)
+        .is_some_and(|wall| !wall.opened);
+    if !should_open {
+        return;
+    }
+    let (opened, persistent) = session.game.open_secret_wall(col, row, &mut session.grid);
+    if !opened {
+        return;
+    }
+    wall_entities::reveal_wall_entity(
+        &wall_entities.handles,
+        &mut wall_entities.visibility,
+        &door_key(col, row),
+        persistent,
+    );
+    hud.show_message(if persistent {
+        "An illusionary wall!"
+    } else {
+        "A secret passage!"
+    });
+    with_move_rules(&session.game, |rules| player.move_forward(rules));
+}
+
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
-    session: Res<Session>,
+    mut session: ResMut<Session>,
     gate: crate::char_creation::InputGate,
     mut players: Query<&mut Player>,
+    mut wall_entities: WallEntityRender,
+    mut hud: ResMut<crate::hud::HudState>,
 ) {
     if gate.blocked() {
         return;
@@ -105,10 +173,15 @@ pub fn player_input(
     let Ok(mut player) = players.single_mut() else {
         return;
     };
+    if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
+        move_forward_with_secret_wall_reveal(
+            &mut session,
+            &mut player,
+            &mut wall_entities,
+            &mut hud,
+        );
+    }
     with_move_rules(&session.game, |rules| {
-        if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
-            player.move_forward(rules);
-        }
         if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
             player.move_back(rules);
         }
@@ -262,6 +335,8 @@ pub struct SignalRenderState<'w, 's> {
     pub plate: PlateRender<'w, 's>,
     pub tripwires: Res<'w, TripwireHandles>,
     pub blocked_doors: ResMut<'w, BlockedDoors>,
+    pub chest_handles: Res<'w, ChestHandles>,
+    pub chest_lids: Query<'w, 's, &'static mut ChestLid>,
 }
 
 const DOOR_RETRY_INTERVAL: f32 = 1.5;
@@ -423,9 +498,30 @@ pub fn apply_world_events(
                     &delve_core::game_state::door_key(col, row),
                 );
             }
+            WorldEvent::ChestSignalChanged { col, row, open } => {
+                let key = door_key(col, row);
+                if open {
+                    chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                } else {
+                    chests::close_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                }
+            }
             other => debug!("unhandled world event: {other:?}"),
         }
     }
+}
+
+/// Rendering and reward handles `interact_input` needs beyond signal-entity
+/// visuals: loot spawning for opened chests, block-push animation, and the
+/// HUD toast that stands in for TS's dedicated sign/message overlays until
+/// those land (see the module doc comment on this file's `hud` usage).
+#[derive(SystemParam)]
+pub struct InteractEffects<'w, 's> {
+    pub item_render: GroundItemRender<'w, 's>,
+    pub loot_tables: Res<'w, LootTablesRes>,
+    pub rng: ResMut<'w, GameRng>,
+    pub blocks: BlockRender<'w, 's>,
+    pub hud: ResMut<'w, crate::hud::HudState>,
 }
 
 pub fn interact_input(
@@ -435,6 +531,7 @@ pub fn interact_input(
     players: Query<&Player>,
     mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
+    mut effects: InteractEffects,
 ) {
     if gate.blocked() || !keys.just_pressed(KeyCode::Space) {
         return;
@@ -512,10 +609,45 @@ pub fn interact_input(
                 );
             }
         }
+        InteractionType::BlockPushed => {
+            if let (Some(to_col), Some(to_row)) = (result.target_col, result.target_row) {
+                blocks::animate_block_push(
+                    &mut effects.blocks,
+                    &facing_key,
+                    door_key(to_col, to_row),
+                    to_col,
+                    to_row,
+                );
+            }
+        }
+        InteractionType::ChestOpened => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &facing_key);
+                let drops = session
+                    .game
+                    .get_chest(col, row)
+                    .and_then(|chest| chest.drops.clone());
+                let rng = &mut effects.rng.0;
+                let mut random = || rng.next_f64();
+                ground_items::spawn_loot(
+                    &mut session.game,
+                    &mut effects.item_render,
+                    &effects.loot_tables.0,
+                    "",
+                    drops.as_ref(),
+                    (col, row),
+                    &mut random,
+                );
+            }
+        }
         _ => {}
     }
+    // Substitutes for TS's dedicated overlays (sign text, chest-locked
+    // notices, etc.) until this port grows them — every interaction message
+    // gets a HUD toast in addition to the log line.
     if let Some(message) = &result.message {
         info!("{message}");
+        effects.hud.show_message(message);
     }
 
     let player_cell = (i64::from(player_state.col), i64::from(player_state.row));

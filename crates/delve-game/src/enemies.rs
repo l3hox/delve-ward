@@ -6,6 +6,7 @@ use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
 use crate::player::Player;
 use crate::session::{GameRng, Session};
+use crate::wall_entities;
 use bevy::prelude::*;
 use delve_core::combat::{CombatResultType, enemy_attack_player, player_attack};
 use delve_core::enemies::{DEFAULT_SPRITE_SIZE, EnemyDatabase};
@@ -271,6 +272,41 @@ pub fn attack_input(
                     &target,
                 );
             }
+            CombatResultType::WallHit => {
+                let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
+                    continue;
+                };
+                spawn_hit_number(&mut kill_effects, &result);
+                // TS wires wall hits through `damageBreakableWall` in
+                // inputSystem.ts: hp tracking, grid mutation, and the loot
+                // drop comes from the destroy outcome, not the combat
+                // result's drops override.
+                let Session { game, grid, .. } = &mut *session;
+                let outcome =
+                    game.damage_breakable_wall(col, row, result.damage.unwrap_or(0.0), grid);
+                if outcome.destroyed {
+                    info!("The wall crumbles!");
+                    wall_entities::reveal_wall_entity(
+                        &kill_effects.wall_entities,
+                        &mut kill_effects.wall_visibility,
+                        &door_key(col, row),
+                        false,
+                    );
+                    let rng = &mut rng.0;
+                    let mut random = || rng.next_f64();
+                    ground_items::spawn_loot(
+                        game,
+                        &mut kill_effects.item_render,
+                        &kill_effects.loot_tables.0,
+                        "",
+                        outcome.drops.as_ref(),
+                        (col, row),
+                        &mut random,
+                    );
+                } else {
+                    info!("You strike the wall for {}", result.damage.unwrap_or(0.0));
+                }
+            }
             CombatResultType::NoTarget => info!("You swing at nothing."),
             CombatResultType::Cooldown => {}
             other => debug!("attack result: {other:?}"),
@@ -292,13 +328,17 @@ fn spawn_hit_number(effects: &mut KillEffects, result: &delve_core::combat::Comb
     );
 }
 
-/// Loot tables and rendering handles the attack feedback needs.
+/// Loot tables and rendering handles the attack feedback needs — kill
+/// rewards, damage numbers, and (via `wall_entities`/`wall_visibility`)
+/// revealing a breakable wall's passage once destroyed.
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct KillEffects<'w, 's> {
     database: Res<'w, EnemyDb>,
     loot_tables: Res<'w, LootTablesRes>,
     item_render: GroundItemRender<'w, 's>,
     images: ResMut<'w, Assets<Image>>,
+    wall_entities: Res<'w, crate::wall_entities::WallEntityHandles>,
+    wall_visibility: Query<'w, 's, &'static mut Visibility>,
 }
 
 /// The enemy a kill applies to — bundled so `handle_kill` stays under the
