@@ -19,6 +19,7 @@ pub mod level_loader;
 pub mod loot;
 pub mod npcs;
 pub mod pathfinding;
+pub mod player_controller;
 pub mod projectiles;
 pub mod quest_manager;
 pub mod quests;

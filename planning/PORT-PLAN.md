@@ -40,8 +40,10 @@ Goal: walk around a loaded dungeon in first person.
 - Signal entities: levers, pressure plates, triggers, tripwires, standalone gates, all timed modes.
 - Traps and projectiles: trap launchers, fireballs and darts, projectile layer handling.
 - Status effects: poison, slow, burning, on player and enemies, with screen tints and icons.
+- Player controller tick (`src/core/playerController.ts`): status-effect DoT, temp buffs, hunger/starvation accumulators, torch fuel drain, inventory action dispatch.
+- Combat feedback: sword swing overlay, enemy health bars, enemy damage flash and hit shake, player damage flash, level-up notification.
 - Environment entities: breakable walls, secret walls, pushable blocks, chests, signs.
-- Save/load: full SaveData model, slots plus autosave, JSON files under `saves/`, save/load overlay.
+- Save/load: full SaveData model, slots plus autosave, JSON files under `saves/`, save/load overlay. Death and restart flow.
 
 ## Phase 4: M3 parity, the living world
 
@@ -51,6 +53,7 @@ Goal: walk around a loaded dungeon in first person.
 - Trading overlay: buy/sell, merchant stock.
 - Hunger system: drain, food, starvation, HUD bar.
 - Dungeon objects: fountain, bookshelf, altar with timed buffs, barrel.
+- Interactive overlays and full input map: mouse input, inventory overlay with drag/drop and quick-slot keys 1-8, attribute panel (L), stats panel, item tooltips, overlay Escape handling (see `planning/PARITY-GAPS.md` for the audited key map).
 
 ## Phase 5: M4 parity, the vertical world
 
