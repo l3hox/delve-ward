@@ -6,7 +6,7 @@ Session-to-session state. Read this at the start of every session.
 
 ## Current Phase
 
-**Phase 3: M2 parity, the dangerous dungeon.** Phases 0-2 are merged to main. Work happens on branch `port/phase-3-dangerous-dungeon`. See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, `planning/PARITY-GAPS.md` for the audited TS-vs-Rust gap inventory, and `planning/PHASE4-PLAN.md` / `planning/PHASE5-PLAN.md` for the next two phases' implementation plans.
+**Phase 4: M3 parity, the living world.** Phases 0-3 are merged to main. Work happens on branch `port/phase-4-living-world` following `planning/PHASE4-PLAN.md`'s slice breakdown. See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, `planning/PARITY-GAPS.md` for the audited TS-vs-Rust gap inventory, and `planning/PHASE5-PLAN.md` for the next phase's plan.
 
 ## Next Steps
 
@@ -22,11 +22,13 @@ Landed on this branch:
 - [x] Fix: stair cells no longer double-render flat floor/ceiling/wall geometry under the stepped stair mesh; corner-anchored box UVs so stair and door texture coursing matches the surrounding walls
 - [x] Docs: `PORT-PLAN.md` has a home for every feature the parity audit found orphaned; `PHASE4-PLAN.md` and `PHASE5-PLAN.md` lay out the next two phases in slice-level detail
 
-Remaining before the phase 3 gate:
+- [x] Game: environment objects — chests with animated lids and signal wiring, breakable and secret walls (wall-entity cells own their floor/ceiling; destruction persists across transitions via `destroyed_walls` replay), pushable blocks, signs
+- [x] Game: save/load — file-backed slots under `saves/`, slot-picker overlay, autosave on level arrival, death/restart flow (`save_store.rs`, `save_load_overlay.rs`, `Transition::PendingAction`)
+- [x] Game: combat feedback — sword swing overlay, enemy health bars (child billboards, logic unit-tested), enemy damage flash composed with the status tint in a single-writer system, hit shake, level-up toast
+- [x] Adversarial review round 2 fixes: active-layer launcher fires delivered via `apply_world_events` (they were silently discarded), destroyed-wall grid replay, overlay-pause (`paused()`) vs transition-freeze (`blocked()`) gating per system, move-only pickups
+- [x] Phase 3 gate: fmt/clippy/test green plus smoke runs, merged to main
 
-- [ ] Environment objects shell: breakable walls, secret walls, pushable blocks, chests, signs — core logic already exists in `game_state.rs`, no renderer or interaction wiring yet
-- [ ] Save/load: slot picker overlay, death/restart flow, autosave on level arrival — `save_system.rs`'s data model and slot management are complete and tested, but no file-backed store or UI is wired into `delve-game`
-- [ ] Combat feedback: sword-swing visual, floating enemy health bars, the real level-up toast (distinct from the persistent "press L" hint already in the HUD)
+Interactive verification still owed (needs human keys, flagged for the user): save/load round-trip through the overlay, death → restart flow, trap launchers firing after a lever/plate trigger, chest/block/secret-wall interactions.
 
 Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts). Pure-logic core modules that tick per-frame state (`player_controller`, `spawners`, `boulders`) take an injected read-only context struct for grid/database data GameState doesn't own itself, and return events for the shell to act on instead of driving rendering directly — `enemy_ai::EnemyUpdateContext` is the template every one of them follows.
 
