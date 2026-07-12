@@ -9,6 +9,7 @@ use crate::char_creation::{CharCreation, draw_char_creation};
 use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
+use crate::player::Player;
 use crate::session::Session;
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -17,7 +18,8 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::ui::widget::NodeImageMode;
 use delve_core::combat::PLAYER_ATTACK_COOLDOWN;
 use delve_core::entities::EquipSlot;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{GameState, LayerState, door_key};
+use delve_core::grid::Facing;
 use delve_core::items::{ItemDatabase, ItemSubtype, ItemType};
 use std::collections::HashMap;
 
@@ -41,10 +43,19 @@ const INVENTORY: (i32, i32, i32, i32) = (
     144,
     176,
 );
+// Compass — top-left.
+const COMPASS: (i32, i32, i32, i32) = (MARGIN, MARGIN, 48, 48);
+// Minimap — top-right.
+const MINIMAP: (i32, i32, i32, i32) = (HUD_WIDTH as i32 - MARGIN - 128, MARGIN, 128, 128);
+const MINIMAP_CELL_SIZE: i32 = 6;
+// Torch indicator — right of the health bar.
+const TORCH_BAR: (i32, i32, i32, i32) =
+    (HEALTH_BAR.0 + HEALTH_BAR.2 + MARGIN, HEALTH_BAR.1, 100, 24);
 
 const SLOT_SIZE: i32 = 24;
 const SLOT_GAP: i32 = 4;
 const LOW_HP_THRESHOLD: f64 = 0.25;
+const LOW_FUEL_THRESHOLD: f64 = 0.2;
 const MESSAGE_DURATION: f32 = 2.5;
 
 const PANEL_BG: Rgba = Rgba::translucent(10, 8, 12, 0.75);
@@ -61,6 +72,25 @@ const GOLD_COIN: Rgba = Rgba::opaque(0xda, 0xa5, 0x20);
 const XP_FILL: Rgba = Rgba::opaque(0x4a, 0x9e, 0xff);
 const XP_BG: Rgba = Rgba::opaque(0x22, 0x22, 0x22);
 const MESSAGE_COLOR: (u8, u8, u8) = (0xff, 0x66, 0x44);
+const COMPASS_INACTIVE: Rgba = Rgba::opaque(0x44, 0x44, 0x44);
+const MINIMAP_BG: Rgba = Rgba::translucent(10, 8, 12, 0.8);
+const MINIMAP_WALL: Rgba = Rgba::opaque(0x5a, 0x50, 0x60);
+const MINIMAP_FLOOR: Rgba = Rgba::opaque(0x2a, 0x25, 0x30);
+const MINIMAP_DOOR: Rgba = Rgba::opaque(0x88, 0x66, 0x44);
+const MINIMAP_STAIRS: Rgba = Rgba::opaque(0x44, 0xaa, 0xcc);
+const MINIMAP_ENEMY: Rgba = Rgba::opaque(0xcc, 0x33, 0x33);
+const MINIMAP_BOULDER: Rgba = Rgba::opaque(0x7a, 0x4a, 0x26);
+const TORCH_BG: Rgba = Rgba::opaque(0x1a, 0x12, 0x00);
+const TORCH_FILL: Rgba = Rgba::opaque(0xcc, 0x88, 0x33);
+const TORCH_LOW: Rgba = Rgba::opaque(0xff, 0x66, 0x00);
+
+/// Compass letter, matching facing, and the direction it sits from center.
+const COMPASS_DIRECTIONS: [(&str, Facing, i32, i32); 4] = [
+    ("N", Facing::N, 0, -1),
+    ("E", Facing::E, 1, 0),
+    ("S", Facing::S, 0, 1),
+    ("W", Facing::W, -1, 0),
+];
 
 /// Two rows of five equipment slots, matching the TS panel layout.
 const EQUIP_SLOTS: [EquipSlot; 10] = [
@@ -210,6 +240,7 @@ pub fn draw_hud(
     session: Res<Session>,
     items: Res<ItemDb>,
     creation: Res<CharCreation>,
+    player_query: Query<&Player>,
 ) {
     let hud = &mut *hud;
     let delta = time.delta_secs();
@@ -225,11 +256,238 @@ pub fn draw_hud(
         draw_xp_bar(&mut canvas, game);
         draw_level_up_hint(&mut canvas, game);
         draw_message(&mut canvas, hud, delta);
+
+        if let Ok(player) = player_query.single() {
+            let player_state = player.grid_state();
+            draw_compass(&mut canvas, player_state.facing);
+            draw_minimap(
+                &mut canvas,
+                &session.grid,
+                game.active_layer(),
+                player_state.col,
+                player_state.row,
+                player_state.facing,
+            );
+        }
+        draw_torch_indicator(
+            &mut canvas,
+            game.status_fx.torch_fuel,
+            game.status_fx.max_torch_fuel,
+            hud.time,
+        );
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
         image.data = Some(canvas.into_rgba_bytes());
     }
+}
+
+fn draw_compass(canvas: &mut PixelCanvas, facing: Facing) {
+    let (x, y, width, height) = COMPASS;
+    let center_x = x + width / 2;
+    let center_y = y + height / 2;
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+
+    let scale = 2;
+    let letter_offset = 14;
+    for (label, direction, dx, dy) in COMPASS_DIRECTIONS {
+        let color = if direction == facing {
+            ACCENT_GOLD
+        } else {
+            COMPASS_INACTIVE
+        };
+        // Centers the 3px-wide, 5px-tall glyph on the offset point.
+        let letter_x = center_x + dx * letter_offset - 3;
+        let letter_y = center_y + dy * letter_offset - 5;
+        draw_pixel_text(canvas, label, letter_x, letter_y, color, scale);
+    }
+
+    canvas.fill_rect(center_x - 1, center_y - 1, 3, 3, ACCENT_GOLD);
+}
+
+/// Minimap pixel origin and the grid cell shown at that origin, shared by
+/// every dot drawn on top of the terrain grid.
+struct MinimapView {
+    origin_x: i32,
+    origin_y: i32,
+    start_col: i32,
+    start_row: i32,
+}
+
+/// Draws a 3x3 dot centered on `(entity_col, entity_row)`, skipping entities
+/// outside explored cells.
+fn draw_minimap_dot(
+    canvas: &mut PixelCanvas,
+    layer: &LayerState,
+    view: &MinimapView,
+    entity_col: i64,
+    entity_row: i64,
+    color: Rgba,
+) {
+    if !layer
+        .explored_cells
+        .contains(&door_key(entity_col, entity_row))
+    {
+        return;
+    }
+    let dot_x = view.origin_x
+        + (entity_col as i32 - view.start_col) * MINIMAP_CELL_SIZE
+        + MINIMAP_CELL_SIZE / 2;
+    let dot_y = view.origin_y
+        + (entity_row as i32 - view.start_row) * MINIMAP_CELL_SIZE
+        + MINIMAP_CELL_SIZE / 2;
+    canvas.fill_rect(dot_x - 1, dot_y - 1, 3, 3, color);
+}
+
+fn draw_minimap(
+    canvas: &mut PixelCanvas,
+    grid: &[String],
+    layer: &LayerState,
+    player_col: i32,
+    player_row: i32,
+    facing: Facing,
+) {
+    let (x, y, width, height) = MINIMAP;
+
+    canvas.fill_rect(x, y, width, height, MINIMAP_BG);
+
+    let visible_cols = width / MINIMAP_CELL_SIZE;
+    let visible_rows = height / MINIMAP_CELL_SIZE;
+    let start_col = player_col - visible_cols / 2;
+    let start_row = player_row - visible_rows / 2;
+    let grid_rows = grid.len() as i32;
+    let grid_cols = grid.first().map_or(0, |row| row.chars().count() as i32);
+
+    for view_row in 0..visible_rows {
+        for view_col in 0..visible_cols {
+            let cell_col = start_col + view_col;
+            let cell_row = start_row + view_row;
+            let key = door_key(i64::from(cell_col), i64::from(cell_row));
+
+            if !layer.explored_cells.contains(&key) {
+                continue;
+            }
+            if cell_row < 0 || cell_row >= grid_rows || cell_col < 0 || cell_col >= grid_cols {
+                continue;
+            }
+
+            // Persistent (illusory) secret walls still appear as walls on the minimap.
+            let cell = grid[cell_row as usize].chars().nth(cell_col as usize);
+            let is_wall = cell == Some('#')
+                || layer
+                    .secret_walls
+                    .get(&key)
+                    .is_some_and(|wall| wall.persistent);
+
+            let color = if is_wall {
+                MINIMAP_WALL
+            } else if layer.doors.contains_key(&key) {
+                MINIMAP_DOOR
+            } else if layer.stairs.contains_key(&key) {
+                MINIMAP_STAIRS
+            } else {
+                MINIMAP_FLOOR
+            };
+
+            canvas.fill_rect(
+                x + view_col * MINIMAP_CELL_SIZE,
+                y + view_row * MINIMAP_CELL_SIZE,
+                MINIMAP_CELL_SIZE,
+                MINIMAP_CELL_SIZE,
+                color,
+            );
+        }
+    }
+
+    let view = MinimapView {
+        origin_x: x,
+        origin_y: y,
+        start_col,
+        start_row,
+    };
+    for enemy in layer.enemies.values() {
+        draw_minimap_dot(canvas, layer, &view, enemy.col, enemy.row, MINIMAP_ENEMY);
+    }
+    for boulder in layer.boulders.values() {
+        draw_minimap_dot(
+            canvas,
+            layer,
+            &view,
+            boulder.col,
+            boulder.row,
+            MINIMAP_BOULDER,
+        );
+    }
+
+    let player_x = x + (player_col - start_col) * MINIMAP_CELL_SIZE + MINIMAP_CELL_SIZE / 2;
+    let player_y = y + (player_row - start_row) * MINIMAP_CELL_SIZE + MINIMAP_CELL_SIZE / 2;
+    canvas.fill_rect(player_x - 1, player_y - 1, 3, 3, ACCENT_GOLD);
+
+    let (delta_col, delta_row) = facing.delta();
+    canvas.stroke_line(
+        player_x,
+        player_y,
+        player_x + delta_col * MINIMAP_CELL_SIZE,
+        player_y + delta_row * MINIMAP_CELL_SIZE,
+        ACCENT_GOLD,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+}
+
+/// 5x7 pixel flame icon.
+fn draw_flame(canvas: &mut PixelCanvas, x: i32, y: i32, color: Rgba) {
+    canvas.fill_rect(x + 2, y, 1, 1, color);
+    canvas.fill_rect(x + 1, y + 1, 3, 1, color);
+    canvas.fill_rect(x + 1, y + 2, 3, 1, color);
+    canvas.fill_rect(x, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 2, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 4, y + 3, 1, 1, color);
+    canvas.fill_rect(x, y + 4, 5, 1, color);
+    canvas.fill_rect(x + 1, y + 5, 3, 1, color);
+    canvas.fill_rect(x + 2, y + 6, 1, 1, color);
+}
+
+fn draw_torch_indicator(canvas: &mut PixelCanvas, fuel: f64, max_fuel: f64, time: f32) {
+    let (x, y, width, height) = TORCH_BAR;
+    let ratio = (fuel / max_fuel).clamp(0.0, 1.0);
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+
+    let bar_x = x + 20;
+    let bar_y = y + 4;
+    let bar_w = width - 24;
+    let bar_h = height - 8;
+    canvas.fill_rect(bar_x, bar_y, bar_w, bar_h, TORCH_BG);
+
+    let mut fill_color = TORCH_FILL;
+    if ratio <= LOW_FUEL_THRESHOLD {
+        let flicker = (time * 10.0).sin() * (time * 7.0).sin();
+        fill_color = if flicker > 0.0 { TORCH_LOW } else { TORCH_FILL };
+    }
+    canvas.fill_rect(
+        bar_x,
+        bar_y,
+        (f64::from(bar_w) * ratio) as i32,
+        bar_h,
+        fill_color,
+    );
+
+    draw_flame(canvas, x + 5, y + 4, TORCH_FILL);
+
+    let percent = (ratio * 100.0).round() as i32;
+    draw_pixel_text(
+        canvas,
+        &percent.to_string(),
+        bar_x + 2,
+        bar_y + 2,
+        TEXT_PRIMARY,
+        1,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
 }
 
 fn draw_health_bar(canvas: &mut PixelCanvas, hp: f64, max_hp: f64, time: f32) {
