@@ -1,7 +1,7 @@
 //! Player "use" interaction against the facing cell: doors, levers, sconces,
 //! blocks, chests, NPCs, fountains, altars, signs, and bookshelves.
 
-use crate::game_state::{ChestState, DoorState, GameState, UsableState};
+use crate::game_state::{DoorState, GameState, UsableState};
 use crate::grid::{PlayerState, get_facing_cell, is_walkable, walkable_cells};
 use crate::status_effect_state::BuffStat;
 
@@ -133,13 +133,11 @@ pub fn interact(
     let lever_matches = game_state
         .get_lever(player_col, player_row)
         .is_some_and(|lever| lever.wall == player_state.facing);
-    if lever_matches {
-        if let Some(targets) = game_state.activate_lever(player_col, player_row) {
-            return InteractionResult {
-                targets: Some(targets),
-                ..InteractionResult::with_message(InteractionType::LeverActivated, "Lever pulled.")
-            };
-        }
+    if lever_matches && let Some(targets) = game_state.activate_lever(player_col, player_row) {
+        return InteractionResult {
+            targets: Some(targets),
+            ..InteractionResult::with_message(InteractionType::LeverActivated, "Lever pulled.")
+        };
     }
 
     // Sconce — player stands on the sconce cell and faces its wall.
