@@ -769,15 +769,15 @@ fn prop_targets_with_fallback(entity: &Entity) -> Vec<String> {
     if let Some(targets) = prop_targets(entity) {
         return targets;
     }
-    if let Some(target) = entity.prop_str("target") {
-        if !target.is_empty() {
-            return vec![target.to_string()];
-        }
+    if let Some(target) = entity.prop_str("target")
+        && !target.is_empty()
+    {
+        return vec![target.to_string()];
     }
-    if let Some(target_door) = entity.prop_str("targetDoor") {
-        if !target_door.is_empty() {
-            return vec![target_door.to_string()];
-        }
+    if let Some(target_door) = entity.prop_str("targetDoor")
+        && !target_door.is_empty()
+    {
+        return vec![target_door.to_string()];
     }
     Vec::new()
 }
@@ -915,14 +915,11 @@ impl GameState {
         for entity in entities {
             let level_id = self.current_level_id.clone();
             let layer_index = self.active_layer_index;
-            let parsed = {
-                let handled = Self::parse_signal_entity(self.active_layer_mut(), entity, grid)
-                    || Self::parse_environment_entity(self.active_layer_mut(), entity, grid)
-                    || Self::parse_structure_entity(self.active_layer_mut(), entity, grid, random);
-                handled
-            } || self.parse_npc_entity(entity, grid)
+            let _ = Self::parse_signal_entity(self.active_layer_mut(), entity, grid)
+                || Self::parse_environment_entity(self.active_layer_mut(), entity, grid)
+                || Self::parse_structure_entity(self.active_layer_mut(), entity, grid, random)
+                || self.parse_npc_entity(entity, grid)
                 || self.parse_item_entity(entity, &level_id, layer_index);
-            let _ = parsed;
         }
 
         self.rebuild_entity_index();
@@ -1485,15 +1482,14 @@ impl GameState {
         match entity.entity_type.as_str() {
             "enemy" => {
                 let enemy_type = entity.prop_str("enemyType").unwrap_or_default().to_string();
-                if let Some(registrar) = self.deps.enemy_registrar.as_ref() {
-                    if registrar.has_enemy(&enemy_type) {
-                        let mut instance =
-                            registrar.create_enemy(entity.col, entity.row, &enemy_type);
-                        if let Some(drops) = prop_drops(entity) {
-                            instance.drops = Some(drops);
-                        }
-                        self.active_layer_mut().enemies.insert(key, instance);
+                if let Some(registrar) = self.deps.enemy_registrar.as_ref()
+                    && registrar.has_enemy(&enemy_type)
+                {
+                    let mut instance = registrar.create_enemy(entity.col, entity.row, &enemy_type);
+                    if let Some(drops) = prop_drops(entity) {
+                        instance.drops = Some(drops);
                     }
+                    self.active_layer_mut().enemies.insert(key, instance);
                 }
                 true
             }
@@ -1549,10 +1545,10 @@ impl GameState {
             if let Some(door) = self.active_layer_mut().doors.get_mut(&key) {
                 door.mechanical = true;
             }
-            if let Some(chest) = self.active_layer_mut().chests.get_mut(&key) {
-                if chest.gate_mode.is_none() {
-                    chest.gate_mode = Some(GateMode::Or);
-                }
+            if let Some(chest) = self.active_layer_mut().chests.get_mut(&key)
+                && chest.gate_mode.is_none()
+            {
+                chest.gate_mode = Some(GateMode::Or);
             }
         }
     }
@@ -1581,9 +1577,10 @@ impl GameState {
             }
         }
 
+        type Registration = Box<dyn FnOnce(&mut SignalManager)>;
         for layer_index in 0..self.layers.len() {
             let layer = &self.layers[layer_index];
-            let mut registrations: Vec<Box<dyn FnOnce(&mut SignalManager)>> = Vec::new();
+            let mut registrations: Vec<Registration> = Vec::new();
             for lever in layer.levers.values() {
                 if let Some(id) = lever.id.clone() {
                     let targets = lever.targets.clone();
@@ -1634,11 +1631,11 @@ impl GameState {
                 }
             }
             for door in layer.doors.values() {
-                if let Some(id) = door.id.clone() {
-                    if door.mechanical {
-                        let mode = door.gate_mode.unwrap_or(GateMode::Or);
-                        registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
-                    }
+                if let Some(id) = door.id.clone()
+                    && door.mechanical
+                {
+                    let mode = door.gate_mode.unwrap_or(GateMode::Or);
+                    registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
                 }
             }
             for launcher in layer.trap_launchers.values() {
@@ -1658,37 +1655,37 @@ impl GameState {
                 }
             }
             for spawner in layer.spawners.values() {
-                if let Some(id) = spawner.id.clone() {
-                    if targeted_ids.contains(&id) {
-                        let mode = spawner.gate_mode.unwrap_or(GateMode::Or);
-                        registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
-                    }
+                if let Some(id) = spawner.id.clone()
+                    && targeted_ids.contains(&id)
+                {
+                    let mode = spawner.gate_mode.unwrap_or(GateMode::Or);
+                    registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
                 }
             }
             for boulder_spawner in layer.boulder_spawners.values() {
-                if let Some(id) = boulder_spawner.id.clone() {
-                    if targeted_ids.contains(&id) {
-                        let mode = boulder_spawner.gate_mode.unwrap_or(GateMode::Or);
-                        registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
-                    }
+                if let Some(id) = boulder_spawner.id.clone()
+                    && targeted_ids.contains(&id)
+                {
+                    let mode = boulder_spawner.gate_mode.unwrap_or(GateMode::Or);
+                    registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
                 }
             }
             for boulder in layer.boulders.values() {
-                if let Some(id) = boulder.id.clone() {
-                    if targeted_ids.contains(&id) {
-                        let mode = boulder.gate_mode.unwrap_or(GateMode::Or);
-                        registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
-                    }
+                if let Some(id) = boulder.id.clone()
+                    && targeted_ids.contains(&id)
+                {
+                    let mode = boulder.gate_mode.unwrap_or(GateMode::Or);
+                    registrations.push(Box::new(move |sm| sm.register_receiver(&id, mode)));
                 }
             }
             for chest in layer.chests.values() {
-                if let Some(id) = chest.id.clone() {
-                    if chest.targets.as_ref().is_some_and(|t| !t.is_empty()) {
-                        let targets = chest.targets.clone().unwrap_or_default();
-                        registrations.push(Box::new(move |sm| {
-                            sm.register_source(&id, targets, SignalMode::Toggle, None, None);
-                        }));
-                    }
+                if let Some(id) = chest.id.clone()
+                    && chest.targets.as_ref().is_some_and(|t| !t.is_empty())
+                {
+                    let targets = chest.targets.clone().unwrap_or_default();
+                    registrations.push(Box::new(move |sm| {
+                        sm.register_source(&id, targets, SignalMode::Toggle, None, None);
+                    }));
                 }
             }
             for registration in registrations {
@@ -1823,15 +1820,16 @@ impl GameState {
                     active,
                 });
         }
-        if let Some(boulder) = self.active_layer_mut().boulders.get_mut(&key) {
-            if active && boulder.state == BoulderState::Idle {
-                boulder.state = BoulderState::Rolling;
-                self.pending_events.push(WorldEvent::BoulderSignalChanged {
-                    col: entry.col,
-                    row: entry.row,
-                    active: true,
-                });
-            }
+        if let Some(boulder) = self.active_layer_mut().boulders.get_mut(&key)
+            && active
+            && boulder.state == BoulderState::Idle
+        {
+            boulder.state = BoulderState::Rolling;
+            self.pending_events.push(WorldEvent::BoulderSignalChanged {
+                col: entry.col,
+                row: entry.row,
+                active: true,
+            });
         }
 
         self.active_layer_index = saved;
@@ -1846,28 +1844,28 @@ impl GameState {
         self.active_layer_index = entry.layer_index;
         let key = door_key(entry.col, entry.row);
 
-        if let Some(lever) = self.active_layer_mut().levers.get_mut(&key) {
-            if lever.state == LeverState::Down {
-                lever.state = LeverState::Up;
-                self.pending_events.push(WorldEvent::LeverReset {
-                    col: entry.col,
-                    row: entry.row,
-                });
-            }
+        if let Some(lever) = self.active_layer_mut().levers.get_mut(&key)
+            && lever.state == LeverState::Down
+        {
+            lever.state = LeverState::Up;
+            self.pending_events.push(WorldEvent::LeverReset {
+                col: entry.col,
+                row: entry.row,
+            });
         }
-        if let Some(plate) = self.active_layer_mut().plates.get_mut(&key) {
-            if plate.activated {
-                plate.activated = false;
-                self.pending_events.push(WorldEvent::PlateReset {
-                    col: entry.col,
-                    row: entry.row,
-                });
-            }
+        if let Some(plate) = self.active_layer_mut().plates.get_mut(&key)
+            && plate.activated
+        {
+            plate.activated = false;
+            self.pending_events.push(WorldEvent::PlateReset {
+                col: entry.col,
+                row: entry.row,
+            });
         }
-        if let Some(trigger) = self.active_layer_mut().triggers.get_mut(&key) {
-            if trigger.fired {
-                trigger.fired = false;
-            }
+        if let Some(trigger) = self.active_layer_mut().triggers.get_mut(&key)
+            && trigger.fired
+        {
+            trigger.fired = false;
         }
 
         self.active_layer_index = saved;
@@ -2518,18 +2516,19 @@ impl GameState {
             (item_def.requirements.wis, stats.effective_wis, "WIS"),
         ];
         for (required, effective, label) in requirement_checks {
-            if let Some(required) = required {
-                if required > 0.0 && effective < required {
-                    return EquipResult {
-                        success: false,
-                        reason: Some(format!(
-                            "Requires {} {label} (you have {})",
-                            fmt_num(required),
-                            fmt_num(effective)
-                        )),
-                        swapped_to_slot: None,
-                    };
-                }
+            if let Some(required) = required
+                && required > 0.0
+                && effective < required
+            {
+                return EquipResult {
+                    success: false,
+                    reason: Some(format!(
+                        "Requires {} {label} (you have {})",
+                        fmt_num(required),
+                        fmt_num(effective)
+                    )),
+                    swapped_to_slot: None,
+                };
             }
         }
         EquipResult {
@@ -2743,12 +2742,12 @@ impl GameState {
             return (None, None);
         };
 
-        if let Some(items) = &items {
-            if let Some(item_def) = items.get_item(&item_id) {
-                let requirement = self.can_equip_item(item_def);
-                if !requirement.success {
-                    return (None, requirement.reason);
-                }
+        if let Some(items) = &items
+            && let Some(item_def) = items.get_item(&item_id)
+        {
+            let requirement = self.can_equip_item(item_def);
+            if !requirement.success {
+                return (None, requirement.reason);
             }
         }
 
@@ -2990,20 +2989,20 @@ impl GameState {
         if let Some(id) = id.filter(|id| self.signal_manager.get_source(id).is_some()) {
             let events = self.signal_manager.set_source_active(&id, true);
             self.handle_signal_events(events);
-            if mode == SignalMode::Timed {
-                if let Some(source) = self.signal_manager.get_source(&id) {
-                    let entity_id = source.entity_id.clone();
-                    self.set_source_deactivate_at(&entity_id, 0.0);
-                }
+            if mode == SignalMode::Timed
+                && let Some(source) = self.signal_manager.get_source(&id)
+            {
+                let entity_id = source.entity_id.clone();
+                self.set_source_deactivate_at(&entity_id, 0.0);
             }
         } else {
             for target in &targets {
                 if let Some(position) = self.entity_by_id.get(target).cloned() {
                     let door_cell = door_key(position.col, position.row);
-                    if let Some(door) = self.active_layer_mut().doors.get_mut(&door_cell) {
-                        if door.state == DoorState::Closed {
-                            door.state = DoorState::Open;
-                        }
+                    if let Some(door) = self.active_layer_mut().doors.get_mut(&door_cell)
+                        && door.state == DoorState::Closed
+                    {
+                        door.state = DoorState::Open;
                     }
                 }
             }
@@ -3050,15 +3049,15 @@ impl GameState {
             }
             self.pending_events
                 .push(WorldEvent::PlateReset { col, row });
-        } else if mode == SignalMode::Timed {
-            if let Some(id) = id {
-                let refresh = self.signal_manager.get_source(&id).and_then(|source| {
-                    (source.active && source.duration.is_some())
-                        .then(|| self.signal_manager.now + source.duration.expect("checked"))
-                });
-                if let Some(deactivate_at) = refresh {
-                    self.set_source_deactivate_at(&id, deactivate_at);
-                }
+        } else if mode == SignalMode::Timed
+            && let Some(id) = id
+        {
+            let refresh = self.signal_manager.get_source(&id).and_then(|source| {
+                (source.active && source.duration.is_some())
+                    .then(|| self.signal_manager.now + source.duration.expect("checked"))
+            });
+            if let Some(deactivate_at) = refresh {
+                self.set_source_deactivate_at(&id, deactivate_at);
             }
         }
     }
@@ -3129,15 +3128,15 @@ impl GameState {
                 let events = self.signal_manager.deactivate_source(&id);
                 self.handle_signal_events(events);
             }
-        } else if mode == SignalMode::Timed {
-            if let Some(id) = id {
-                let refresh = self.signal_manager.get_source(&id).and_then(|source| {
-                    (source.active && source.duration.is_some())
-                        .then(|| self.signal_manager.now + source.duration.expect("checked"))
-                });
-                if let Some(deactivate_at) = refresh {
-                    self.set_source_deactivate_at(&id, deactivate_at);
-                }
+        } else if mode == SignalMode::Timed
+            && let Some(id) = id
+        {
+            let refresh = self.signal_manager.get_source(&id).and_then(|source| {
+                (source.active && source.duration.is_some())
+                    .then(|| self.signal_manager.now + source.duration.expect("checked"))
+            });
+            if let Some(deactivate_at) = refresh {
+                self.set_source_deactivate_at(&id, deactivate_at);
             }
         }
     }

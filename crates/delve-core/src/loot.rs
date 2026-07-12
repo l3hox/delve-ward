@@ -190,12 +190,12 @@ impl LootTables {
 
         // 2. Base table drops — skipped when suppressTable is set or no table exists.
         let suppress_table = drops_override.is_some_and(|o| o.suppress_table.unwrap_or(false));
-        if let Some(entry) = entry {
-            if !suppress_table {
-                for drop in &entry.drops {
-                    if random() < drop.chance {
-                        items.push(push_item(&drop.item_id, drop.quality, random));
-                    }
+        if let Some(entry) = entry
+            && !suppress_table
+        {
+            for drop in &entry.drops {
+                if random() < drop.chance {
+                    items.push(push_item(&drop.item_id, drop.quality, random));
                 }
             }
         }

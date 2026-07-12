@@ -224,10 +224,11 @@ impl SignalManager {
             source.fired = true;
         }
 
-        if active && source.signal_mode == SignalMode::Timed {
-            if let Some(duration) = source.duration {
-                source.deactivate_at = now + duration;
-            }
+        if active
+            && source.signal_mode == SignalMode::Timed
+            && let Some(duration) = source.duration
+        {
+            source.deactivate_at = now + duration;
         }
 
         self.propagate()
@@ -256,11 +257,11 @@ impl SignalManager {
             if source.delay_pending && source.delay_fire_at > 0.0 && now >= source.delay_fire_at {
                 source.delay_pending = false;
                 source.active = true;
-                if source.signal_mode == SignalMode::Timed {
-                    if let Some(duration) = source.duration {
-                        // Schedule deactivation from the INTENDED activation time.
-                        source.deactivate_at = source.delay_fire_at + duration;
-                    }
+                if source.signal_mode == SignalMode::Timed
+                    && let Some(duration) = source.duration
+                {
+                    // Schedule deactivation from the INTENDED activation time.
+                    source.deactivate_at = source.delay_fire_at + duration;
                 }
                 source.delay_fire_at = 0.0;
                 changed = true;
@@ -376,7 +377,7 @@ impl SignalManager {
             let gate_id = self.gates[gate_index].entity_id.clone();
             let mut inputs: Vec<bool> = Vec::new();
             for source in &self.sources {
-                if source.targets.iter().any(|t| *t == gate_id) {
+                if source.targets.contains(&gate_id) {
                     inputs.push(source.active);
                 }
             }
@@ -384,7 +385,7 @@ impl SignalManager {
                 if other_index == gate_index {
                     continue;
                 }
-                if other.targets.iter().any(|t| *t == gate_id) {
+                if other.targets.contains(&gate_id) {
                     inputs.push(other.active);
                 }
             }
@@ -426,12 +427,12 @@ impl SignalManager {
             let receiver_id = self.receivers[receiver_index].entity_id.clone();
             let mut inputs: Vec<bool> = Vec::new();
             for source in &self.sources {
-                if source.targets.iter().any(|t| *t == receiver_id) {
+                if source.targets.contains(&receiver_id) {
                     inputs.push(source.active);
                 }
             }
             for gate in &self.gates {
-                if gate.targets.iter().any(|t| *t == receiver_id) {
+                if gate.targets.contains(&receiver_id) {
                     inputs.push(gate.active);
                 }
             }
