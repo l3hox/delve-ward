@@ -6,9 +6,12 @@ use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
 use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
+use crate::levers::{self, LeverHandles};
+use crate::plates::{self, PlateHandles};
 use crate::sconces::{self, SconceParts};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
+use crate::tripwires::{self, TripwireHandles};
 use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::GameState;
@@ -36,6 +39,9 @@ pub struct LevelSceneHandles {
     pub ground_items: GroundItemBillboards,
     pub key_billboards: KeyBillboards,
     pub sconce_parts: SconceParts,
+    pub lever_handles: LeverHandles,
+    pub plate_handles: PlateHandles,
+    pub tripwire_handles: TripwireHandles,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -103,11 +109,24 @@ pub fn spawn_level_scene(
     );
     let sconce_parts =
         sconces::spawn_sconces(commands, assets.meshes, assets.materials, scene.game);
+    let lever_handles = levers::spawn_levers(commands, assets.meshes, assets.materials, scene.game);
+    let plate_handles = plates::spawn_plates(
+        commands,
+        assets.meshes,
+        assets.images,
+        assets.materials,
+        scene.game,
+    );
+    let tripwire_handles =
+        tripwires::spawn_tripwires(commands, assets.meshes, assets.materials, scene.game);
     LevelSceneHandles {
         door_panels,
         enemy_billboards: billboards,
         ground_items,
         key_billboards,
         sconce_parts,
+        lever_handles,
+        plate_handles,
+        tripwire_handles,
     }
 }

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 const SIZE: usize = 64;
 
-fn seed_for(name: &str) -> u32 {
+pub(crate) fn seed_for(name: &str) -> u32 {
     name.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
         (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
     })

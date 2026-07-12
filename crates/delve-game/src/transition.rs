@@ -8,10 +8,13 @@ use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
 use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::keys::KeyBillboards;
 use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_scene};
+use crate::levers::LeverHandles;
+use crate::plates::PlateHandles;
 use crate::player::Player;
 use crate::sconces::SconceParts;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use crate::textures::DungeonMaterials;
+use crate::tripwires::TripwireHandles;
 use bevy::ecs::system::SystemParam;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
@@ -120,6 +123,9 @@ pub struct SwapWorld<'w, 's> {
     ground_items: ResMut<'w, GroundItemBillboards>,
     key_billboards: ResMut<'w, KeyBillboards>,
     sconce_parts: ResMut<'w, SconceParts>,
+    lever_handles: ResMut<'w, LeverHandles>,
+    plate_handles: ResMut<'w, PlateHandles>,
+    tripwire_handles: ResMut<'w, TripwireHandles>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -254,6 +260,9 @@ pub fn perform_level_swap(
     *world.ground_items = handles.ground_items;
     *world.key_billboards = handles.key_billboards;
     *world.sconce_parts = handles.sconce_parts;
+    *world.lever_handles = handles.lever_handles;
+    *world.plate_handles = handles.plate_handles;
+    *world.tripwire_handles = handles.tripwire_handles;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(

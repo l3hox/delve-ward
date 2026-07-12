@@ -22,8 +22,9 @@ const FLICKER_SPEED: f32 = 0.25;
 const FLICKER_LERP: f32 = 0.15;
 
 /// Wall direction: outward offset from the cell center plus the rotation
-/// that faces the sconce into the room.
-fn wall_direction(wall: Facing) -> (f32, f32, f32) {
+/// that faces the sconce into the room. Shared with levers, which mount on
+/// walls the same way.
+pub(crate) fn wall_direction(wall: Facing) -> (f32, f32, f32) {
     match wall {
         Facing::N => (0.0, -1.0, 0.0),
         Facing::S => (0.0, 1.0, std::f32::consts::PI),

@@ -12,7 +12,9 @@ mod hud;
 mod hud_font;
 mod keys;
 mod level_scene;
+mod levers;
 mod pixel_canvas;
+mod plates;
 mod player;
 mod sconces;
 mod session;
@@ -20,6 +22,7 @@ mod stairs;
 mod textures;
 mod torch;
 mod transition;
+mod tripwires;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::pbr::{DistanceFog, FogFalloff};
@@ -169,6 +172,9 @@ fn setup(
     commands.insert_resource(handles.ground_items);
     commands.insert_resource(handles.key_billboards);
     commands.insert_resource(handles.sconce_parts);
+    commands.insert_resource(handles.lever_handles);
+    commands.insert_resource(handles.plate_handles);
+    commands.insert_resource(handles.tripwire_handles);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
@@ -332,6 +338,7 @@ fn main() {
                 session::tick_game,
                 billboard::face_billboards,
                 doors::animate_door_panels,
+                levers::animate_levers,
                 torch::torch_update,
                 sconces::sconce_flicker,
                 damage_numbers::update_damage_numbers,
