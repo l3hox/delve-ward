@@ -38,6 +38,7 @@ Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (i
 - Light intensity mapping (Three.js units → Bevy lumens/cd-m²) uses approximations: `AMBIENT_BRIGHTNESS` in `environment.rs`, `LUMENS_PER_THREE_UNIT` in `torch.rs`. Re-tune during the phase 6 side-by-side audit.
 - Toolchain: Rust 1.95.0 (pinned), Bevy 0.19.0 (locked). Verify Bevy APIs against the local registry source at `~/.cargo/registry/src/*/bevy_*-0.19.0/` — that caught `PointLight.shadow_maps_enabled` and `AmbientLight` becoming a camera component.
 - Parity target: TS `main` at `9476c6526ef98b636992a2dfbac00a3853325bea`.
+- Wasm check (phase 6 informational item, run 2026-07-12): both crates pass `cargo check --target wasm32-unknown-unknown` with zero warnings — the delve-core platform-clean claim holds, and delve-game type-checks too. Check-only: a real browser build would still need wasm-bindgen tooling and fetch-based asset loading (`assets_dir()` + `std::fs` in `main.rs` is desktop-only).
 
 ## Known Issues
 
