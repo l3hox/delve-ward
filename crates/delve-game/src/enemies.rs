@@ -2,8 +2,10 @@
 //! move with the core AI, and melee the player when adjacent.
 
 use crate::dungeon::CELL_SIZE;
+use crate::level_scene::LevelEntity;
 use crate::player::Player;
 use crate::session::{GameRng, Session};
+use crate::transition::Transition;
 use bevy::prelude::*;
 use delve_core::combat::{CombatResultType, enemy_attack_player, player_attack};
 use delve_core::enemies::{DEFAULT_SPRITE_SIZE, EnemyDatabase};
@@ -69,6 +71,7 @@ pub fn spawn_enemy_billboards(
         let center_z = enemy.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let entity = commands
             .spawn((
+                LevelEntity,
                 EnemyBillboard,
                 Mesh3d(meshes.add(Rectangle::new(size, size))),
                 MeshMaterial3d(material),
@@ -196,12 +199,13 @@ pub fn tick_enemies(
 pub fn attack_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
+    transition: Res<Transition>,
     mut rng: ResMut<GameRng>,
     mut billboards: ResMut<EnemyBillboards>,
     players: Query<&Player>,
     mut commands: Commands,
 ) {
-    if !keys.just_pressed(KeyCode::KeyF) {
+    if transition.is_active() || !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
     let Ok(player) = players.single() else {

@@ -410,16 +410,21 @@ const CEILING_GENERATORS: [(&str, Generator); 3] = [
 ];
 
 /// Cached dungeon surface materials, keyed by texture name, plus the door
-/// material set.
+/// material set and stair extras.
 #[derive(Resource)]
 pub struct DungeonMaterials {
     walls: HashMap<String, Handle<StandardMaterial>>,
+    /// Same wall textures with repeat wrapping, for stair side walls that
+    /// tile beyond 0..1 UVs.
+    walls_repeat: HashMap<String, Handle<StandardMaterial>>,
     floors: HashMap<String, Handle<StandardMaterial>>,
     ceilings: HashMap<String, Handle<StandardMaterial>>,
     pub door: Handle<StandardMaterial>,
     pub locked_door: Handle<StandardMaterial>,
     pub door_frame: Handle<StandardMaterial>,
     pub door_button: Handle<StandardMaterial>,
+    /// Pure black unlit darkness beyond stairwells.
+    pub stair_back: Handle<StandardMaterial>,
 }
 
 impl DungeonMaterials {
@@ -455,6 +460,13 @@ impl DungeonMaterials {
             reflectance: 0.0,
             ..default()
         };
+
+        let mut walls_repeat = HashMap::new();
+        for (name, generator) in &WALL_GENERATORS {
+            let mut rng = CanvasRng::new(seed_for(name));
+            let image = images.add(image_with_repeat(generator(&mut rng)));
+            walls_repeat.insert((*name).to_string(), materials.add(lambert(image)));
+        }
         let mut door_rng = CanvasRng::new(seed_for("door"));
         let door_image = images.add(canvas_to_image(generate_door(&mut door_rng)));
         let mut locked_rng = CanvasRng::new(seed_for("locked_door"));
@@ -464,6 +476,7 @@ impl DungeonMaterials {
 
         Self {
             walls,
+            walls_repeat,
             floors,
             ceilings,
             door: materials.add(StandardMaterial {
@@ -482,6 +495,11 @@ impl DungeonMaterials {
                 reflectance: 0.0,
                 ..default()
             }),
+            stair_back: materials.add(StandardMaterial {
+                base_color: Color::BLACK,
+                unlit: true,
+                ..default()
+            }),
         }
     }
 
@@ -490,6 +508,14 @@ impl DungeonMaterials {
             .get(name)
             .or_else(|| self.walls.get("stone"))
             .expect("stone wall material exists")
+            .clone()
+    }
+
+    pub fn wall_repeat(&self, name: &str) -> Handle<StandardMaterial> {
+        self.walls_repeat
+            .get(name)
+            .or_else(|| self.walls_repeat.get("stone"))
+            .expect("stone repeat wall material exists")
             .clone()
     }
 

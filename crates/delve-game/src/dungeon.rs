@@ -2,6 +2,7 @@
 //! ported from the TS `buildDungeon` basics. Later phases add stairs, ramps,
 //! environment zones, and wall entities.
 
+use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
 use delve_core::texture_resolver::resolve_textures;
@@ -12,10 +13,6 @@ use std::f32::consts::{FRAC_PI_2, PI};
 pub const CELL_SIZE: f32 = 2.0;
 pub const WALL_HEIGHT: f32 = 2.5;
 pub const EYE_HEIGHT: f32 = WALL_HEIGHT * 0.65;
-
-/// Marker for despawning the built dungeon on level changes.
-#[derive(Component)]
-pub struct DungeonGeometry;
 
 // Rendering counterpart to walkability: OOB cells are solid boundary walls.
 fn is_solid(grid: &[Vec<char>], col: i32, row: i32, renderable: &HashSet<char>) -> bool {
@@ -94,7 +91,7 @@ pub fn spawn_dungeon(
             );
 
             commands.spawn((
-                DungeonGeometry,
+                LevelEntity,
                 Mesh3d(tile_mesh.clone()),
                 MeshMaterial3d(materials.floor(&textures.floor)),
                 Transform::from_xyz(center_x, 0.0, center_z)
@@ -103,7 +100,7 @@ pub fn spawn_dungeon(
 
             if ceiling_enabled {
                 commands.spawn((
-                    DungeonGeometry,
+                    LevelEntity,
                     Mesh3d(tile_mesh.clone()),
                     MeshMaterial3d(materials.ceiling(&textures.ceiling)),
                     Transform::from_xyz(center_x, WALL_HEIGHT, center_z)
@@ -130,7 +127,7 @@ pub fn spawn_dungeon(
                     char_defs,
                 );
                 commands.spawn((
-                    DungeonGeometry,
+                    LevelEntity,
                     Mesh3d(wall_mesh.clone()),
                     MeshMaterial3d(materials.wall(&wall_texture)),
                     Transform::from_xyz(

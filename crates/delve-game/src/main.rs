@@ -4,18 +4,21 @@ mod doors;
 mod dungeon;
 mod enemies;
 mod environment;
+mod level_scene;
 mod pixel_canvas;
 mod player;
 mod session;
+mod stairs;
 mod textures;
 mod torch;
+mod transition;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::window::WindowFocused;
 use delve_core::enemies::EnemyDatabase;
-use delve_core::game_state::{GameState, GameStateDeps};
+use delve_core::game_state::{GameState, GameStateDeps, door_key};
 use delve_core::grid::build_walkable_set;
 use delve_core::items::ItemDatabase;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
@@ -23,13 +26,23 @@ use delve_core::npcs::NpcDatabase;
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
+use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use player::Player;
-use session::{GameRng, Session};
+use session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use std::path::PathBuf;
 use std::sync::Arc;
 use textures::DungeonMaterials;
 
-const SMOKE_DUNGEON: &str = "levels/dungeon1.json";
+/// Same production fallback as the TS shell; override with a level name
+/// argument: `delve-game dungeon1`.
+const DEFAULT_DUNGEON: &str = "levels/ruins.json";
+
+fn dungeon_path() -> String {
+    match std::env::args().nth(1) {
+        Some(name) => format!("levels/{name}.json"),
+        None => DEFAULT_DUNGEON.to_string(),
+    }
+}
 
 fn assets_dir() -> PathBuf {
     let local = PathBuf::from("assets");
@@ -71,18 +84,18 @@ fn setup(
     mut standard_materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let loaded = load_dungeon(SMOKE_DUNGEON);
-    let start = &loaded.player_start;
+    let loaded = load_dungeon(&dungeon_path());
+    let start = loaded.player_start.clone();
     let level = loaded
         .levels
         .iter()
         .find(|level| level.id.as_deref() == Some(start.level_id.as_str()))
-        .expect("playerStart.levelId resolves to a level");
-    let layer_index = resolve_layer_coord(level, start.layer_index.unwrap_or(0));
+        .expect("playerStart.levelId resolves to a level")
+        .clone();
+    let layer_index = resolve_layer_coord(&level, start.layer_index.unwrap_or(0));
     let grid = level.layers[layer_index].grid.clone();
 
     let materials = DungeonMaterials::generate(&mut images, &mut standard_materials);
-    dungeon::spawn_dungeon(&mut commands, &mut meshes, &materials, level);
 
     let walkable = build_walkable_set(
         level
@@ -121,34 +134,41 @@ fn setup(
     game.active_layer_index = layer_index;
     game.take_events(); // discard construction-time signal events
 
-    let door_panels = doors::spawn_doors(
-        &mut commands,
-        &mut meshes,
-        &materials,
-        &game,
-        &grid,
-        &walkable,
-    );
-    commands.insert_resource(door_panels);
-
-    let enemy_db = std::sync::Arc::new(
+    let enemy_db = Arc::new(
         EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
     );
-    let enemy_billboards = enemies::spawn_enemy_billboards(
-        &mut commands,
-        &mut meshes,
-        &mut standard_materials,
-        &asset_server,
-        &game,
-        &enemy_db,
-    );
+    let mut scene_assets = SceneAssets {
+        meshes: &mut meshes,
+        materials: &mut standard_materials,
+        asset_server: &asset_server,
+    };
+    let scene = SceneContext {
+        dungeon_materials: &materials,
+        enemy_db: &enemy_db,
+        game: &game,
+        level: &level,
+        grid: &grid,
+        walkable: &walkable,
+    };
+    let (door_panels, enemy_billboards) =
+        spawn_level_scene(&mut commands, &mut scene_assets, &scene);
+    commands.insert_resource(door_panels);
     commands.insert_resource(enemy_billboards);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(materials);
+
+    let stairs_map = game
+        .active_layer()
+        .stairs
+        .values()
+        .map(|stair| (door_key(stair.col, stair.row), stair.direction))
+        .collect();
+    let level_id = level.id.clone().unwrap_or_else(|| level.name.clone());
     commands.insert_resource(Session::new(
         game,
         grid.clone(),
         walkable.clone(),
+        level_id,
         (start.col, start.row, start.facing),
     ));
     commands.insert_resource(GameRng(rng));
@@ -177,10 +197,18 @@ fn setup(
             brightness: AMBIENT_BRIGHTNESS,
             affects_lightmapped_meshes: true,
         },
-        Player::new(grid, start.col, start.row, start.facing, walkable),
+        Player::new(
+            grid,
+            start.col,
+            start.row,
+            start.facing,
+            walkable,
+            stairs_map,
+        ),
     ));
 
     torch::spawn_torch(&mut commands);
+    commands.insert_resource(DungeonRes(loaded));
 }
 
 /// Logs OS-confirmed focus changes (info) and raw key events (debug, enable
@@ -265,7 +293,9 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_systems(Startup, setup)
+        .init_resource::<transition::Transition>()
+        .init_resource::<LevelSnapshots>()
+        .add_systems(Startup, (setup, transition::spawn_overlay))
         .add_systems(
             Update,
             (
@@ -279,6 +309,8 @@ fn main() {
                 enemies::face_billboards_to_camera,
                 doors::animate_door_panels,
                 torch::torch_update,
+                transition::tick_transition,
+                transition::perform_level_swap,
                 input_diagnostics,
                 claim_initial_focus,
             )

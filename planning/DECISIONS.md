@@ -59,3 +59,7 @@ The TS enemy/npc database singletons consulted during validation become a `Valid
 ## D14: Out-of-union strings in shipped data parse as Unknown
 
 `assets/data/items.json` ships one item with `"type": "armor-steel"`, outside the TS `ItemType` union; the TS runtime loads it anyway since unions are compile-time only. `ItemType`/`ItemSubtype` therefore carry a `#[serde(other)] Unknown` variant so such items load but match no type filter, same as the TS runtime.
+
+## D15: Default dungeon is ruins.json, overridable by CLI argument
+
+The TS shell's production fallback is `/levels/ruins.json` with a `?level=` URL override. The Rust shell mirrors both: `delve-game` loads `levels/ruins.json`, `delve-game <name>` loads `levels/<name>.json`. Ruins exercises stairs, transitions, and environment presets that the earlier `dungeon1.json` smoke level lacked.

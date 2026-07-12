@@ -3,6 +3,7 @@
 //! Environment-zone splitting arrives with phase 5.
 
 use crate::dungeon::{CELL_SIZE, WALL_HEIGHT};
+use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
@@ -67,7 +68,7 @@ impl DoorPanel {
 /// Scale box UVs so each face samples texture proportional to its size,
 /// preventing squeeze on thin dimensions. When `full_front_back` is set the
 /// ±z faces keep their default 0..1 mapping (used for door panels).
-fn fix_box_uvs(mesh: &mut Mesh, reference_size: f32, full_front_back: bool) {
+pub(crate) fn fix_box_uvs(mesh: &mut Mesh, reference_size: f32, full_front_back: bool) {
     let positions: Vec<[f32; 3]> = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(values)) => values.clone(),
         _ => return,
@@ -164,6 +165,7 @@ pub fn spawn_doors(
         // Frame: two pillars and a lintel, plus call buttons on manual doors.
         let frame = commands
             .spawn((
+                LevelEntity,
                 Transform::from_xyz(center_x, 0.0, center_z).with_rotation(rotation),
                 Visibility::default(),
             ))
@@ -216,6 +218,7 @@ pub fn spawn_doors(
         let start_y = if is_open { open_y } else { closed_y };
         let panel = commands
             .spawn((
+                LevelEntity,
                 Mesh3d(panel_mesh.clone()),
                 MeshMaterial3d(material),
                 Transform::from_xyz(center_x, start_y, center_z).with_rotation(rotation),

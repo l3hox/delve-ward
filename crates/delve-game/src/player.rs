@@ -1,17 +1,21 @@
 //! First-person grid movement with tweened camera, ported from the TS
-//! rendering `Player`. Stairs pitch, falling, and noclip arrive with their
-//! phases.
+//! rendering `Player`. Falling and noclip arrive with their phases.
 
 use crate::dungeon::{CELL_SIZE, EYE_HEIGHT};
 use bevy::prelude::*;
+use delve_core::game_state::{StairDirection, door_key};
 use delve_core::grid::{Facing, MoveRules, PlayerState};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const TWEEN_SPEED: f32 = 20.0;
 const ANIM_THRESHOLD: f32 = 0.05;
 /// Pull the camera back from the cell center to see tile edges.
 const CAMERA_BACK_OFFSET: f32 = 0.95;
 const MAX_QUEUED_COMMANDS: usize = 3;
+/// Camera dips/rises when stepping onto stairs.
+const STAIR_Y_OFFSET: f32 = 0.35;
+/// Camera tilts down/up on stairs (radians, ~8.5°).
+const STAIR_PITCH: f32 = 0.15;
 
 #[derive(Clone, Copy)]
 enum Command {
@@ -27,6 +31,7 @@ enum Command {
 pub struct Player {
     state: PlayerState,
     grid: Vec<String>,
+    stairs: HashMap<String, StairDirection>,
     current_pos: Vec3,
     target_pos: Vec3,
     // Continuous angle accumulation avoids wrap-around on repeated turns.
@@ -38,12 +43,26 @@ pub struct Player {
     pub slow_multiplier: f32,
 }
 
-fn grid_to_world(col: i32, row: i32) -> Vec3 {
+fn grid_to_world(col: i32, row: i32, stairs: &HashMap<String, StairDirection>) -> Vec3 {
+    let mut eye_y = EYE_HEIGHT;
+    match stairs.get(&door_key(i64::from(col), i64::from(row))) {
+        Some(StairDirection::Down) => eye_y -= STAIR_Y_OFFSET,
+        Some(StairDirection::Up) => eye_y += STAIR_Y_OFFSET,
+        None => {}
+    }
     Vec3::new(
         col as f32 * CELL_SIZE + CELL_SIZE / 2.0,
-        EYE_HEIGHT,
+        eye_y,
         row as f32 * CELL_SIZE + CELL_SIZE / 2.0,
     )
+}
+
+fn pitch_for_cell(col: i32, row: i32, stairs: &HashMap<String, StairDirection>) -> f32 {
+    match stairs.get(&door_key(i64::from(col), i64::from(row))) {
+        Some(StairDirection::Down) => -STAIR_PITCH,
+        Some(StairDirection::Up) => STAIR_PITCH,
+        None => 0.0,
+    }
 }
 
 fn facing_angle(facing: Facing) -> f32 {
@@ -57,17 +76,20 @@ impl Player {
         start_row: i32,
         facing: Facing,
         walkable: HashSet<char>,
+        stairs: HashMap<String, StairDirection>,
     ) -> Self {
-        let position = grid_to_world(start_col, start_row);
+        let position = grid_to_world(start_col, start_row, &stairs);
+        let pitch = pitch_for_cell(start_col, start_row, &stairs);
         Self {
             state: PlayerState::with_walkable(start_col, start_row, facing, walkable),
             grid,
+            stairs,
             current_pos: position,
             target_pos: position,
             current_angle: facing_angle(facing),
             target_angle: facing_angle(facing),
-            current_pitch: 0.0,
-            target_pitch: 0.0,
+            current_pitch: pitch,
+            target_pitch: pitch,
             command_queue: VecDeque::new(),
             slow_multiplier: 1.0,
         }
@@ -122,7 +144,8 @@ impl Player {
     }
 
     fn arrive(&mut self) {
-        self.target_pos = grid_to_world(self.state.col, self.state.row);
+        self.target_pos = grid_to_world(self.state.col, self.state.row, &self.stairs);
+        self.target_pitch = pitch_for_cell(self.state.col, self.state.row, &self.stairs);
     }
 
     pub fn grid_state(&self) -> &PlayerState {

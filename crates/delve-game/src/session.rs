@@ -4,19 +4,22 @@
 
 use crate::doors::{DoorPanel, DoorPanels};
 use crate::player::Player;
+use crate::transition::Transition;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, WorldEvent};
+use delve_core::game_state::{GameState, MultiLayerSnapshot, WorldEvent};
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::random::Mulberry32;
-use std::collections::HashSet;
+use delve_core::types::Dungeon;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Resource)]
 pub struct Session {
     pub game: GameState,
     pub grid: Vec<String>,
     pub walkable: HashSet<char>,
-    last_player_pose: (i32, i32, Facing),
+    pub current_level_id: String,
+    pub(crate) last_player_pose: (i32, i32, Facing),
 }
 
 impl Session {
@@ -24,12 +27,14 @@ impl Session {
         game: GameState,
         grid: Vec<String>,
         walkable: HashSet<char>,
+        current_level_id: String,
         start: (i32, i32, Facing),
     ) -> Self {
         Self {
             game,
             grid,
             walkable,
+            current_level_id,
             last_player_pose: start,
         }
     }
@@ -38,6 +43,14 @@ impl Session {
 /// Seeded gameplay randomness (loot rolls, erratic movement, spawners).
 #[derive(Resource)]
 pub struct GameRng(pub Mulberry32);
+
+/// The full loaded dungeon, kept for cross-level transitions.
+#[derive(Resource)]
+pub struct DungeonRes(pub Dungeon);
+
+/// Departed levels' state, restored when the player returns.
+#[derive(Resource, Default)]
+pub struct LevelSnapshots(pub HashMap<String, MultiLayerSnapshot>);
 
 /// Build the TS movement callbacks from the game state and hand them to `f`.
 fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
@@ -69,8 +82,12 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     session: Res<Session>,
+    transition: Res<Transition>,
     mut players: Query<&mut Player>,
 ) {
+    if transition.is_active() {
+        return;
+    }
     let Ok(mut player) = players.single_mut() else {
         return;
     };
@@ -109,9 +126,13 @@ pub fn player_update(
     });
 }
 
-/// Reveal explored cells and pick up keys whenever the player's logical cell
-/// or facing changes.
-pub fn on_player_moved(mut session: ResMut<Session>, players: Query<&Player>) {
+/// Reveal explored cells, pick up keys, and start stair transitions whenever
+/// the player's logical cell or facing changes.
+pub fn on_player_moved(
+    mut session: ResMut<Session>,
+    players: Query<&Player>,
+    mut transition: ResMut<Transition>,
+) {
     let Ok(player) = players.single() else {
         return;
     };
@@ -127,6 +148,11 @@ pub fn on_player_moved(mut session: ResMut<Session>, players: Query<&Player>) {
     game.reveal_around(col, row, pose.2, grid);
     if let Some(key_id) = game.pickup_key_at(col, row) {
         info!("Picked up key: {key_id}");
+    }
+    if let Some(stair) = game.get_stair(col, row)
+        && let Some(stair_id) = &stair.id
+    {
+        transition.begin(stair_id.clone());
     }
 }
 
@@ -168,11 +194,12 @@ pub fn apply_world_events(
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
+    transition: Res<Transition>,
     players: Query<&Player>,
     panels: Res<DoorPanels>,
     mut panel_query: Query<&mut DoorPanel>,
 ) {
-    if !keys.just_pressed(KeyCode::Space) {
+    if transition.is_active() || !keys.just_pressed(KeyCode::Space) {
         return;
     }
     let Ok(player) = players.single() else {
