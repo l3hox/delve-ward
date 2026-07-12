@@ -1,0 +1,28 @@
+{
+    "version": "1.0",
+    "enemies": [
+        {
+            "id": "rat", "name": "Rat", "maxHp": 8, "atk": 2, "def": 0,
+            "aggroRange": 3, "moveInterval": 0.6, "blocksMovement": true, "xp": 10,
+            "sprite": { "path": "/sprites/rat.png", "size": 1.2 }, "behaviors": []
+        },
+        {
+            "id": "skeleton", "name": "Skeleton", "maxHp": 20, "atk": 3, "def": 1,
+            "aggroRange": 4, "moveInterval": 1.0, "blocksMovement": true, "xp": 25,
+            "sprite": { "path": "/sprites/skeleton.png", "size": 2.0 }, "behaviors": []
+        },
+        {
+            "id": "orc", "name": "Orc", "maxHp": 40, "atk": 5, "def": 2,
+            "aggroRange": 5, "moveInterval": 1.4, "blocksMovement": true, "xp": 50,
+            "sprite": { "path": "/sprites/orc.png", "size": 2.0 }, "behaviors": []
+        },
+        {
+            "id": "troll_test", "name": "Test Troll", "maxHp": 60, "atk": 8, "def": 3,
+            "aggroRange": 4, "moveInterval": 1.6, "blocksMovement": true, "xp": 100,
+            "sprite": { "path": "/sprites/troll.png", "size": 2.4 },
+            "behaviors": [
+                { "type": "regen", "params": { "hpPerTick": 7, "tickInterval": 1, "pauseOnDamage": 3 } }
+            ]
+        }
+    ]
+}

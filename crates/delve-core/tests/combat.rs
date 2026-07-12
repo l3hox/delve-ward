@@ -23,8 +23,8 @@ impl EnemyRegistrar for MockEnemies {
         enemy_type == "rat"
     }
 
-    fn create_enemy(&self, col: i64, row: i64, enemy_type: &str) -> EnemyInstance {
-        EnemyInstance {
+    fn create_enemy(&self, col: i64, row: i64, enemy_type: &str) -> Option<EnemyInstance> {
+        Some(EnemyInstance {
             col,
             row,
             enemy_type: enemy_type.to_string(),
@@ -42,7 +42,7 @@ impl EnemyRegistrar for MockEnemies {
             drops: None,
             status_effects: Vec::new(),
             spawner_id: None,
-        }
+        })
     }
 
     fn regen_pause_duration(&self, _enemy_type: &str) -> Option<f64> {

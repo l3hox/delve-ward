@@ -7,6 +7,7 @@
 pub mod combat;
 pub mod dialogs;
 pub mod enemies;
+pub mod enemy_ai;
 pub mod entities;
 pub mod game_state;
 pub mod grid;
@@ -15,6 +16,7 @@ pub mod items;
 pub mod level_loader;
 pub mod loot;
 pub mod npcs;
+pub mod pathfinding;
 pub mod quests;
 pub mod random;
 pub mod signal_manager;

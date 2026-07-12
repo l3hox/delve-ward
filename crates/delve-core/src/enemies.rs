@@ -100,6 +100,59 @@ impl EnemyDatabase {
             .iter()
             .find(|behavior| behavior.behavior_type == behavior_type)
     }
+
+    /// Instantiate a fresh enemy at a cell from its definition.
+    pub fn create_enemy_instance(
+        &self,
+        col: i64,
+        row: i64,
+        enemy_type: &str,
+    ) -> Result<crate::types::EnemyInstance, String> {
+        let def = self
+            .get_enemy(enemy_type)
+            .ok_or_else(|| format!("Unknown enemy type: {enemy_type}"))?;
+        let has_regen = self.has_behavior(enemy_type, "regen");
+        Ok(crate::types::EnemyInstance {
+            col,
+            row,
+            enemy_type: def.id.clone(),
+            hp: def.max_hp,
+            max_hp: def.max_hp,
+            atk: def.atk,
+            def: def.def,
+            aggro_range: def.aggro_range,
+            move_interval: def.move_interval,
+            blocks_movement: def.blocks_movement,
+            ai_state: crate::types::EnemyAiState::Idle,
+            move_timer: 0.0,
+            regen_timer: has_regen.then_some(0.0),
+            regen_pause_timer: has_regen.then_some(0.0),
+            drops: None,
+            status_effects: Vec::new(),
+            spawner_id: None,
+        })
+    }
+}
+
+impl crate::game_state::EnemyRegistrar for EnemyDatabase {
+    fn has_enemy(&self, enemy_type: &str) -> bool {
+        self.get_enemy(enemy_type).is_some()
+    }
+
+    fn create_enemy(
+        &self,
+        col: i64,
+        row: i64,
+        enemy_type: &str,
+    ) -> Option<crate::types::EnemyInstance> {
+        self.create_enemy_instance(col, row, enemy_type).ok()
+    }
+
+    fn regen_pause_duration(&self, enemy_type: &str) -> Option<f64> {
+        self.get_behavior(enemy_type, "regen")
+            .and_then(|behavior| behavior.params.get("pauseOnDamage"))
+            .and_then(serde_json::Value::as_f64)
+    }
 }
 
 #[cfg(test)]

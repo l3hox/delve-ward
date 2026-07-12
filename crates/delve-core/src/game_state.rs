@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 pub trait EnemyRegistrar: Send + Sync {
     fn has_enemy(&self, enemy_type: &str) -> bool;
-    fn create_enemy(&self, col: i64, row: i64, enemy_type: &str) -> EnemyInstance;
+    fn create_enemy(&self, col: i64, row: i64, enemy_type: &str) -> Option<EnemyInstance>;
     fn regen_pause_duration(&self, enemy_type: &str) -> Option<f64>;
 }
 
@@ -1484,8 +1484,9 @@ impl GameState {
                 let enemy_type = entity.prop_str("enemyType").unwrap_or_default().to_string();
                 if let Some(registrar) = self.deps.enemy_registrar.as_ref()
                     && registrar.has_enemy(&enemy_type)
+                    && let Some(mut instance) =
+                        registrar.create_enemy(entity.col, entity.row, &enemy_type)
                 {
-                    let mut instance = registrar.create_enemy(entity.col, entity.row, &enemy_type);
                     if let Some(drops) = prop_drops(entity) {
                         instance.drops = Some(drops);
                     }
