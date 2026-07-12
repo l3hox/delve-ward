@@ -2,8 +2,10 @@
 //! its fade-to-black overlay: fade out, swap the level scene at the
 //! midpoint, fade back in. Input systems check `Transition::is_active`.
 
-use crate::enemies::EnemyDb;
+use crate::doors::DoorPanels;
+use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
+use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_scene};
 use crate::player::Player;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, Session};
@@ -106,9 +108,13 @@ pub struct SwapWorld<'w, 's> {
     snapshots: ResMut<'w, LevelSnapshots>,
     dungeon_materials: Res<'w, DungeonMaterials>,
     enemy_db: Res<'w, EnemyDb>,
+    items: Res<'w, ItemDb>,
     rng: ResMut<'w, GameRng>,
     clear_color: ResMut<'w, ClearColor>,
     level_entities: Query<'w, 's, Entity, With<LevelEntity>>,
+    door_panels: ResMut<'w, DoorPanels>,
+    enemy_billboards: ResMut<'w, EnemyBillboards>,
+    ground_items: ResMut<'w, GroundItemBillboards>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -126,8 +132,6 @@ pub fn perform_level_swap(
     mut transition: ResMut<Transition>,
     mut assets: SwapAssets,
     mut world: SwapWorld,
-    mut door_panels: ResMut<crate::doors::DoorPanels>,
-    mut billboards: ResMut<crate::enemies::EnemyBillboards>,
     mut players: Query<(Entity, &Player, &mut DistanceFog, &mut AmbientLight)>,
 ) {
     if transition.phase != Phase::Swap {
@@ -232,14 +236,17 @@ pub fn perform_level_swap(
     let scene = SceneContext {
         dungeon_materials: &world.dungeon_materials,
         enemy_db: &world.enemy_db.0,
+        items: &world.items.0,
         game: &session.game,
         level: target_level,
         grid: &session.grid,
         walkable: &session.walkable,
     };
-    let (new_panels, new_billboards) = spawn_level_scene(&mut commands, &mut scene_assets, &scene);
-    *door_panels = new_panels;
-    *billboards = new_billboards;
+    let (new_panels, new_billboards, new_ground_items) =
+        spawn_level_scene(&mut commands, &mut scene_assets, &scene);
+    *world.door_panels = new_panels;
+    *world.enemy_billboards = new_billboards;
+    *world.ground_items = new_ground_items;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(

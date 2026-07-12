@@ -4,6 +4,7 @@ mod doors;
 mod dungeon;
 mod enemies;
 mod environment;
+mod ground_items;
 mod level_scene;
 mod pixel_canvas;
 mod player;
@@ -22,10 +23,12 @@ use delve_core::game_state::{GameState, GameStateDeps, door_key};
 use delve_core::grid::build_walkable_set;
 use delve_core::items::ItemDatabase;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
+use delve_core::loot::LootTables;
 use delve_core::npcs::NpcDatabase;
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
+use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use player::Player;
 use session::{DungeonRes, GameRng, LevelSnapshots, Session};
@@ -111,10 +114,11 @@ fn setup(
         .map(|elapsed| elapsed.subsec_nanos())
         .unwrap_or(0x5EED);
     let mut rng = Mulberry32::new(seed);
+    let items = Arc::new(
+        ItemDatabase::from_json(&read_asset("data/items.json")).expect("items.json loads"),
+    );
     let deps = GameStateDeps {
-        items: Some(Arc::new(
-            ItemDatabase::from_json(&read_asset("data/items.json")).expect("items.json loads"),
-        )),
+        items: Some(items.clone()),
         enemy_registrar: Some(Box::new(
             EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
         )),
@@ -145,16 +149,23 @@ fn setup(
     let scene = SceneContext {
         dungeon_materials: &materials,
         enemy_db: &enemy_db,
+        items: &items,
         game: &game,
         level: &level,
         grid: &grid,
         walkable: &walkable,
     };
-    let (door_panels, enemy_billboards) =
+    let (door_panels, enemy_billboards, ground_item_billboards) =
         spawn_level_scene(&mut commands, &mut scene_assets, &scene);
     commands.insert_resource(door_panels);
     commands.insert_resource(enemy_billboards);
+    commands.insert_resource(ground_item_billboards);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
+    commands.insert_resource(ItemDb(items));
+    commands.insert_resource(LootTablesRes(
+        LootTables::from_json(&read_asset("data/loot-tables.json"))
+            .expect("loot-tables.json loads"),
+    ));
     commands.insert_resource(materials);
 
     let stairs_map = game
@@ -307,6 +318,7 @@ fn main() {
                 enemies::tick_enemies,
                 enemies::tick_attack_cooldown,
                 enemies::face_billboards_to_camera,
+                ground_items::face_ground_item_billboards,
                 doors::animate_door_panels,
                 torch::torch_update,
                 transition::tick_transition,

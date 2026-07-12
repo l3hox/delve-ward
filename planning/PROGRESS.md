@@ -15,7 +15,8 @@ Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMP
 - [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack, combat, pathfinding, enemy AI + `create_enemy_instance` (`EnemyDatabase` implements `EnemyRegistrar`), player interaction module
 - [x] Game: `Session` resource wires `GameState` into the app; movement blocked by doors/enemies/blocks/npcs/barrels/boulders; Space interacts (`interaction::interact`); doors render (frame + sliding panel with bounce, ported from doorRenderer/doorAnimator); enemy billboards + AI ticking + melee both ways (F attacks); keys picked up on walk-over; combat feedback via log lines until the HUD lands
 - [x] Game: stairs render (stepped slabs + depth-fade vertex colors, `stairs.rs`); cross-level transitions with fade overlay (`transition.rs` + `level_scene.rs` spawn/despawn via `LevelEntity` marker); player camera dips/pitches on stair cells; level state snapshots restore on return (D15: default dungeon is now ruins.json, CLI-arg override)
-- [ ] Game: ground item billboards (`groundItemRenderer.ts`, `itemSprites.ts`, key/sconce renderers), loot drops on kill (LootTables resource + XP), item pickups
+- [x] Game: ground item billboards with seeded cell spread (`ground_items.rs` ← groundItemRenderer/itemSprites); walk-over equipment/consumable pickups with billboard collapse-to-one-remaining (TS parity); kills grant XP (`add_xp`, level-up log) and roll loot onto the ground (lootSpawner port, gold + created item entities)
+- [ ] Game: key and sconce renderers (`keyRenderer.ts`, sconce meshes + lights)
 - [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
 - [ ] Game: character creation screen
 - [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main

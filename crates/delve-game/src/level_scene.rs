@@ -4,11 +4,13 @@
 use crate::doors::{self, DoorPanels};
 use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
+use crate::ground_items::{self, GroundItemBillboards};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::GameState;
+use delve_core::items::ItemDatabase;
 use delve_core::types::DungeonLevel;
 use std::collections::HashSet;
 
@@ -27,6 +29,7 @@ pub struct SceneAssets<'a> {
 pub struct SceneContext<'a> {
     pub dungeon_materials: &'a DungeonMaterials,
     pub enemy_db: &'a EnemyDatabase,
+    pub items: &'a ItemDatabase,
     pub game: &'a GameState,
     pub level: &'a DungeonLevel,
     pub grid: &'a [String],
@@ -37,7 +40,7 @@ pub fn spawn_level_scene(
     commands: &mut Commands,
     assets: &mut SceneAssets,
     scene: &SceneContext,
-) -> (DoorPanels, EnemyBillboards) {
+) -> (DoorPanels, EnemyBillboards, GroundItemBillboards) {
     dungeon::spawn_dungeon(
         commands,
         assets.meshes,
@@ -69,5 +72,14 @@ pub fn spawn_level_scene(
         scene.game,
         scene.enemy_db,
     );
-    (door_panels, billboards)
+    let ground_items = ground_items::spawn_ground_items(
+        commands,
+        assets.meshes,
+        assets.materials,
+        assets.asset_server,
+        scene.game,
+        scene.items,
+        i32::try_from(scene.game.active_layer_index).unwrap_or(0),
+    );
+    (door_panels, billboards, ground_items)
 }

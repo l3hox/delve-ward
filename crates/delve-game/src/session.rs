@@ -3,6 +3,7 @@
 //! controller, interaction, and world events to rendering.
 
 use crate::doors::{DoorPanel, DoorPanels};
+use crate::ground_items::{self, GroundItemRender};
 use crate::player::Player;
 use crate::transition::Transition;
 use bevy::prelude::*;
@@ -126,12 +127,13 @@ pub fn player_update(
     });
 }
 
-/// Reveal explored cells, pick up keys, and start stair transitions whenever
-/// the player's logical cell or facing changes.
+/// Reveal explored cells, pick up keys and items, and start stair
+/// transitions whenever the player's logical cell or facing changes.
 pub fn on_player_moved(
     mut session: ResMut<Session>,
     players: Query<&Player>,
     mut transition: ResMut<Transition>,
+    mut item_render: GroundItemRender,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -149,6 +151,7 @@ pub fn on_player_moved(
     if let Some(key_id) = game.pickup_key_at(col, row) {
         info!("Picked up key: {key_id}");
     }
+    ground_items::handle_pickups(game, &mut item_render, col, row);
     if let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
     {

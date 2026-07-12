@@ -2,6 +2,7 @@
 //! move with the core AI, and melee the player when adjacent.
 
 use crate::dungeon::CELL_SIZE;
+use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
 use crate::player::Player;
 use crate::session::{GameRng, Session};
@@ -203,7 +204,7 @@ pub fn attack_input(
     mut rng: ResMut<GameRng>,
     mut billboards: ResMut<EnemyBillboards>,
     players: Query<&Player>,
-    mut commands: Commands,
+    mut kill_effects: KillEffects,
 ) {
     if transition.is_active() || !keys.just_pressed(KeyCode::KeyF) {
         return;
@@ -211,9 +212,11 @@ pub fn attack_input(
     let Ok(player) = players.single() else {
         return;
     };
-    let rng = &mut rng.0;
-    let mut random = || rng.next_f64();
-    let results = player_attack(player.grid_state(), &mut session.game, &mut random);
+    let results = {
+        let rng = &mut rng.0;
+        let mut random = || rng.next_f64();
+        player_attack(player.grid_state(), &mut session.game, &mut random)
+    };
     for result in results {
         match result.result_type {
             CombatResultType::Hit => {
@@ -228,18 +231,65 @@ pub fn attack_input(
                     "You slay the {}!",
                     result.enemy_type.as_deref().unwrap_or("enemy")
                 );
-                if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
-                    let key = door_key(col, row);
-                    if let Some(entity) = billboards.by_key.remove(&key) {
-                        commands.entity(entity).despawn();
-                    }
-                }
+                handle_kill(
+                    &mut session,
+                    &mut rng,
+                    &mut billboards,
+                    &mut kill_effects,
+                    &result,
+                );
             }
             CombatResultType::NoTarget => info!("You swing at nothing."),
             CombatResultType::Cooldown => {}
             other => debug!("attack result: {other:?}"),
         }
     }
+}
+
+/// Loot tables and rendering handles the kill handler needs.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct KillEffects<'w, 's> {
+    database: Res<'w, EnemyDb>,
+    loot_tables: Res<'w, LootTablesRes>,
+    item_render: GroundItemRender<'w, 's>,
+}
+
+/// XP gain and loot drop on an enemy kill, ported from the TS
+/// `handleEnemyKill` (the state-side removal happens in `damage_enemy`).
+fn handle_kill(
+    session: &mut Session,
+    rng: &mut GameRng,
+    billboards: &mut EnemyBillboards,
+    effects: &mut KillEffects,
+    result: &delve_core::combat::CombatResult,
+) {
+    let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
+        return;
+    };
+    let key = door_key(col, row);
+    if let Some(entity) = billboards.by_key.remove(&key) {
+        effects.item_render.commands.entity(entity).despawn();
+    }
+
+    let enemy_type = result.enemy_type.as_deref().unwrap_or("");
+    if let Some(def) = effects.database.0.get_enemy(enemy_type) {
+        let levelled = session.game.add_xp(def.xp as i64);
+        if levelled {
+            info!("Level up! You are now level {}", session.game.player.level);
+        }
+    }
+
+    let rng = &mut rng.0;
+    let mut random = || rng.next_f64();
+    ground_items::spawn_loot(
+        &mut session.game,
+        &mut effects.item_render,
+        &effects.loot_tables.0,
+        enemy_type,
+        result.drops_override.as_ref(),
+        (col, row),
+        &mut random,
+    );
 }
 
 /// Wind down the swing cooldown.
