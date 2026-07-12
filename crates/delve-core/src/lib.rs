@@ -14,6 +14,7 @@ pub mod loot;
 pub mod npcs;
 pub mod quests;
 pub mod random;
+pub mod signal_manager;
 pub mod status_effects;
 pub mod texture_names;
 pub mod texture_resolver;
