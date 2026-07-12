@@ -32,6 +32,7 @@ Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (i
 
 ## Known Issues
 
+- macOS keyboard focus: launched from a terminal on macOS 26, the window can come up without keyboard focus — keys then fall through and the system beeps. `claim_initial_focus` in `main.rs` re-asserts activation during a 2s launch grace period (winit `focus_window` → `activateIgnoringOtherApps` + `makeKeyAndOrderFront`). Verified to fire correctly; whether Tahoe grants activation needs an interactive run. `input_diagnostics` logs OS focus at info and keys at `RUST_LOG=delve_game=debug` for follow-up if it persists.
 - Smoke test verified launch/init only (window + Metal renderer up, no panics, dungeon loads clean). Screen capture is blocked by macOS permissions in agent sessions, so brightness/fog tuning has not been visually compared against the TS build — user eyes welcome on `cargo run`.
 - `npcs.json` defines `nameless_girl` with dialog `nameless_girl`, but no such dialog file exists — in the TS repo either (its dialog would 404 at runtime there too). The assets-gate test allowlists it; remove the allowance if a re-sync brings the file.
 - `items.json` ships `armor_dragonscale_vest` with `"type": "armor-steel"`, outside the documented type union. Ported faithfully via the `Unknown` variant (see D14); the item matches no type filter, same as in TS.

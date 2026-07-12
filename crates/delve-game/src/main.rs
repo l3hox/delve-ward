@@ -7,8 +7,10 @@ mod player;
 mod textures;
 mod torch;
 
+use bevy::input::keyboard::KeyboardInput;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
+use bevy::window::WindowFocused;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::grid::build_walkable_set;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
@@ -112,6 +114,66 @@ fn setup(
     torch::spawn_torch(&mut commands);
 }
 
+/// Logs OS-confirmed focus changes (info) and raw key events (debug, enable
+/// with `RUST_LOG=delve_game=debug`) — kept while macOS focus behavior
+/// settles across OS versions.
+fn input_diagnostics(
+    mut keyboard: MessageReader<KeyboardInput>,
+    mut focus_events: MessageReader<WindowFocused>,
+) {
+    for event in keyboard.read() {
+        debug!("keyboard event: {:?} {:?}", event.key_code, event.state);
+    }
+    for event in focus_events.read() {
+        info!("window focus (os): {}", event.focused);
+    }
+}
+
+/// On macOS the window can come up without keyboard focus when the binary is
+/// launched from a terminal (observed on macOS 26); keypresses then fall
+/// through to the system and beep. During a short launch grace period this
+/// re-asserts focus: a rising edge on `Window::focused` makes winit activate
+/// the app and make the window key. Stops as soon as the OS confirms focus,
+/// so normal app-switching is unaffected.
+fn claim_initial_focus(
+    time: Res<Time>,
+    mut windows: Query<&mut Window>,
+    mut focus_events: MessageReader<WindowFocused>,
+    mut settled: Local<bool>,
+    mut attempts: Local<u32>,
+) {
+    const FOCUS_GRACE_SECONDS: f32 = 2.0;
+    const ATTEMPT_INTERVAL_SECONDS: f32 = 0.5;
+
+    if *settled {
+        return;
+    }
+    if focus_events.read().any(|event| event.focused) {
+        *settled = true;
+        return;
+    }
+    let elapsed = time.elapsed_secs();
+    if elapsed > FOCUS_GRACE_SECONDS {
+        *settled = true;
+        return;
+    }
+    let due_attempts = (elapsed / ATTEMPT_INTERVAL_SECONDS) as u32 + 1;
+    if *attempts >= due_attempts {
+        return;
+    }
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    if window.focused && *attempts > 0 {
+        // The component still carries our own earlier write; drop it so the
+        // next attempt is a rising edge that re-triggers the winit sync.
+        window.focused = false;
+        return;
+    }
+    *attempts += 1;
+    window.focused = true;
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -128,6 +190,8 @@ fn main() {
                 player::player_input,
                 player::player_update,
                 torch::torch_update,
+                input_diagnostics,
+                claim_initial_focus,
             )
                 .chain(),
         )
