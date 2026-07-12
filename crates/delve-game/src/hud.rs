@@ -21,6 +21,7 @@ use delve_core::entities::EquipSlot;
 use delve_core::game_state::{GameState, LayerState, door_key};
 use delve_core::grid::Facing;
 use delve_core::items::{ItemDatabase, ItemSubtype, ItemType};
+use delve_core::status_effects::{StatusEffect, StatusEffectType, has_effect};
 use std::collections::HashMap;
 
 pub const HUD_WIDTH: usize = 640;
@@ -51,6 +52,11 @@ const MINIMAP_CELL_SIZE: i32 = 6;
 // Torch indicator — right of the health bar.
 const TORCH_BAR: (i32, i32, i32, i32) =
     (HEALTH_BAR.0 + HEALTH_BAR.2 + MARGIN, HEALTH_BAR.1, 100, 24);
+// Status effect icons — above the health bar.
+const STATUS_ICONS_X: i32 = HEALTH_BAR.0;
+const STATUS_ICONS_Y: i32 = HEALTH_BAR.1 - 20;
+const STATUS_ICON_SIZE: i32 = 14;
+const STATUS_ICON_GAP: i32 = 4;
 
 const SLOT_SIZE: i32 = 24;
 const SLOT_GAP: i32 = 4;
@@ -83,6 +89,21 @@ const MINIMAP_BOULDER: Rgba = Rgba::opaque(0x7a, 0x4a, 0x26);
 const TORCH_BG: Rgba = Rgba::opaque(0x1a, 0x12, 0x00);
 const TORCH_FILL: Rgba = Rgba::opaque(0xcc, 0x88, 0x33);
 const TORCH_LOW: Rgba = Rgba::opaque(0xff, 0x66, 0x00);
+
+// Status effect screen tints (full-screen overlays).
+const BURNING_TINT_RGB: (u8, u8, u8) = (255, 100, 0);
+const POISON_TINT_RGB: (u8, u8, u8) = (0, 180, 0);
+const SLOW_TINT_RGB: (u8, u8, u8) = (80, 120, 255);
+const SLOW_TINT_ALPHA: f32 = 0.06;
+
+// Status effect icons — pixel-art droplet/snowflake/flame, 3-tone each.
+const POISON_ICON_BASE: (u8, u8, u8) = (0x22, 0xaa, 0x22);
+const POISON_ICON_HIGHLIGHT: (u8, u8, u8) = (0x66, 0xff, 0x66);
+const SLOW_ICON_BASE: (u8, u8, u8) = (0x55, 0x88, 0xff);
+const SLOW_ICON_CENTER: (u8, u8, u8) = (0xaa, 0xcc, 0xff);
+const BURNING_ICON_OUTER: (u8, u8, u8) = (0xff, 0x88, 0x44);
+const BURNING_ICON_INNER: (u8, u8, u8) = (0xff, 0xcc, 0x44);
+const BURNING_ICON_CORE: (u8, u8, u8) = (0xff, 0xee, 0xaa);
 
 /// Compass letter, matching facing, and the direction it sits from center.
 const COMPASS_DIRECTIONS: [(&str, Facing, i32, i32); 4] = [
@@ -251,7 +272,9 @@ pub fn draw_hud(
         draw_char_creation(&mut canvas, &creation);
     } else {
         let game = &session.game;
+        draw_status_screen_tints(&mut canvas, &game.status_fx.player_status_effects, hud.time);
         draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
+        draw_status_icons(&mut canvas, &game.status_fx.player_status_effects, hud.time);
         draw_inventory_panel(&mut canvas, game, &items.0, &mut hud.icons);
         draw_xp_bar(&mut canvas, game);
         draw_level_up_hint(&mut canvas, game);
@@ -807,4 +830,150 @@ fn draw_message(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
         Rgba::translucent(red, green, blue, alpha),
         2,
     );
+}
+
+fn rgba((red, green, blue): (u8, u8, u8), alpha: f32) -> Rgba {
+    Rgba::translucent(red, green, blue, alpha)
+}
+
+/// Full-screen color washes for active status effects: burning and poison
+/// pulse via a sine wave, slow is a constant tint.
+fn draw_status_screen_tints(canvas: &mut PixelCanvas, effects: &[StatusEffect], time: f32) {
+    let (width, height) = (HUD_WIDTH as i32, HUD_HEIGHT as i32);
+    if has_effect(effects, StatusEffectType::Burning) {
+        let alpha = 0.08 + 0.04 * (time * 12.0).sin();
+        canvas.fill_rect(0, 0, width, height, rgba(BURNING_TINT_RGB, alpha));
+    }
+    if has_effect(effects, StatusEffectType::Poison) {
+        let alpha = 0.06 + 0.02 * (time * 4.0).sin();
+        canvas.fill_rect(0, 0, width, height, rgba(POISON_TINT_RGB, alpha));
+    }
+    if has_effect(effects, StatusEffectType::Slow) {
+        canvas.fill_rect(0, 0, width, height, rgba(SLOW_TINT_RGB, SLOW_TINT_ALPHA));
+    }
+}
+
+/// Green droplet icon for poison.
+fn draw_poison_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let pixel = size / 7;
+    let base = rgba(POISON_ICON_BASE, alpha);
+    canvas.fill_rect(center_x - pixel, y + pixel, pixel * 2, pixel, base); // top narrow
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 2, pixel * 4, pixel, base); // middle
+    canvas.fill_rect(
+        center_x - pixel * 3,
+        y + pixel * 3,
+        pixel * 6,
+        pixel * 2,
+        base,
+    ); // wide
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 5, pixel * 4, pixel, base); // bottom narrow
+    canvas.fill_rect(
+        center_x - pixel,
+        y + pixel * 3,
+        pixel,
+        pixel,
+        rgba(POISON_ICON_HIGHLIGHT, alpha),
+    );
+}
+
+/// Blue snowflake icon for slow.
+fn draw_slow_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let center_y = y + size / 2;
+    let pixel = size / 7;
+    let base = rgba(SLOW_ICON_BASE, alpha);
+    canvas.fill_rect(
+        center_x - pixel,
+        center_y - pixel * 3,
+        pixel * 2,
+        pixel * 6,
+        base,
+    ); // vertical
+    canvas.fill_rect(
+        center_x - pixel * 3,
+        center_y - pixel,
+        pixel * 6,
+        pixel * 2,
+        base,
+    ); // horizontal
+    canvas.fill_rect(
+        center_x - pixel * 2,
+        center_y - pixel * 2,
+        pixel,
+        pixel,
+        base,
+    );
+    canvas.fill_rect(center_x + pixel, center_y - pixel * 2, pixel, pixel, base);
+    canvas.fill_rect(center_x - pixel * 2, center_y + pixel, pixel, pixel, base);
+    canvas.fill_rect(center_x + pixel, center_y + pixel, pixel, pixel, base);
+    canvas.fill_rect(
+        center_x - pixel / 2,
+        center_y - pixel / 2,
+        pixel,
+        pixel,
+        rgba(SLOW_ICON_CENTER, alpha),
+    );
+}
+
+/// Orange flame icon for burning.
+fn draw_burning_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let pixel = size / 7;
+    let outer = rgba(BURNING_ICON_OUTER, alpha);
+    canvas.fill_rect(center_x - pixel, y + pixel, pixel * 2, pixel, outer); // tip
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 2, pixel * 4, pixel, outer); // upper
+    canvas.fill_rect(
+        center_x - pixel * 2,
+        y + pixel * 3,
+        pixel * 4,
+        pixel * 2,
+        outer,
+    ); // middle
+    canvas.fill_rect(center_x - pixel * 3, y + pixel * 5, pixel * 6, pixel, outer); // base
+    canvas.fill_rect(
+        center_x - pixel,
+        y + pixel * 3,
+        pixel * 2,
+        pixel * 2,
+        rgba(BURNING_ICON_INNER, alpha),
+    );
+    canvas.fill_rect(
+        center_x - pixel / 2,
+        y + pixel * 4,
+        pixel,
+        pixel,
+        rgba(BURNING_ICON_CORE, alpha),
+    );
+}
+
+/// Active status effect icons above the health bar, deduplicated by type.
+fn draw_status_icons(canvas: &mut PixelCanvas, effects: &[StatusEffect], time: f32) {
+    if effects.is_empty() {
+        return;
+    }
+    // Gentle pulse: alpha scales between 0.7 and 1.0.
+    let pulse = 0.85 + 0.15 * (time * 3.0).sin();
+    let mut shown = Vec::new();
+    let mut offset_x = 0;
+    for effect in effects {
+        if shown.contains(&effect.effect_type) {
+            continue;
+        }
+        shown.push(effect.effect_type);
+
+        let x = STATUS_ICONS_X + offset_x;
+        match effect.effect_type {
+            StatusEffectType::Poison => {
+                draw_poison_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse)
+            }
+            StatusEffectType::Slow => {
+                draw_slow_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse)
+            }
+            StatusEffectType::Burning => {
+                draw_burning_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse);
+            }
+        }
+        offset_x += STATUS_ICON_SIZE + STATUS_ICON_GAP;
+    }
 }

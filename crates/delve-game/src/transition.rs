@@ -11,6 +11,7 @@ use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_sce
 use crate::levers::LeverHandles;
 use crate::plates::PlateHandles;
 use crate::player::Player;
+use crate::projectiles::{self, ProjectileBillboards, ProjectileManagerRes};
 use crate::sconces::SconceParts;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use crate::textures::DungeonMaterials;
@@ -126,6 +127,8 @@ pub struct SwapWorld<'w, 's> {
     lever_handles: ResMut<'w, LeverHandles>,
     plate_handles: ResMut<'w, PlateHandles>,
     tripwire_handles: ResMut<'w, TripwireHandles>,
+    projectiles: ResMut<'w, ProjectileManagerRes>,
+    projectile_billboards: ResMut<'w, ProjectileBillboards>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -175,6 +178,7 @@ pub fn perform_level_swap(
     for entity in &world.level_entities {
         commands.entity(entity).despawn();
     }
+    projectiles::clear_on_transition(&mut world.projectiles, &mut world.projectile_billboards);
 
     if let Some(snapshot) = world.snapshots.0.get(&target_level_id) {
         session.game.load_level_state(snapshot);
@@ -265,10 +269,12 @@ pub fn perform_level_swap(
     *world.tripwire_handles = handles.tripwire_handles;
 
     let Session { game, grid, .. } = session;
+    // TS reveals with the target stair's facing; only the player's
+    // orientation keeps the pre-transition facing.
     game.reveal_around(
         i64::from(spawn_col),
         i64::from(spawn_row),
-        facing_before,
+        stair.facing,
         grid,
     );
     game.take_events(); // discard construction-time signal events

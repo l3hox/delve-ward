@@ -16,9 +16,11 @@ mod levers;
 mod pixel_canvas;
 mod plates;
 mod player;
+mod projectiles;
 mod sconces;
 mod session;
 mod stairs;
+mod status_effects;
 mod textures;
 mod torch;
 mod transition;
@@ -41,6 +43,7 @@ use environment::{AMBIENT_BRIGHTNESS, environment_config};
 use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use player::Player;
+use projectiles::{ProjectileBillboards, ProjectileManagerRes};
 use session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -198,6 +201,8 @@ fn setup(
         (start.col, start.row, start.facing),
     ));
     commands.insert_resource(GameRng(rng));
+    commands.insert_resource(ProjectileManagerRes::default());
+    commands.insert_resource(ProjectileBillboards::default());
 
     let config = environment_config(level.environment.unwrap_or(Environment::Dungeon));
     commands.insert_resource(ClearColor(config.fog_color));
@@ -327,26 +332,38 @@ fn main() {
         .add_systems(
             Update,
             (
-                char_creation::char_creation_input,
-                session::player_input,
-                session::interact_input,
-                enemies::attack_input,
-                session::player_update,
-                session::on_player_moved,
-                enemies::tick_enemies,
-                enemies::tick_attack_cooldown,
-                session::tick_game,
-                billboard::face_billboards,
-                doors::animate_door_panels,
-                levers::animate_levers,
-                torch::torch_update,
-                sconces::sconce_flicker,
-                damage_numbers::update_damage_numbers,
-                hud::draw_hud,
-                transition::tick_transition,
-                transition::perform_level_swap,
-                input_diagnostics,
-                claim_initial_focus,
+                (
+                    char_creation::char_creation_input,
+                    session::player_input,
+                    session::interact_input,
+                    enemies::attack_input,
+                    session::player_update,
+                    session::on_player_moved,
+                    enemies::tick_enemies,
+                    enemies::tick_attack_cooldown,
+                    session::tick_game,
+                    projectiles::tick_projectiles,
+                    projectiles::position_projectile_meshes,
+                    projectiles::update_fireball_explosions,
+                    status_effects::tick_player_status_effects,
+                    status_effects::apply_slow_multiplier,
+                    status_effects::tint_enemy_status_effects,
+                    billboard::face_billboards,
+                    doors::animate_door_panels,
+                    levers::animate_levers,
+                    torch::torch_update,
+                    sconces::sconce_flicker,
+                )
+                    .chain(),
+                (
+                    damage_numbers::update_damage_numbers,
+                    hud::draw_hud,
+                    transition::tick_transition,
+                    transition::perform_level_swap,
+                    input_diagnostics,
+                    claim_initial_focus,
+                )
+                    .chain(),
             )
                 .chain(),
         )
