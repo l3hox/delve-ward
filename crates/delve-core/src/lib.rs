@@ -11,6 +11,7 @@ pub mod enemy_ai;
 pub mod entities;
 pub mod game_state;
 pub mod grid;
+pub mod interaction;
 pub mod inventory_state;
 pub mod items;
 pub mod level_loader;
