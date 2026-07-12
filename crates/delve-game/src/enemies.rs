@@ -74,6 +74,7 @@ pub fn spawn_enemy_billboards(
             .spawn((
                 LevelEntity,
                 EnemyBillboard,
+                crate::billboard::FacesCamera,
                 Mesh3d(meshes.add(Rectangle::new(size, size))),
                 MeshMaterial3d(material),
                 Transform::from_xyz(center_x, size * 0.5 + y_offset, center_z),
@@ -82,20 +83,6 @@ pub fn spawn_enemy_billboards(
         billboards.by_key.insert(key.clone(), entity);
     }
     billboards
-}
-
-/// All sprites face the camera's view plane (its yaw, not the camera point).
-pub fn face_billboards_to_camera(
-    cameras: Query<&Transform, (With<Player>, Without<EnemyBillboard>)>,
-    mut billboards: Query<&mut Transform, With<EnemyBillboard>>,
-) {
-    let Ok(camera) = cameras.single() else {
-        return;
-    };
-    let (yaw, _, _) = camera.rotation.to_euler(EulerRot::YXZ);
-    for mut transform in &mut billboards {
-        transform.rotation = Quat::from_rotation_y(yaw);
-    }
 }
 
 fn cell_center(col: i64, row: i64) -> (f32, f32) {

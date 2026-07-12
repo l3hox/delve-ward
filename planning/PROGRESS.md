@@ -16,7 +16,7 @@ Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMP
 - [x] Game: `Session` resource wires `GameState` into the app; movement blocked by doors/enemies/blocks/npcs/barrels/boulders; Space interacts (`interaction::interact`); doors render (frame + sliding panel with bounce, ported from doorRenderer/doorAnimator); enemy billboards + AI ticking + melee both ways (F attacks); keys picked up on walk-over; combat feedback via log lines until the HUD lands
 - [x] Game: stairs render (stepped slabs + depth-fade vertex colors, `stairs.rs`); cross-level transitions with fade overlay (`transition.rs` + `level_scene.rs` spawn/despawn via `LevelEntity` marker); player camera dips/pitches on stair cells; level state snapshots restore on return (D15: default dungeon is now ruins.json, CLI-arg override)
 - [x] Game: ground item billboards with seeded cell spread (`ground_items.rs` ← groundItemRenderer/itemSprites); walk-over equipment/consumable pickups with billboard collapse-to-one-remaining (TS parity); kills grant XP (`add_xp`, level-up log) and roll loot onto the ground (lootSpawner port, gold + created item entities)
-- [ ] Game: key and sconce renderers (`keyRenderer.ts`, sconce meshes + lights)
+- [x] Game: key billboards (procedural gold-key sprite, hidden on pickup) and wall sconces (bracket/arm/torch meshes, flickering point lights, torch taken via Space extinguishes); shared `FacesCamera` billboard system replaces the per-type copies
 - [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
 - [ ] Game: character creation screen
 - [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main

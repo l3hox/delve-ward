@@ -13,7 +13,7 @@ const TORCH_RANGE: f32 = 12.0;
 const FILL_RANGE: f32 = 9.0;
 /// Lumens per Three.js intensity unit — visual approximation, re-tuned in the
 /// phase 6 parity audit.
-const LUMENS_PER_THREE_UNIT: f32 = 12_000.0;
+pub(crate) const LUMENS_PER_THREE_UNIT: f32 = 12_000.0;
 const FLICKER_BASE_INTENSITY: f32 = 5.4;
 const FLICKER_RANGE: f32 = 1.2;
 const FLICKER_MIN_INTERVAL: f32 = 0.04;

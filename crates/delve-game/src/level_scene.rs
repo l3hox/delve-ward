@@ -5,6 +5,8 @@ use crate::doors::{self, DoorPanels};
 use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
 use crate::ground_items::{self, GroundItemBillboards};
+use crate::keys::{self, KeyBillboards};
+use crate::sconces::{self, SconceParts};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
@@ -21,8 +23,19 @@ pub struct LevelEntity;
 /// Mutable engine-side stores the scene spawn writes into.
 pub struct SceneAssets<'a> {
     pub meshes: &'a mut Assets<Mesh>,
+    pub images: &'a mut Assets<Image>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub asset_server: &'a AssetServer,
+}
+
+/// Entity lookup maps produced by the scene spawn, replaced as resources on
+/// every level swap.
+pub struct LevelSceneHandles {
+    pub door_panels: DoorPanels,
+    pub enemy_billboards: EnemyBillboards,
+    pub ground_items: GroundItemBillboards,
+    pub key_billboards: KeyBillboards,
+    pub sconce_parts: SconceParts,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -40,7 +53,7 @@ pub fn spawn_level_scene(
     commands: &mut Commands,
     assets: &mut SceneAssets,
     scene: &SceneContext,
-) -> (DoorPanels, EnemyBillboards, GroundItemBillboards) {
+) -> LevelSceneHandles {
     dungeon::spawn_dungeon(
         commands,
         assets.meshes,
@@ -81,5 +94,20 @@ pub fn spawn_level_scene(
         scene.items,
         i32::try_from(scene.game.active_layer_index).unwrap_or(0),
     );
-    (door_panels, billboards, ground_items)
+    let key_billboards = keys::spawn_keys(
+        commands,
+        assets.meshes,
+        assets.images,
+        assets.materials,
+        scene.game,
+    );
+    let sconce_parts =
+        sconces::spawn_sconces(commands, assets.meshes, assets.materials, scene.game);
+    LevelSceneHandles {
+        door_panels,
+        enemy_billboards: billboards,
+        ground_items,
+        key_billboards,
+        sconce_parts,
+    }
 }

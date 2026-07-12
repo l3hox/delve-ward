@@ -4,7 +4,9 @@
 
 use crate::doors::{DoorPanel, DoorPanels};
 use crate::ground_items::{self, GroundItemRender};
+use crate::keys::{self, KeyBillboards};
 use crate::player::Player;
+use crate::sconces::{self, SconceRender};
 use crate::transition::Transition;
 use bevy::prelude::*;
 use delve_core::game_state::{GameState, MultiLayerSnapshot, WorldEvent};
@@ -134,6 +136,7 @@ pub fn on_player_moved(
     players: Query<&Player>,
     mut transition: ResMut<Transition>,
     mut item_render: GroundItemRender,
+    mut key_billboards: ResMut<KeyBillboards>,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -150,6 +153,11 @@ pub fn on_player_moved(
     game.reveal_around(col, row, pose.2, grid);
     if let Some(key_id) = game.pickup_key_at(col, row) {
         info!("Picked up key: {key_id}");
+        keys::hide_key_mesh(
+            &mut key_billboards,
+            &mut item_render.commands,
+            &delve_core::game_state::door_key(col, row),
+        );
     }
     ground_items::handle_pickups(game, &mut item_render, col, row);
     if let Some(stair) = game.get_stair(col, row)
@@ -201,6 +209,7 @@ pub fn interact_input(
     players: Query<&Player>,
     panels: Res<DoorPanels>,
     mut panel_query: Query<&mut DoorPanel>,
+    mut sconce_render: SconceRender,
 ) {
     if transition.is_active() || !keys.just_pressed(KeyCode::Space) {
         return;
@@ -231,6 +240,15 @@ pub fn interact_input(
             {
                 panel.bounce();
             }
+        }
+        InteractionType::SconceTaken => {
+            sconces::extinguish_sconce(
+                &mut sconce_render,
+                &delve_core::game_state::door_key(
+                    i64::from(player_state.col),
+                    i64::from(player_state.row),
+                ),
+            );
         }
         InteractionType::LeverActivated => {
             for target in result.targets.iter().flatten() {

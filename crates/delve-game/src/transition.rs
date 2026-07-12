@@ -6,8 +6,10 @@ use crate::doors::DoorPanels;
 use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
 use crate::ground_items::{GroundItemBillboards, ItemDb};
+use crate::keys::KeyBillboards;
 use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_scene};
 use crate::player::Player;
+use crate::sconces::SconceParts;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, Session};
 use crate::textures::DungeonMaterials;
 use bevy::ecs::system::SystemParam;
@@ -97,6 +99,7 @@ pub fn tick_transition(
 #[derive(SystemParam)]
 pub struct SwapAssets<'w> {
     meshes: ResMut<'w, Assets<Mesh>>,
+    images: ResMut<'w, Assets<Image>>,
     materials: ResMut<'w, Assets<StandardMaterial>>,
     asset_server: Res<'w, AssetServer>,
 }
@@ -115,6 +118,8 @@ pub struct SwapWorld<'w, 's> {
     door_panels: ResMut<'w, DoorPanels>,
     enemy_billboards: ResMut<'w, EnemyBillboards>,
     ground_items: ResMut<'w, GroundItemBillboards>,
+    key_billboards: ResMut<'w, KeyBillboards>,
+    sconce_parts: ResMut<'w, SconceParts>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -230,6 +235,7 @@ pub fn perform_level_swap(
 
     let mut scene_assets = SceneAssets {
         meshes: &mut assets.meshes,
+        images: &mut assets.images,
         materials: &mut assets.materials,
         asset_server: &assets.asset_server,
     };
@@ -242,11 +248,12 @@ pub fn perform_level_swap(
         grid: &session.grid,
         walkable: &session.walkable,
     };
-    let (new_panels, new_billboards, new_ground_items) =
-        spawn_level_scene(&mut commands, &mut scene_assets, &scene);
-    *world.door_panels = new_panels;
-    *world.enemy_billboards = new_billboards;
-    *world.ground_items = new_ground_items;
+    let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);
+    *world.door_panels = handles.door_panels;
+    *world.enemy_billboards = handles.enemy_billboards;
+    *world.ground_items = handles.ground_items;
+    *world.key_billboards = handles.key_billboards;
+    *world.sconce_parts = handles.sconce_parts;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(

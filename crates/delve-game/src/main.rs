@@ -1,13 +1,16 @@
 #![forbid(unsafe_code)]
 
+mod billboard;
 mod doors;
 mod dungeon;
 mod enemies;
 mod environment;
 mod ground_items;
+mod keys;
 mod level_scene;
 mod pixel_canvas;
 mod player;
+mod sconces;
 mod session;
 mod stairs;
 mod textures;
@@ -143,6 +146,7 @@ fn setup(
     );
     let mut scene_assets = SceneAssets {
         meshes: &mut meshes,
+        images: &mut images,
         materials: &mut standard_materials,
         asset_server: &asset_server,
     };
@@ -155,11 +159,12 @@ fn setup(
         grid: &grid,
         walkable: &walkable,
     };
-    let (door_panels, enemy_billboards, ground_item_billboards) =
-        spawn_level_scene(&mut commands, &mut scene_assets, &scene);
-    commands.insert_resource(door_panels);
-    commands.insert_resource(enemy_billboards);
-    commands.insert_resource(ground_item_billboards);
+    let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);
+    commands.insert_resource(handles.door_panels);
+    commands.insert_resource(handles.enemy_billboards);
+    commands.insert_resource(handles.ground_items);
+    commands.insert_resource(handles.key_billboards);
+    commands.insert_resource(handles.sconce_parts);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
@@ -306,6 +311,7 @@ fn main() {
         )
         .init_resource::<transition::Transition>()
         .init_resource::<LevelSnapshots>()
+        .init_resource::<sconces::SconceFlicker>()
         .add_systems(Startup, (setup, transition::spawn_overlay))
         .add_systems(
             Update,
@@ -317,10 +323,10 @@ fn main() {
                 session::on_player_moved,
                 enemies::tick_enemies,
                 enemies::tick_attack_cooldown,
-                enemies::face_billboards_to_camera,
-                ground_items::face_ground_item_billboards,
+                billboard::face_billboards,
                 doors::animate_door_panels,
                 torch::torch_update,
+                sconces::sconce_flicker,
                 transition::tick_transition,
                 transition::perform_level_swap,
                 input_diagnostics,

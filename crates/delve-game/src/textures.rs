@@ -300,7 +300,7 @@ fn generate_canopy_ceiling(rng: &mut CanvasRng) -> PixelCanvas {
     canvas
 }
 
-fn canvas_to_image(canvas: PixelCanvas) -> Image {
+pub(crate) fn canvas_to_image(canvas: PixelCanvas) -> Image {
     let size = canvas.size() as u32;
     let mut image = Image::new(
         Extent3d {

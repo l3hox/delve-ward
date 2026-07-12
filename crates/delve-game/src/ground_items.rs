@@ -5,7 +5,6 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
-use crate::player::Player;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::entities::{ItemEntity, ItemLocation};
@@ -58,9 +57,6 @@ pub struct ItemDb(pub Arc<ItemDatabase>);
 /// Loot tables for kill drops.
 #[derive(Resource)]
 pub struct LootTablesRes(pub LootTables);
-
-#[derive(Component)]
-pub struct GroundItemBillboard;
 
 /// Billboard entities by cell key (`door_key` or `door_key#index` for
 /// multi-item spreads), split by kind like the TS mesh maps.
@@ -142,7 +138,7 @@ fn spawn_item_mesh(
     commands
         .spawn((
             LevelEntity,
-            GroundItemBillboard,
+            crate::billboard::FacesCamera,
             Mesh3d(meshes.add(Rectangle::new(size, size))),
             MeshMaterial3d(billboard_material(materials, asset_server, placement.icon)),
             Transform::from_xyz(center_x + dx, placement.kind.height(), center_z + dz),
@@ -360,19 +356,5 @@ pub fn spawn_loot(
             continue;
         };
         add_single_item_mesh(render, ItemKind::of(def.item_type), &entity);
-    }
-}
-
-/// Ground item sprites face the camera's view plane (yaw only).
-pub fn face_ground_item_billboards(
-    cameras: Query<&Transform, (With<Player>, Without<GroundItemBillboard>)>,
-    mut billboards: Query<&mut Transform, With<GroundItemBillboard>>,
-) {
-    let Ok(camera) = cameras.single() else {
-        return;
-    };
-    let (yaw, _, _) = camera.rotation.to_euler(EulerRot::YXZ);
-    for mut transform in &mut billboards {
-        transform.rotation = Quat::from_rotation_y(yaw);
     }
 }
