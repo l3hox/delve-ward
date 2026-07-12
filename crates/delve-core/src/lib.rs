@@ -6,6 +6,7 @@
 
 pub mod dialogs;
 pub mod enemies;
+pub mod entities;
 pub mod grid;
 pub mod items;
 pub mod level_loader;
@@ -13,6 +14,7 @@ pub mod loot;
 pub mod npcs;
 pub mod quests;
 pub mod random;
+pub mod status_effects;
 pub mod texture_names;
 pub mod texture_resolver;
 pub mod types;

@@ -1,0 +1,31 @@
+{
+    "version": "1.0",
+    "note": "Test fixture mirroring the shape of data/loot-tables.json for roll tests.",
+    "qualityWeights": {
+        "poor": 0.10,
+        "common": 0.50,
+        "fine": 0.25,
+        "masterwork": 0.12,
+        "enchanted": 0.03
+    },
+    "enemies": {
+        "rat": {
+            "xp": 10,
+            "gold": [1, 3],
+            "drops": [
+                { "itemId": "bone", "chance": 0.30 },
+                { "itemId": "health_potion_small", "chance": 0.10 },
+                { "itemId": "torch_oil", "chance": 0.05 }
+            ]
+        },
+        "goblin": {
+            "xp": 12,
+            "gold": [2, 5],
+            "drops": [
+                { "itemId": "bone", "chance": 0.25 },
+                { "itemId": "dagger_bent_knife", "chance": 0.15 },
+                { "itemId": "dagger_iron", "chance": 0.08, "quality": "poor" }
+            ]
+        }
+    }
+}
