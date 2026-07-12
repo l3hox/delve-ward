@@ -40,9 +40,9 @@ localStorage becomes JSON files under `saves/` (gitignored), keeping the TS Save
 
 Each ported module brings its `*.test.ts` tests along as Rust unit tests in the same change. Where TS tests cover behavior that lands in a later phase, the test is deferred to that phase, not dropped. The seeded `mulberry32` PRNG must be ported bit-exact so seeded behavior matches.
 
-## D10: Procedural textures use the image crate
+## D10: Procedural textures are regenerated at startup
 
-The TS game generates several textures on 2D canvas (arcane spawner rune, skyboxes, particle sprites). These are regenerated at startup with the `image` crate into Bevy `Image` assets, matching the TS algorithms.
+The TS game generates its textures on 2D canvas (walls, floors, ceilings, later skyboxes and particle sprites). These are regenerated at startup by a small software pixel canvas in `delve-game` (alpha-blended rect fills, lines, ellipses) writing raw RGBA buffers wrapped as Bevy `Image` assets with nearest filtering — same drawing operations as the TS generators, no extra image crate. Randomness is seeded per texture name (`mulberry32`) so output is stable across runs; the TS original uses unseeded `Math.random`, so only the visual character must match, not exact pixels.
 
 ## D11: Commits are autonomous
 

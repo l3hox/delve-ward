@@ -14,4 +14,5 @@ pub mod npcs;
 pub mod quests;
 pub mod random;
 pub mod texture_names;
+pub mod texture_resolver;
 pub mod types;

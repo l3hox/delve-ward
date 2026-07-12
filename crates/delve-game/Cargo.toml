@@ -6,3 +6,4 @@ license.workspace = true
 
 [dependencies]
 bevy = { workspace = true }
+delve-core = { path = "../delve-core" }
