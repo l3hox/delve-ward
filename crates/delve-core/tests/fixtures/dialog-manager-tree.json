@@ -1,0 +1,86 @@
+{
+    "startNode": "start",
+    "nodes": {
+        "start": {
+            "speaker": "Fixture Speaker",
+            "text": "Welcome to the fixture dialog.",
+            "choices": [
+                {
+                    "text": "Locked path (needs flag)",
+                    "next": "locked",
+                    "conditions": [{ "type": "hasFlag", "flag": "met_speaker" }],
+                    "effects": []
+                },
+                {
+                    "text": "Give me a token",
+                    "next": "gave_token",
+                    "conditions": [],
+                    "effects": [{ "type": "giveItem", "itemId": "fixture_token" }]
+                },
+                {
+                    "text": "Take my token back",
+                    "next": "took_token",
+                    "conditions": [{ "type": "hasItem", "itemId": "fixture_token" }],
+                    "effects": [{ "type": "takeItem", "itemId": "fixture_token" }]
+                },
+                {
+                    "text": "Strength check",
+                    "next": "strong_enough",
+                    "conditions": [{ "type": "statCheck", "stat": "str", "min": 10 }],
+                    "effects": []
+                },
+                {
+                    "text": "Start a quest",
+                    "next": null,
+                    "conditions": [],
+                    "effects": [{ "type": "startQuest", "questId": "fixture_quest" }]
+                },
+                {
+                    "text": "Advance the quest",
+                    "next": null,
+                    "conditions": [],
+                    "effects": [{ "type": "advanceQuest", "questId": "fixture_quest" }]
+                },
+                {
+                    "text": "Open the shop",
+                    "next": null,
+                    "conditions": [],
+                    "effects": [{ "type": "openShop" }]
+                },
+                {
+                    "text": "Farewell",
+                    "next": null,
+                    "conditions": [],
+                    "effects": []
+                }
+            ],
+            "effects": []
+        },
+        "locked": {
+            "text": "You unlocked the locked path.",
+            "next": null
+        },
+        "gave_token": {
+            "text": "Here is your token.",
+            "next": null,
+            "effects": [{ "type": "setFlag", "flag": "has_token" }]
+        },
+        "took_token": {
+            "text": "Token returned.",
+            "next": null
+        },
+        "strong_enough": {
+            "text": "Impressive strength.",
+            "next": null
+        },
+        "linear_a": {
+            "text": "Linear node A.",
+            "next": "linear_b"
+        },
+        "linear_b": {
+            "text": "Linear node B, the end.",
+            "next": null,
+            "effects": [{ "type": "setFlag", "flag": "reached_linear_b" }]
+        }
+    }
+}

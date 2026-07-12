@@ -20,6 +20,7 @@ pub mod loot;
 pub mod npcs;
 pub mod pathfinding;
 pub mod projectiles;
+pub mod quest_manager;
 pub mod quests;
 pub mod random;
 pub mod save_system;
