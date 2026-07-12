@@ -105,11 +105,7 @@ pub fn resolve_weapon_effect(
     match subtype {
         Some(ItemSubtype::Axe) => effective_def = (enemy_def - 1.0).max(0.0),
         Some(ItemSubtype::Dagger) => effective_crit_chance = 10.0,
-        Some(ItemSubtype::Mace) => {
-            if enemy_def > 0.0 {
-                bonus_damage = 2.0;
-            }
-        }
+        Some(ItemSubtype::Mace) if enemy_def > 0.0 => bonus_damage = 2.0,
         _ => {}
     }
 

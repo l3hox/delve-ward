@@ -1,0 +1,36 @@
+{
+    "version": "1.0",
+    "note": "Test fixture: minimal weapon set for combat tests, mirroring the TS vi.mock item stubs.",
+    "items": [
+        {
+            "id": "sword_iron", "name": "Iron Sword", "type": "weapon", "subtype": "sword",
+            "quality": "common", "icon": "sword", "weight": 3, "value": 10,
+            "description": "Test sword for combat parity tests.",
+            "stats": { "atk": 4 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "heavy_axe", "name": "Heavy Axe", "type": "weapon", "subtype": "axe",
+            "quality": "common", "icon": "axe", "weight": 5, "value": 15,
+            "description": "Test axe for combat parity tests.",
+            "stats": { "atk": 8 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "dagger", "name": "Dagger", "type": "weapon", "subtype": "dagger",
+            "quality": "common", "icon": "dagger", "weight": 1, "value": 5,
+            "description": "Test dagger for combat parity tests.",
+            "stats": { "atk": 2 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "mace", "name": "Mace", "type": "weapon", "subtype": "mace",
+            "quality": "common", "icon": "mace", "weight": 4, "value": 12,
+            "description": "Test mace for combat parity tests.",
+            "stats": { "atk": 5 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "spear", "name": "Spear", "type": "weapon", "subtype": "spear",
+            "quality": "common", "icon": "spear", "weight": 3, "value": 11,
+            "description": "Test spear for combat parity tests.",
+            "stats": { "atk": 3 }, "modifiers": [], "requirements": {}
+        }
+    ]
+}

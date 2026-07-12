@@ -1,0 +1,73 @@
+{
+    "version": "1.0",
+    "note": "Test fixture: item set for game state tests, mirroring the TS vi.mock item stubs from gameState.test.ts and gameStateInventory.test.ts.",
+    "items": [
+        {
+            "id": "hp1", "name": "Potion", "type": "consumable", "subtype": "health_potion",
+            "quality": "common", "icon": "potion", "weight": 1, "value": 10,
+            "description": "Test potion restoring a little health.",
+            "stats": { "hp": 5 }, "modifiers": [], "requirements": {}, "effect": {}
+        },
+        {
+            "id": "oil1", "name": "Oil", "type": "consumable", "subtype": "torch_oil",
+            "quality": "common", "icon": "oil", "weight": 1, "value": 10,
+            "description": "Test oil refueling the torch.",
+            "stats": {}, "modifiers": [], "requirements": {}, "effect": { "torchFuel": 30 }
+        },
+        {
+            "id": "food1", "name": "Rations", "type": "consumable", "subtype": "food",
+            "quality": "common", "icon": "food", "weight": 1, "value": 10,
+            "description": "Test rations restoring hunger.",
+            "stats": {}, "modifiers": [], "requirements": {},
+            "effect": { "restoreHunger": 30 }, "stackable": true, "stackMax": 20
+        },
+        {
+            "id": "sword", "name": "Sword", "type": "weapon", "subtype": "sword",
+            "quality": "common", "icon": "sword", "weight": 3, "value": 20,
+            "description": "Test sword with a small attack bonus.",
+            "stats": { "atk": 2 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "ring", "name": "Ring", "type": "accessory", "subtype": "ring",
+            "quality": "common", "icon": "ring", "weight": 1, "value": 25,
+            "description": "Test ring with small bonuses.",
+            "stats": { "atk": 1, "def": 1 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "sword_iron", "name": "Iron Sword", "type": "weapon", "subtype": "sword",
+            "quality": "common", "icon": "sword", "weight": 3, "value": 30,
+            "description": "Test iron sword with a strength requirement.",
+            "stats": { "atk": 4 }, "modifiers": [], "requirements": { "str": 3 }
+        },
+        {
+            "id": "armor_leather_cap", "name": "Leather Cap", "type": "armor", "subtype": "head",
+            "quality": "common", "icon": "cap", "weight": 1, "value": 12,
+            "description": "Test cap with a small defense bonus.",
+            "stats": { "def": 1 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "health_potion", "name": "Health Potion", "type": "consumable", "subtype": "health_potion",
+            "quality": "common", "icon": "potion", "weight": 1, "value": 15,
+            "description": "Test potion restoring more health.",
+            "stats": { "hp": 20 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "torch_oil", "name": "Torch Oil", "type": "consumable", "subtype": "torch_oil",
+            "quality": "common", "icon": "oil", "weight": 1, "value": 15,
+            "description": "Test torch oil for registry consumable tests.",
+            "stats": {}, "effect": { "torchFuel": 30 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "ring_of_power", "name": "Ring of Power", "type": "accessory", "subtype": "ring",
+            "quality": "fine", "icon": "ring", "weight": 1, "value": 60,
+            "description": "Test ring granting strength.",
+            "stats": { "str": 2 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "heavy_axe", "name": "Heavy Axe", "type": "weapon", "subtype": "axe",
+            "quality": "common", "icon": "axe", "weight": 6, "value": 40,
+            "description": "Test axe with a high strength requirement.",
+            "stats": { "atk": 8 }, "modifiers": [], "requirements": { "str": 20 }
+        }
+    ]
+}

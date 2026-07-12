@@ -918,7 +918,7 @@ impl GameState {
             let parsed = {
                 let handled = Self::parse_signal_entity(self.active_layer_mut(), entity, grid)
                     || Self::parse_environment_entity(self.active_layer_mut(), entity, grid)
-                    || Self::parse_structure_entity(self.active_layer_mut(), entity, random);
+                    || Self::parse_structure_entity(self.active_layer_mut(), entity, grid, random);
                 handled
             } || self.parse_npc_entity(entity, grid)
                 || self.parse_item_entity(entity, &level_id, layer_index);
@@ -1141,6 +1141,7 @@ impl GameState {
     fn parse_structure_entity(
         layer: &mut LayerState,
         entity: &Entity,
+        grid: Option<&[String]>,
         random: &mut dyn FnMut() -> f64,
     ) -> bool {
         let key = door_key(entity.col, entity.row);
@@ -1207,8 +1208,8 @@ impl GameState {
                 true
             }
             "sign" => {
-                // Signs auto-detect their wall like levers when unset.
-                let wall = prop_facing(entity, "wall").unwrap_or(Facing::N);
+                let wall = prop_facing(entity, "wall")
+                    .unwrap_or_else(|| auto_detect_lever_wall(entity.col, entity.row, grid));
                 layer.signs.insert(
                     key,
                     SignInstance {
