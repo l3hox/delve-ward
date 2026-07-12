@@ -248,7 +248,11 @@ pub fn update_fireball_explosions(
     mut explosions: Query<(Entity, &mut Explosion, &mut PointLight)>,
     mut particles: Query<(&mut Transform, &mut ExplosionVelocity)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    gate: InputGate,
 ) {
+    if gate.paused() {
+        return;
+    }
     let delta = time.delta_secs();
     for (entity, mut explosion, mut light) in &mut explosions {
         explosion.age += delta;
@@ -331,41 +335,58 @@ fn layer_grid<'a>(
         .unwrap_or(active_grid)
 }
 
-/// Fires every trap launcher whose reload timer elapsed this tick, on every
-/// layer, exactly like TS's per-layer `gameState.tickTrapLaunchers()` loop
-/// with `onLauncherFire` spawning a projectile from the launcher's cell.
-/// `WorldEvent::LauncherFire` carries no layer index, so events are drained
-/// immediately after each layer's tick — the only point `active_layer_index`
-/// unambiguously names the layer that produced them.
+/// Spawns the projectile for one `LauncherFire` event on `layer_index`.
+/// Shared by the non-active-layer loop below and by
+/// `session::apply_world_events`, which handles active-layer fire events —
+/// `tick_signals` ticks the active layer's launchers, and its events are
+/// drained by whichever session system runs first, so the arm there is the
+/// only reliable consumer for them.
+pub(crate) fn fire_launcher_at(
+    game: &GameState,
+    manager: &mut ProjectileManager,
+    layer_index: usize,
+    col: i64,
+    row: i64,
+) {
+    let Some(launcher) = game
+        .layer(layer_index)
+        .and_then(|layer| layer.trap_launchers.get(&door_key(col, row)))
+        .cloned()
+    else {
+        return;
+    };
+    let spawned = manager.spawn(SpawnOptions {
+        col: launcher.col,
+        row: launcher.row,
+        direction: launcher.facing,
+        projectile_type: &launcher.projectile_type,
+        source: None,
+        max_range: launcher.max_range,
+        layer_index: Some(layer_index),
+    });
+    if let Err(error) = spawned {
+        warn!("trap launcher at ({col},{row}) failed to fire: {error}");
+    }
+}
+
+/// Fires trap launchers on every layer EXCEPT the active one, whose
+/// launchers are already ticked by `tick_signals` (ticking them here too
+/// would double-advance `next_fire_at` and drop the shot). Events are
+/// drained immediately after each layer's tick — the only point
+/// `active_layer_index` unambiguously names the layer that produced them.
 fn fire_trap_launchers(game: &mut GameState, manager: &mut ProjectileManager) {
     let saved_layer = game.active_layer_index;
     for layer_index in 0..game.layers.len() {
+        if layer_index == saved_layer {
+            continue;
+        }
         game.active_layer_index = layer_index;
         game.tick_trap_launchers();
         for event in game.take_events() {
             let WorldEvent::LauncherFire { col, row } = event else {
                 continue;
             };
-            let Some(launcher) = game
-                .active_layer()
-                .trap_launchers
-                .get(&door_key(col, row))
-                .cloned()
-            else {
-                continue;
-            };
-            let spawned = manager.spawn(SpawnOptions {
-                col: launcher.col,
-                row: launcher.row,
-                direction: launcher.facing,
-                projectile_type: &launcher.projectile_type,
-                source: None,
-                max_range: launcher.max_range,
-                layer_index: Some(layer_index),
-            });
-            if let Err(error) = spawned {
-                warn!("trap launcher at ({col},{row}) failed to fire: {error}");
-            }
+            fire_launcher_at(game, manager, layer_index, col, row);
         }
     }
     game.active_layer_index = saved_layer;
@@ -550,7 +571,7 @@ pub fn tick_projectiles(
     gate: InputGate,
     mut effects: ProjectileTickEffects,
 ) {
-    if gate.blocked() {
+    if gate.paused() {
         return;
     }
     let delta = f64::from(time.delta_secs());

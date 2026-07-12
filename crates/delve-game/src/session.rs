@@ -284,18 +284,21 @@ pub fn on_player_moved(
         }
     }
 
+    // Reveal fires on turns too (the TS onTurn callback also reveals);
+    // pickups and activations are move-only.
     game.reveal_around(col, row, pose.2, grid);
-    if let Some(key_id) = game.pickup_key_at(col, row) {
-        info!("Picked up key: {key_id}");
-        keys::hide_key_mesh(
-            &mut key_billboards,
-            &mut item_render.commands,
-            &delve_core::game_state::door_key(col, row),
-        );
-    }
-    ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
 
     if moved {
+        if let Some(key_id) = game.pickup_key_at(col, row) {
+            info!("Picked up key: {key_id}");
+            keys::hide_key_mesh(
+                &mut key_billboards,
+                &mut item_render.commands,
+                &delve_core::game_state::door_key(col, row),
+            );
+        }
+        ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
+
         let key = delve_core::game_state::door_key(col, row);
         game.activate_trigger(col, row);
         if game.activate_tripwire(col, row) {
@@ -324,7 +327,8 @@ pub fn on_player_moved(
     let events = game.take_events();
     apply_world_events(events, game, (col, row), &mut signal);
 
-    if let Some(stair) = game.get_stair(col, row)
+    if moved
+        && let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
     {
         transition.begin_stair(stair_id.clone());
@@ -344,6 +348,7 @@ pub struct SignalRenderState<'w, 's> {
     pub blocked_doors: ResMut<'w, BlockedDoors>,
     pub chest_handles: Res<'w, ChestHandles>,
     pub chest_lids: Query<'w, 's, &'static mut ChestLid>,
+    pub projectiles: ResMut<'w, crate::projectiles::ProjectileManagerRes>,
 }
 
 const DOOR_RETRY_INTERVAL: f32 = 1.5;
@@ -431,7 +436,7 @@ pub fn tick_game(
     gate: crate::char_creation::InputGate,
     mut signal: SignalRenderState,
 ) {
-    if gate.blocked() {
+    if gate.paused() {
         return;
     }
     let delta = time.delta_secs();
@@ -512,6 +517,18 @@ pub fn apply_world_events(
                 } else {
                     chests::close_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
                 }
+            }
+            // Active-layer launcher fires surface through whichever session
+            // drain runs first; consuming them here is the only reliable
+            // path (the projectile tick's own loop covers non-active layers).
+            WorldEvent::LauncherFire { col, row } => {
+                crate::projectiles::fire_launcher_at(
+                    game,
+                    &mut signal.projectiles.0,
+                    game.active_layer_index,
+                    col,
+                    row,
+                );
             }
             other => debug!("unhandled world event: {other:?}"),
         }

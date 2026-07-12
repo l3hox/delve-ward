@@ -46,7 +46,7 @@ pub fn tick_player_vitals(
     mut vitals: ResMut<PlayerVitals>,
     gate: InputGate,
 ) {
-    if gate.blocked() {
+    if gate.paused() {
         return;
     }
     let delta = f64::from(time.delta_secs());

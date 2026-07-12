@@ -393,8 +393,16 @@ pub(crate) fn handle_kill(
     );
 }
 
-/// Wind down the swing cooldown.
-pub fn tick_attack_cooldown(time: Res<Time>, mut session: ResMut<Session>) {
+/// Wind down the swing cooldown. Overlay-paused like the other TS
+/// per-frame ticks; keeps running through transition fades.
+pub fn tick_attack_cooldown(
+    time: Res<Time>,
+    mut session: ResMut<Session>,
+    gate: crate::char_creation::InputGate,
+) {
+    if gate.paused() {
+        return;
+    }
     if session.game.player.attack_cooldown > 0.0 {
         session.game.player.attack_cooldown =
             (session.game.player.attack_cooldown - f64::from(time.delta_secs())).max(0.0);

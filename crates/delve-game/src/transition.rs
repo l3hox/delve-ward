@@ -175,6 +175,30 @@ pub struct SwapWorld<'w, 's> {
     vitals: ResMut<'w, crate::status_effects::PlayerVitals>,
 }
 
+/// Reapply recorded wall destruction to a freshly cloned grid: the clone
+/// comes from the pristine dungeon definition, while the active layer's
+/// `destroyed_walls` set is the durable record of every secret wall opened
+/// and breakable wall destroyed (TS instead mutates one shared dungeon
+/// object for the whole session).
+fn replay_destroyed_walls(game: &delve_core::game_state::GameState, grid: &mut [String]) {
+    for key in &game.active_layer().destroyed_walls {
+        let Some((col_text, row_text)) = key.split_once(',') else {
+            continue;
+        };
+        let (Ok(col), Ok(row)) = (col_text.parse::<usize>(), row_text.parse::<usize>()) else {
+            continue;
+        };
+        let Some(line) = grid.get_mut(row) else {
+            continue;
+        };
+        let mut characters: Vec<char> = line.chars().collect();
+        if let Some(cell) = characters.get_mut(col) {
+            *cell = '.';
+            *line = characters.into_iter().collect();
+        }
+    }
+}
+
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
     dungeon.0.levels.iter().find(|level| {
         get_all_level_entities(level)
@@ -259,6 +283,7 @@ pub fn perform_level_swap(
     session.environment = target_level.environment.unwrap_or(Environment::Dungeon);
     session.areas = target_level.areas.clone().unwrap_or_default();
     session.grid = target_level.layers[target_layer_index].grid.clone();
+    replay_destroyed_walls(&session.game, &mut session.grid);
     session.walkable = build_walkable_set(
         target_level
             .char_defs
@@ -593,6 +618,7 @@ pub fn perform_load(
     // rebuilt `layerGrids[activeLayerIndex]` yet, which is always the case
     // here since this port has no per-layer grid tracking.
     session.grid = target_level.grid.clone();
+    replay_destroyed_walls(&session.game, &mut session.grid);
     session.walkable = build_walkable_set(
         target_level
             .char_defs

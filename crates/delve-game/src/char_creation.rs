@@ -152,6 +152,13 @@ impl InputGate<'_> {
     pub fn blocked(&self) -> bool {
         self.transition.is_active() || self.creation.active || self.save_load.active
     }
+
+    /// Overlay-only pause for per-frame tick systems: TS gates those on
+    /// `anyOverlayOpen` alone and keeps them running through transition
+    /// fades — only the enemy AI adds the transition condition (`blocked`).
+    pub fn paused(&self) -> bool {
+        self.creation.active || self.save_load.active
+    }
 }
 
 pub fn char_creation_input(
