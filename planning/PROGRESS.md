@@ -6,29 +6,35 @@ Session-to-session state. Read this at the start of every session.
 
 ## Current Phase
 
-**Phase 2: M1 parity, the loot game.** Phases 0 and 1 are complete and merged. See `planning/PORT-PLAN.md` for scope and `planning/DECISIONS.md` for resolved decisions.
+**Phase 3: M2 parity, the dangerous dungeon.** Phases 0-2 are merged to main. Work happens on branch `port/phase-3-dangerous-dungeon`. See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, `planning/PARITY-GAPS.md` for the audited TS-vs-Rust gap inventory, and `planning/PHASE4-PLAN.md` / `planning/PHASE5-PLAN.md` for the next two phases' implementation plans.
 
 ## Next Steps
 
-Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMPLETE — everything phase 2 (and much of phases 3-5) needs from `delve-core` exists with ported TS test suites, all gates green. What remains is the `delve-game` shell:
+Landed on this branch:
 
-- [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack, combat, pathfinding, enemy AI + `create_enemy_instance` (`EnemyDatabase` implements `EnemyRegistrar`), player interaction module
-- [x] Game: `Session` resource wires `GameState` into the app; movement blocked by doors/enemies/blocks/npcs/barrels/boulders; Space interacts (`interaction::interact`); doors render (frame + sliding panel with bounce, ported from doorRenderer/doorAnimator); enemy billboards + AI ticking + melee both ways (F attacks); keys picked up on walk-over; combat feedback via log lines until the HUD lands
-- [x] Game: stairs render (stepped slabs + depth-fade vertex colors, `stairs.rs`); cross-level transitions with fade overlay (`transition.rs` + `level_scene.rs` spawn/despawn via `LevelEntity` marker); player camera dips/pitches on stair cells; level state snapshots restore on return (D15: default dungeon is now ruins.json, CLI-arg override)
-- [x] Game: ground item billboards with seeded cell spread (`ground_items.rs` ← groundItemRenderer/itemSprites); walk-over equipment/consumable pickups with billboard collapse-to-one-remaining (TS parity); kills grant XP (`add_xp`, level-up log) and roll loot onto the ground (lootSpawner port, gold + created item entities)
-- [x] Game: key billboards (procedural gold-key sprite, hidden on pickup) and wall sconces (bracket/arm/torch meshes, flickering point lights, torch taken via Space extinguishes); shared `FacesCamera` billboard system replaces the per-type copies
-- [x] Game: HUD — 640x360 software pixel canvas stretched as a UI image (`hud.rs`, `hud_font.rs`): health bar with low-HP pulse, XP bar + level-up hint, mini inventory panel (keys, gold, equipment paperdoll, backpack with quick-slot numbers, weapon cooldown overlay), HUD messages (pixel font substitutes the TS browser monospace — uppercase only); floating damage numbers as world billboards (`damage_numbers.rs`)
-- [x] Game: character creation screen (`char_creation.rs`; `InputGate` bundles transition + creation input blocking); timed signals tick each frame via `session::tick_game`
-- [x] Core (subagent ports): `projectiles.rs` (projectileManager, 23 parity tests; hits returned as `ProjectileHitEvent`s) and `save_system.rs` (saveSystem, 39 parity tests; `SaveStore` trait abstracts localStorage — file-backed impl lands with the phase 3 shell; quest restore deferred to the phase 4 quest manager)
-- [x] Phase 2 gate: fmt/clippy/test green (449 tests, 11 suites) plus `cargo run` smoke test, merged to main
+- [x] Core: dialog and quest runtimes (`dialog_manager.rs`, `quest_manager.rs`), quest state threaded into dialog `questStage` conditions
+- [x] Core: player controller tick — status-effect damage, temp buffs, hunger drain, starvation — and inventory-action dispatch (equip/unequip/use/drop/swap), `player_controller.rs`
+- [x] Core: enemy spawner BFS placement (`spawners.rs`), boulder state machine (`boulders.rs`), and the environment zone map builder (`env_zones.rs`) — phase 5 core logic landing ahead of its shell, the same pattern that carried phase 3-5 core logic in ahead of schedule during phase 2
+- [x] Game: signal entities render — levers, pressure plates, tripwires (`levers.rs`, `plates.rs`, `tripwires.rs`), wired to the signal manager
+- [x] Game: projectile shell — fireballs and darts travel and render (`projectiles.rs`), trap launchers fire them, status effects tick and tint affected enemies (`status_effects.rs`), combat correctly pauses during transitions and character creation
+- [x] Game: blocked-door retry cycle — a signal-driven close onto an occupied cell defers and retries every frame until the cell clears (`session.rs`'s `blocked_doors`/`tick_blocked_doors`), ported from the TS `blockedDoors` map
+- [x] Game: HUD compass rose, minimap, and torch-fuel indicator; player vitals wired end to end — torch fuel drains outside dungeon/mist environments, hunger drains and shows on its own bar, status-effect and starvation damage flash the screen
+- [x] Fix: stair cells no longer double-render flat floor/ceiling/wall geometry under the stepped stair mesh; corner-anchored box UVs so stair and door texture coursing matches the surrounding walls
+- [x] Docs: `PORT-PLAN.md` has a home for every feature the parity audit found orphaned; `PHASE4-PLAN.md` and `PHASE5-PLAN.md` lay out the next two phases in slice-level detail
 
-Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts).
+Remaining before the phase 3 gate:
+
+- [ ] Environment objects shell: breakable walls, secret walls, pushable blocks, chests, signs — core logic already exists in `game_state.rs`, no renderer or interaction wiring yet
+- [ ] Save/load: slot picker overlay, death/restart flow, autosave on level arrival — `save_system.rs`'s data model and slot management are complete and tested, but no file-backed store or UI is wired into `delve-game`
+- [ ] Combat feedback: sword-swing visual, floating enemy health bars, the real level-up toast (distinct from the persistent "press L" hint already in the HUD)
+
+Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts). Pure-logic core modules that tick per-frame state (`player_controller`, `spawners`, `boulders`) take an injected read-only context struct for grid/database data GameState doesn't own itself, and return events for the shell to act on instead of driving rendering directly — `enemy_ai::EnemyUpdateContext` is the template every one of them follows.
 
 ## State
 
 - Phase 1 merged 2026-07-12: `delve-game` walks `dungeon1.json` in first person. Procedural textures (software pixel canvas → Bevy images, nearest filtering), grid geometry (floors/walls/ceilings, charDef wall overrides, seeThrough support), tweened movement with the TS command queue, fog/ambient presets, flickering torch lights. `resolve_textures` ported into `delve-core` with tests.
 - Phase 0 merged 2026-07-12: typed level/dungeon schema, ported level loader and validation (TS error/warning message parity), grid primitives with `PlayerState`, bit-exact `mulberry32`, parsing for items/enemies/npcs/loot/quests/dialogs. Assets gate test covers every file under `assets/levels/` and `assets/data/`.
-- Deliberately deferred: loot rolling (phase 2, with injected RNG), status-effect ticking (phase 3), quest/dialog runtime (phase 4), camera view-offset crop from the TS shell (with the HUD work), stairs camera pitch/y-offset (phase 2 stairs).
+- Deliberately deferred: the camera view-offset crop from the TS shell, and debug tooling (noclip, fullbright, auto-kill, layer-fly) — the two `PARITY-GAPS.md` findings that still have no phase assigned in `PORT-PLAN.md`. Every other audited gap now has a home: the inventory overlay and attribute/stats panels landed in phase 4's scope, compass/minimap/torch already shipped.
 - Light intensity mapping (Three.js units → Bevy lumens/cd-m²) uses approximations: `AMBIENT_BRIGHTNESS` in `environment.rs`, `LUMENS_PER_THREE_UNIT` in `torch.rs`. Re-tune during the phase 6 side-by-side audit.
 - Toolchain: Rust 1.95.0 (pinned), Bevy 0.19.0 (locked). Verify Bevy APIs against the local registry source at `~/.cargo/registry/src/*/bevy_*-0.19.0/` — that caught `PointLight.shadow_maps_enabled` and `AmbientLight` becoming a camera component.
 - Parity target: TS `main` at `9476c6526ef98b636992a2dfbac00a3853325bea`.

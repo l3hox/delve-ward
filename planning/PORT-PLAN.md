@@ -67,4 +67,5 @@ Goal: walk around a loaded dungeon in first person.
 
 - Play `architects_tomb.json`, `ruins.json`, `tower.json`, and `stairs.json` end to end; compare against the TS build side by side.
 - Audit against `../DelveWard/planning/COMPLETED.md` for anything missed.
+- Camera view-offset crop from the TS shell; debug tooling (noclip, fullbright, auto-kill, layer-fly).
 - Performance pass; a wasm compile check (non-gating, informational).
