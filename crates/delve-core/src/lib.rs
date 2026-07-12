@@ -4,22 +4,14 @@
 //! combat, quests, save data. Must never depend on Bevy or any rendering
 //! or windowing crate.
 
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    fn asset_path(relative: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../assets")
-            .join(relative)
-    }
-
-    #[test]
-    fn shipped_dungeon_parses() {
-        let raw = std::fs::read_to_string(asset_path("levels/architects_tomb.json")).unwrap();
-        let dungeon: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(dungeon["name"], "The Architect's Tomb");
-        assert!(!dungeon["levels"].as_array().unwrap().is_empty());
-        assert!(dungeon["playerStart"].is_object());
-    }
-}
+pub mod dialogs;
+pub mod enemies;
+pub mod grid;
+pub mod items;
+pub mod level_loader;
+pub mod loot;
+pub mod npcs;
+pub mod quests;
+pub mod random;
+pub mod texture_names;
+pub mod types;

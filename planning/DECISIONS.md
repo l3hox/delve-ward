@@ -47,3 +47,15 @@ The TS game generates several textures on 2D canvas (arcane spawner rune, skybox
 ## D11: Commits are autonomous
 
 Sessions commit and merge without waiting for staged review. The user reviews git history afterward. This overrides the global stage-for-review rule by explicit user request.
+
+## D12: Level validation runs over raw JSON, output is typed
+
+`validate_level`/`validate_dungeon` inspect `serde_json::Value` field by field so every error and warning message matches the TS loader exactly (the ported tests assert them), then decode the validated document into typed structs. Warnings are collected into a caller-provided `Vec<String>` instead of `console.warn`.
+
+## D13: TS module singletons become explicit parameters
+
+The TS enemy/npc database singletons consulted during validation become a `ValidationContext` holding optional id sets; `None` reproduces the unloaded-singleton behavior (enemy entities skipped, npc check bypassed). Databases parse via `from_json(&str)` constructors; "not loaded" is expressed as `Option<Database>` at the call site.
+
+## D14: Out-of-union strings in shipped data parse as Unknown
+
+`assets/data/items.json` ships one item with `"type": "armor-steel"`, outside the TS `ItemType` union; the TS runtime loads it anyway since unions are compile-time only. `ItemType`/`ItemSubtype` therefore carry a `#[serde(other)] Unknown` variant so such items load but match no type filter, same as the TS runtime.
