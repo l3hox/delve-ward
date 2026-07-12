@@ -329,6 +329,7 @@ fn main() {
                 session::on_player_moved,
                 enemies::tick_enemies,
                 enemies::tick_attack_cooldown,
+                session::tick_game,
                 billboard::face_billboards,
                 doors::animate_door_panels,
                 torch::torch_update,

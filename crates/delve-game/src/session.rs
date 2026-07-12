@@ -168,6 +168,26 @@ pub fn on_player_moved(
     }
 }
 
+/// Advance the game state's timed signals each frame and apply the
+/// resulting world events (timed doors and gates). Paused while character
+/// creation or a level transition is active — the TS loop pauses its tick
+/// while overlays are open, and pausing across the swap keeps timed state
+/// out of the mid-transition window.
+pub fn tick_game(
+    time: Res<Time>,
+    mut session: ResMut<Session>,
+    gate: crate::char_creation::InputGate,
+    panels: Res<DoorPanels>,
+    mut panel_query: Query<&mut DoorPanel>,
+) {
+    if gate.blocked() {
+        return;
+    }
+    session.game.tick_signals(f64::from(time.delta_secs()));
+    let events = session.game.take_events();
+    apply_world_events(events, &panels, &mut panel_query);
+}
+
 fn set_panel_open(
     panels: &DoorPanels,
     panel_query: &mut Query<&mut DoorPanel>,
