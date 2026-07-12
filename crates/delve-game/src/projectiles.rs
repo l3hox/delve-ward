@@ -404,6 +404,9 @@ pub struct ProjectileTickEffects<'w, 's> {
     images: ResMut<'w, Assets<Image>>,
     rng: ResMut<'w, GameRng>,
     vitals: ResMut<'w, crate::status_effects::PlayerVitals>,
+    feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
+    visibility: Query<'w, 's, &'static mut Visibility>,
+    hud: ResMut<'w, crate::hud::HudState>,
 }
 
 /// Applies one projectile hit's gameplay effects (damage, status effect,
@@ -461,6 +464,15 @@ fn apply_projectile_hit(
                 }
                 (enemy.enemy_type.clone(), enemy.drops.clone())
             };
+            // Only entities on the player's own layer have a spawned
+            // billboard/health bar in this single-active-layer engine (see
+            // the module doc comment), so these no-op cleanly for
+            // background-layer hits — matching TS's own `render_visuals`
+            // gate on the mesh-dependent parts of this same callback.
+            if let Some(&entity) = effects.enemies.by_key.get(&key) {
+                effects.feedback.flash(entity);
+                effects.feedback.trigger_hit_shake(entity);
+            }
             let killed = game.damage_enemy(event.col, event.row, event.projectile.damage);
             if render_visuals {
                 crate::damage_numbers::spawn_damage_number(
@@ -480,7 +492,7 @@ fn apply_projectile_hit(
                     enemy_type,
                     drops_override,
                 };
-                handle_kill(
+                let leveled = handle_kill(
                     game,
                     &mut effects.rng.0,
                     &mut effects.enemies,
@@ -488,6 +500,19 @@ fn apply_projectile_hit(
                     &effects.loot_tables.0,
                     &mut effects.item_render,
                     &target,
+                );
+                effects.feedback.health_bars.remove(&key);
+                if leveled {
+                    effects.hud.trigger_level_up(game.player.level);
+                }
+            } else if let Some(enemy) = game.get_enemy(event.col, event.row) {
+                let (hp, max_hp) = (enemy.hp, enemy.max_hp);
+                effects.feedback.update_health_bar(
+                    &mut effects.visibility,
+                    &mut effects.item_render.materials,
+                    &key,
+                    hp,
+                    max_hp,
                 );
             }
         }

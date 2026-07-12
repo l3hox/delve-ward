@@ -69,6 +69,18 @@ const LOW_HP_THRESHOLD: f64 = 0.25;
 const LOW_FUEL_THRESHOLD: f64 = 0.2;
 const MESSAGE_DURATION: f32 = 2.5;
 
+// Sword swing overlay, ported from `rendering/swordSwing.ts`.
+const SWORD_SWING_DURATION: f32 = 0.25;
+const SWORD_SWING_START_ANGLE: f32 = 0.6;
+const SWORD_SWING_END_ANGLE: f32 = -1.2;
+const SWORD_SWING_SCALE: f32 = 4.0;
+const SWORD_SPRITE_SIZE: usize = 32;
+
+// Level-up toast, ported from `hud/levelUpNotification.ts`. Distinct from
+// `draw_level_up_hint`'s persistent "press L" prompt below.
+const LEVEL_UP_DISPLAY_DURATION: f32 = 3.0;
+const LEVEL_UP_FADE_START: f32 = 2.0;
+
 const PANEL_BG: Rgba = Rgba::translucent(10, 8, 12, 0.75);
 const PANEL_BORDER: Rgba = Rgba::opaque(0x2a, 0x22, 0x30);
 const HP_FILL: Rgba = Rgba::opaque(0xcc, 0x33, 0x33);
@@ -222,6 +234,10 @@ pub struct HudState {
     message_timer: f32,
     image: Handle<Image>,
     icons: IconCache,
+    sword_swing_timer: f32,
+    sword_sprite: RgbaImage,
+    level_up_message: String,
+    level_up_timer: f32,
 }
 
 impl HudState {
@@ -230,6 +246,105 @@ impl HudState {
         self.message = text.to_uppercase();
         self.message_timer = MESSAGE_DURATION;
     }
+
+    /// Start the sword swing overlay, ported from `SwordSwingAnimator.trigger`.
+    pub fn trigger_sword_swing(&mut self) {
+        self.sword_swing_timer = SWORD_SWING_DURATION;
+    }
+
+    /// Start the "LEVEL UP! N" toast, ported from `LevelUpNotification.trigger`.
+    pub fn trigger_level_up(&mut self, level: i64) {
+        self.level_up_message = format!("LEVEL {level}");
+        self.level_up_timer = LEVEL_UP_DISPLAY_DURATION;
+    }
+}
+
+/// Pixel-art sword: blade, edge highlight, tip, guard, grip, pommel — a 1:1
+/// port of the TS `drawSword`'s `fillRect` calls onto a 32x32 canvas.
+fn generate_sword_sprite() -> RgbaImage {
+    let mut canvas = PixelCanvas::new(SWORD_SPRITE_SIZE);
+    canvas.fill_rect(12, 2, 6, 20, Rgba::opaque(0xc0, 0xc8, 0xd0)); // blade
+    canvas.fill_rect(14, 2, 2, 20, Rgba::opaque(0xe0, 0xe8, 0xf0)); // edge highlight
+    canvas.fill_rect(14, 0, 2, 2, Rgba::opaque(0xd0, 0xd8, 0xe0)); // tip
+    canvas.fill_rect(8, 22, 14, 3, Rgba::opaque(0xaa, 0x88, 0x33)); // guard
+    canvas.fill_rect(13, 25, 4, 6, Rgba::opaque(0x5a, 0x3a, 0x1a)); // grip
+    canvas.fill_rect(13, 31, 4, 1, Rgba::opaque(0xaa, 0x88, 0x33)); // pommel
+    let width = canvas.width();
+    let height = canvas.height();
+    RgbaImage {
+        width,
+        height,
+        pixels: canvas.into_rgba_bytes(),
+    }
+}
+
+/// `t * (2 - t)`, matching TS's `easeOutQuad`.
+fn ease_out_quad(t: f32) -> f32 {
+    t * (2.0 - t)
+}
+
+/// Sweeps the sword sprite from lower-right to upper-left, ported from
+/// `SwordSwingAnimator.draw`. Decrements `hud.sword_swing_timer` itself
+/// (like `draw_message` does for its own timer) rather than needing a
+/// separate ungated update system.
+fn draw_sword_swing(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
+    if hud.sword_swing_timer <= 0.0 {
+        return;
+    }
+    hud.sword_swing_timer = (hud.sword_swing_timer - delta).max(0.0);
+    if hud.sword_swing_timer <= 0.0 {
+        return;
+    }
+    let t = 1.0 - hud.sword_swing_timer / SWORD_SWING_DURATION;
+    let angle = SWORD_SWING_START_ANGLE
+        + (SWORD_SWING_END_ANGLE - SWORD_SWING_START_ANGLE) * ease_out_quad(t);
+    let pivot = (HUD_WIDTH as f32 * 0.65, HUD_HEIGHT as f32 * 0.95);
+    let draw_edge = SWORD_SPRITE_SIZE as f32 * SWORD_SWING_SCALE;
+    let alpha = if t < 0.7 { 1.0 } else { 1.0 - (t - 0.7) / 0.3 };
+    canvas.blit_rotated(
+        &hud.sword_sprite,
+        pivot,
+        angle,
+        (-draw_edge / 2.0, -draw_edge),
+        (draw_edge, draw_edge),
+        alpha,
+    );
+}
+
+/// "LEVEL UP" + the level number, faded in from `LEVEL_UP_FADE_START`
+/// remaining seconds to zero — ported from `LevelUpNotification.draw`.
+/// Drawn last (see `draw_hud`) so it appears on top of the rest of the HUD,
+/// matching TS's own comment on the equivalent call site.
+fn draw_level_up_toast(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
+    if hud.level_up_timer <= 0.0 {
+        return;
+    }
+    hud.level_up_timer = (hud.level_up_timer - delta).max(0.0);
+    if hud.level_up_timer <= 0.0 {
+        return;
+    }
+    let alpha = if hud.level_up_timer <= LEVEL_UP_FADE_START {
+        hud.level_up_timer / LEVEL_UP_FADE_START
+    } else {
+        1.0
+    };
+    let scale = 3;
+    let line_spacing = 12;
+    let label = "LEVEL UP";
+    let label_y = 52;
+    let label_x = (HUD_WIDTH as i32 - measure_pixel_text(label, scale)) / 2;
+    let level_y = label_y + 5 * scale + line_spacing;
+    let level_x = (HUD_WIDTH as i32 - measure_pixel_text(&hud.level_up_message, scale)) / 2;
+    let color = Rgba::translucent(0xe8, 0xc8, 0x4a, alpha);
+    draw_pixel_text(canvas, label, label_x, label_y, color, scale);
+    draw_pixel_text(
+        canvas,
+        &hud.level_up_message,
+        level_x,
+        level_y,
+        color,
+        scale,
+    );
 }
 
 pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -262,6 +377,10 @@ pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         message_timer: 0.0,
         image: handle,
         icons: IconCache::default(),
+        sword_swing_timer: 0.0,
+        sword_sprite: generate_sword_sprite(),
+        level_up_message: String::new(),
+        level_up_timer: 0.0,
     });
 }
 
@@ -311,6 +430,8 @@ pub fn draw_hud(
             canvas.fill_rect(0, 0, HUD_WIDTH as i32, HUD_HEIGHT as i32, STARVATION_TINT);
         }
 
+        draw_sword_swing(&mut canvas, hud, delta);
+
         draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
         draw_status_icons(&mut canvas, &game.status_fx.player_status_effects, hud.time);
         draw_inventory_panel(&mut canvas, game, &sources.items.0, &mut hud.icons);
@@ -342,6 +463,8 @@ pub fn draw_hud(
             game.status_fx.max_hunger,
             hud.time,
         );
+
+        draw_level_up_toast(&mut canvas, hud, delta);
     }
 
     // Drawn on top of, not instead of, whichever screen rendered above —

@@ -70,26 +70,44 @@ pub fn apply_slow_multiplier(session: Res<Session>, mut players: Query<&mut Play
 }
 
 /// Tints each enemy billboard's material by its active status effect —
-/// burning orange, poison green, otherwise back to white (no tint). Runs
+/// burning orange, poison green, otherwise back to white (no tint) — and,
+/// while a hit flash is counting down, red instead of any of those. Runs
 /// unconditionally every frame, matching the TS comment on this block:
-/// "Status effect tint on enemies (always — static visual)".
+/// "Status effect tint on enemies (always — static visual)"; the flash
+/// timer also decays here in real time (unaffected by `InputGate::paused`),
+/// mirroring the TS `enemyDamageFlash` closure's raw `setTimeout`, which
+/// keeps running regardless of any game-pause state. This is the single
+/// writer of `base_color` for enemy billboards specifically so the flash
+/// and the status tint can't race each other from two separate systems —
+/// see `enemy_feedback::EnemyDamageFlash`'s doc comment.
 pub fn tint_enemy_status_effects(
+    time: Res<Time>,
     session: Res<Session>,
     billboards: Res<EnemyBillboards>,
-    billboard_materials: Query<&MeshMaterial3d<StandardMaterial>, With<EnemyBillboard>>,
+    mut billboard_query: Query<
+        (
+            &MeshMaterial3d<StandardMaterial>,
+            &mut crate::enemy_feedback::EnemyDamageFlash,
+        ),
+        With<EnemyBillboard>,
+    >,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let delta = time.delta_secs();
     for (key, enemy) in &session.game.active_layer().enemies {
         let Some(&entity) = billboards.by_key.get(key) else {
             continue;
         };
-        let Ok(material_handle) = billboard_materials.get(entity) else {
+        let Ok((material_handle, mut flash)) = billboard_query.get_mut(entity) else {
             continue;
         };
+        flash.timer = (flash.timer - delta).max(0.0);
         let Some(mut material) = materials.get_mut(&material_handle.0) else {
             continue;
         };
-        material.base_color = if has_effect(&enemy.status_effects, StatusEffectType::Burning) {
+        material.base_color = if flash.timer > 0.0 {
+            crate::enemy_feedback::ENEMY_DAMAGE_FLASH_COLOR
+        } else if has_effect(&enemy.status_effects, StatusEffectType::Burning) {
             BURNING_TINT
         } else if has_effect(&enemy.status_effects, StatusEffectType::Poison) {
             POISON_TINT

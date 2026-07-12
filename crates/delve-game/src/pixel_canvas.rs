@@ -137,6 +137,85 @@ impl PixelCanvas {
         }
     }
 
+    /// Nearest-neighbor blit of `source`, matching the canvas
+    /// `translate(pivot); rotate(angle); drawImage(source, offset.0, offset.1, draw_size.0, draw_size.1)`
+    /// sequence: `source` is scaled to `draw_size` and its top-left corner
+    /// placed at `offset` in the pivot's rotated local space, then
+    /// alpha-blended onto the canvas. Implemented as an inverse-transform
+    /// sample over the rotated bounding box, since this canvas has no
+    /// notion of a transform stack to push/pop like a real 2D context.
+    pub fn blit_rotated(
+        &mut self,
+        source: &RgbaImage,
+        pivot: (f32, f32),
+        angle: f32,
+        offset: (f32, f32),
+        draw_size: (f32, f32),
+        alpha: f32,
+    ) {
+        let (pivot_x, pivot_y) = pivot;
+        let (offset_x, offset_y) = offset;
+        let (draw_w, draw_h) = draw_size;
+        if draw_w <= 0.0 || draw_h <= 0.0 || source.width == 0 || source.height == 0 {
+            return;
+        }
+        let (sin_a, cos_a) = angle.sin_cos();
+        let corners = [
+            (offset_x, offset_y),
+            (offset_x + draw_w, offset_y),
+            (offset_x, offset_y + draw_h),
+            (offset_x + draw_w, offset_y + draw_h),
+        ];
+        let screen_corners = corners.map(|(x, y)| {
+            (
+                pivot_x + x * cos_a - y * sin_a,
+                pivot_y + x * sin_a + y * cos_a,
+            )
+        });
+        let min_x = screen_corners
+            .iter()
+            .fold(f32::MAX, |acc, corner| acc.min(corner.0))
+            .floor() as i32;
+        let max_x = screen_corners
+            .iter()
+            .fold(f32::MIN, |acc, corner| acc.max(corner.0))
+            .ceil() as i32;
+        let min_y = screen_corners
+            .iter()
+            .fold(f32::MAX, |acc, corner| acc.min(corner.1))
+            .floor() as i32;
+        let max_y = screen_corners
+            .iter()
+            .fold(f32::MIN, |acc, corner| acc.max(corner.1))
+            .ceil() as i32;
+
+        for py in min_y..=max_y {
+            for px in min_x..=max_x {
+                let delta_x = px as f32 + 0.5 - pivot_x;
+                let delta_y = py as f32 + 0.5 - pivot_y;
+                let local_x = delta_x * cos_a + delta_y * sin_a;
+                let local_y = -delta_x * sin_a + delta_y * cos_a;
+                let source_x = (local_x - offset_x) / draw_w * source.width as f32;
+                let source_y = (local_y - offset_y) / draw_h * source.height as f32;
+                if source_x < 0.0
+                    || source_y < 0.0
+                    || source_x >= source.width as f32
+                    || source_y >= source.height as f32
+                {
+                    continue;
+                }
+                let source_offset = (source_y as usize * source.width + source_x as usize) * 4;
+                let color = Rgba {
+                    red: source.pixels[source_offset],
+                    green: source.pixels[source_offset + 1],
+                    blue: source.pixels[source_offset + 2],
+                    alpha: f32::from(source.pixels[source_offset + 3]) / 255.0 * alpha,
+                };
+                self.blend_pixel(px, py, color);
+            }
+        }
+    }
+
     /// 1px Bresenham line, matching canvas strokes with lineWidth 1.
     pub fn stroke_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgba) {
         let dx = (x1 - x0).abs();

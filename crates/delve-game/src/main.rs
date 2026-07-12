@@ -8,6 +8,7 @@ mod damage_numbers;
 mod doors;
 mod dungeon;
 mod enemies;
+mod enemy_feedback;
 mod environment;
 mod ground_items;
 mod hud;
@@ -203,6 +204,7 @@ fn setup(
     commands.insert_resource(handles.chest_handles);
     commands.insert_resource(handles.block_handles);
     commands.insert_resource(handles.wall_entity_handles);
+    commands.insert_resource(handles.health_bars);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
@@ -396,6 +398,7 @@ fn main() {
                 (
                     chests::animate_chest_lids,
                     blocks::animate_blocks,
+                    enemy_feedback::tick_enemy_hit_shake,
                     damage_numbers::update_damage_numbers,
                     hud::draw_hud,
                     transition::tick_transition,

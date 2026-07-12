@@ -6,6 +6,7 @@ use crate::chests::{self, ChestHandles};
 use crate::doors::{self, DoorPanels};
 use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
+use crate::enemy_feedback::{self, EnemyHealthBars};
 use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
@@ -49,6 +50,7 @@ pub struct LevelSceneHandles {
     pub chest_handles: ChestHandles,
     pub block_handles: BlockHandles,
     pub wall_entity_handles: WallEntityHandles,
+    pub health_bars: EnemyHealthBars,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -131,6 +133,14 @@ pub fn spawn_level_scene(
         scene.game,
         scene.enemy_db,
     );
+    let health_bars = enemy_feedback::spawn_health_bars(
+        commands,
+        assets.meshes,
+        assets.materials,
+        scene.game,
+        &billboards,
+        scene.enemy_db,
+    );
     let ground_items = ground_items::spawn_ground_items(
         commands,
         assets.meshes,
@@ -192,5 +202,6 @@ pub fn spawn_level_scene(
         chest_handles,
         block_handles,
         wall_entity_handles,
+        health_bars,
     }
 }

@@ -6,6 +6,7 @@ use crate::blocks::BlockHandles;
 use crate::chests::ChestHandles;
 use crate::doors::DoorPanels;
 use crate::enemies::{EnemyBillboards, EnemyDb};
+use crate::enemy_feedback::EnemyHealthBars;
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
 use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::keys::KeyBillboards;
@@ -173,6 +174,7 @@ pub struct SwapWorld<'w, 's> {
     block_handles: ResMut<'w, BlockHandles>,
     wall_entity_handles: ResMut<'w, WallEntityHandles>,
     vitals: ResMut<'w, crate::status_effects::PlayerVitals>,
+    health_bars: ResMut<'w, EnemyHealthBars>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -346,6 +348,7 @@ pub fn perform_level_swap(
     *world.chest_handles = handles.chest_handles;
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
+    *world.health_bars = handles.health_bars;
 
     let Session { game, grid, .. } = session;
     // TS reveals with the target stair's facing; only the player's
@@ -527,6 +530,7 @@ pub fn perform_restart(
     *world.chest_handles = handles.chest_handles;
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
+    *world.health_bars = handles.health_bars;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(
@@ -684,6 +688,7 @@ pub fn perform_load(
     *world.chest_handles = handles.chest_handles;
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
+    *world.health_bars = handles.health_bars;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(
