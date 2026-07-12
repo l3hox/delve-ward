@@ -163,10 +163,11 @@ pub fn interact(
                 })
             })
         };
+        let dest_is_player = dest_col == player_col && dest_row == player_row;
         let can_push = dest_walkable
             && !game_state.is_blocked_by_enemy(dest_col, dest_row)
             && !game_state.is_block_at(dest_col, dest_row)
-            && !(dest_col == player_col && dest_row == player_row)
+            && !dest_is_player
             && !game_state.is_edge_blocked(col, row, dest_col, dest_row);
         if can_push {
             game_state.push_block(col, row, dest_col, dest_row);
