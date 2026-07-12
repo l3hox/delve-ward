@@ -184,9 +184,10 @@ pub fn tick_enemies(
                     "Enemy hits you for {} — HP {}/{}",
                     result.damage, game.player.hp, game.player.max_hp
                 );
-                if game.player.hp <= 0.0 {
-                    info!("You died.");
-                }
+                // Death detection is centralized in `save_load::check_player_death`,
+                // which runs once per frame after all combat resolves — matching
+                // where TS's own single `if (gameState.hp <= 0)` check lives,
+                // rather than duplicating it at every place HP can drop to zero.
             }
             EnemyActionType::StatusKill => {
                 // Unlike `damage_enemy`, the AI tick's direct hp mutation

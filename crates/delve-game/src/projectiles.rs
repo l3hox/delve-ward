@@ -418,9 +418,7 @@ fn apply_projectile_hit(
                 game.player.hp,
                 game.player.max_hp
             );
-            if game.player.hp <= 0.0 {
-                info!("You died.");
-            }
+            // Death detection is centralized in `save_load::check_player_death`.
         }
         HitType::Enemy => {
             let key = door_key(event.col, event.row);

@@ -71,6 +71,13 @@ pub struct DungeonRes(pub Dungeon);
 #[derive(Resource, Default)]
 pub struct LevelSnapshots(pub HashMap<String, MultiLayerSnapshot>);
 
+/// Each level's grid as loaded from disk, captured once in `main.rs::setup`
+/// before any runtime mutation (breakable walls, secret walls). Restart and
+/// load both use this to reset a level's grid to its pristine state, ported
+/// from TS's `originalGrids` map.
+#[derive(Resource, Default)]
+pub struct OriginalGrids(pub HashMap<String, Vec<String>>);
+
 /// Build the TS movement callbacks from the game state and hand them to `f`.
 fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
     let is_door_open = |col: i32, row: i32| game.is_door_open(i64::from(col), i64::from(row));
@@ -320,7 +327,7 @@ pub fn on_player_moved(
     if let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
     {
-        transition.begin(stair_id.clone());
+        transition.begin_stair(stair_id.clone());
     }
 }
 

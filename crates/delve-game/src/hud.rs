@@ -10,6 +10,8 @@ use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
 use crate::player::Player;
+use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
+use crate::save_store::FileSaveStore;
 use crate::session::Session;
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -21,6 +23,7 @@ use delve_core::entities::EquipSlot;
 use delve_core::game_state::{GameState, LayerState, door_key};
 use delve_core::grid::Facing;
 use delve_core::items::{ItemDatabase, ItemSubtype, ItemType};
+use delve_core::save_system::get_all_slot_metadata;
 use delve_core::status_effects::{StatusEffect, StatusEffectType, has_effect};
 use std::collections::HashMap;
 
@@ -271,6 +274,8 @@ pub struct HudSources<'w, 's> {
     creation: Res<'w, CharCreation>,
     vitals: Res<'w, crate::status_effects::PlayerVitals>,
     players: Query<'w, 's, &'static Player>,
+    save_load: Res<'w, SaveLoadOverlay>,
+    save_store: Res<'w, FileSaveStore>,
 }
 
 pub fn draw_hud(
@@ -337,6 +342,14 @@ pub fn draw_hud(
             game.status_fx.max_hunger,
             hud.time,
         );
+    }
+
+    // Drawn on top of, not instead of, whichever screen rendered above —
+    // matches TS's DOM layering, where the overlay sits above the dimmed
+    // (but still-rendered) game/HUD rather than replacing it.
+    if sources.save_load.active {
+        let metadata = get_all_slot_metadata(&*sources.save_store);
+        draw_save_load_overlay(&mut canvas, &sources.save_load, &metadata);
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {

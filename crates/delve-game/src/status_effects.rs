@@ -37,10 +37,9 @@ impl PlayerVitals {
 }
 
 /// The per-frame player controller tick: status effect damage, temp buff
-/// decay, hunger drain, and starvation. The death log only fires on the
-/// tick HP actually crosses to zero — TS transitions into a save/restart
-/// overlay at that point (a later slice here), so without the guard this
-/// would log every frame while the player stays dead.
+/// decay, hunger drain, and starvation. Death detection (and the resulting
+/// save/restart flow) is centralized in `save_load::check_player_death`,
+/// which runs later in the same gated chain.
 pub fn tick_player_vitals(
     time: Res<Time>,
     mut session: ResMut<Session>,
@@ -56,11 +55,7 @@ pub fn tick_player_vitals(
     vitals.0.player_damage_flash_timer = (vitals.0.player_damage_flash_timer - delta).max(0.0);
 
     let game = &mut session.game;
-    let was_alive = game.player.hp > 0.0;
     tick_player_controller(game, &mut vitals.0, delta, false);
-    if was_alive && game.player.hp <= 0.0 {
-        info!("You died.");
-    }
 }
 
 /// `ls.player.slowMultiplier = getSlowMultiplier(gameState.playerStatusEffects);`

@@ -19,6 +19,8 @@ mod pixel_canvas;
 mod plates;
 mod player;
 mod projectiles;
+mod save_load_overlay;
+mod save_store;
 mod sconces;
 mod session;
 mod signs;
@@ -48,7 +50,8 @@ use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use player::Player;
 use projectiles::{ProjectileBillboards, ProjectileManagerRes};
-use session::{DungeonRes, GameRng, LevelSnapshots, Session};
+use save_store::FileSaveStore;
+use session::{DungeonRes, GameRng, LevelSnapshots, OriginalGrids, Session};
 use std::path::PathBuf;
 use std::sync::Arc;
 use textures::DungeonMaterials;
@@ -105,6 +108,21 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     let loaded = load_dungeon(&dungeon_path());
+    // Captured before any gameplay mutation (breakable walls, secret walls,
+    // save/load grid restores) so restart and load can reset a level back
+    // to exactly what shipped on disk.
+    commands.insert_resource(OriginalGrids(
+        loaded
+            .levels
+            .iter()
+            .map(|level| {
+                (
+                    level.id.clone().unwrap_or_else(|| level.name.clone()),
+                    level.grid.clone(),
+                )
+            })
+            .collect(),
+    ));
     let start = loaded.player_start.clone();
     let level = loaded
         .levels
@@ -338,12 +356,18 @@ fn main() {
         .init_resource::<char_creation::CharCreation>()
         .init_resource::<session::BlockedDoors>()
         .init_resource::<status_effects::PlayerVitals>()
+        .init_resource::<save_load_overlay::SaveLoadOverlay>()
+        .insert_resource(FileSaveStore::new(save_store::saves_dir()))
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
             (
+                // Split across two tuples (Bevy's `.chain()` tuple impl tops
+                // out at 20 elements) but chained together at the outer
+                // level below, so ordering is identical to one long chain.
                 (
                     char_creation::char_creation_input,
+                    save_load_overlay::save_load_input,
                     session::player_input,
                     session::interact_input,
                     enemies::attack_input,
@@ -353,9 +377,13 @@ fn main() {
                     enemies::tick_attack_cooldown,
                     session::tick_game,
                     projectiles::tick_projectiles,
+                )
+                    .chain(),
+                (
                     projectiles::position_projectile_meshes,
                     projectiles::update_fireball_explosions,
                     status_effects::tick_player_vitals,
+                    save_load_overlay::check_player_death,
                     status_effects::apply_slow_multiplier,
                     status_effects::tint_enemy_status_effects,
                     billboard::face_billboards,
@@ -372,6 +400,8 @@ fn main() {
                     hud::draw_hud,
                     transition::tick_transition,
                     transition::perform_level_swap,
+                    transition::perform_restart,
+                    transition::perform_load,
                     input_diagnostics,
                     claim_initial_focus,
                 )
