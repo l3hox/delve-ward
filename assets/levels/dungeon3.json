@@ -1,0 +1,364 @@
+{
+  "name": "The Deep Cellars",
+  "playerStart": {
+    "levelId": "wooden_corridor",
+    "col": 1,
+    "row": 1,
+    "facing": "E"
+  },
+  "levels": [
+    {
+      "id": "wooden_corridor",
+      "name": "Wooden Corridor",
+      "dustMotes": false,
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "###############",
+            "#.............#",
+            "#.............#",
+            "####.######.###",
+            "####.#####...##",
+            "####.#####...##",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "####.##########",
+            "###############"
+          ],
+          "entities": [
+            {
+              "col": 10,
+              "row": 4,
+              "type": "key",
+              "keyId": "cellar_key"
+            },
+            {
+              "id": "door_1",
+              "col": 11,
+              "row": 3,
+              "type": "door"
+            },
+            {
+              "col": 11,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "id": "door_2",
+              "col": 4,
+              "row": 12,
+              "type": "door",
+              "state": "closed",
+              "keyId": "cellar_key"
+            },
+            {
+              "col": 4,
+              "row": 1,
+              "type": "consumable",
+              "itemId": "torch_oil"
+            },
+            {
+              "col": 6,
+              "row": 1,
+              "type": "equipment",
+              "itemId": "dagger_bent_knife"
+            },
+            {
+              "col": 8,
+              "row": 1,
+              "type": "equipment",
+              "itemId": "axe_battle"
+            },
+            {
+              "col": 10,
+              "row": 1,
+              "type": "equipment",
+              "itemId": "spear_wooden"
+            },
+            {
+              "col": 12,
+              "row": 1,
+              "type": "equipment",
+              "itemId": "ring_of_power"
+            },
+            {
+              "col": 3,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 11,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 1,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 9,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 13,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 4,
+              "row": 7,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 4,
+              "row": 10,
+              "type": "torch_sconce",
+              "wall": "E"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "wood",
+            "floorTexture": "cobblestone",
+            "ceilingTexture": "wooden_beams"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dark_cellar",
+      "name": "Dark Cellar",
+      "waterDrips": true,
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "###############",
+            "#.#...........#",
+            "#.#.#.#.#.#.#.#",
+            "#.............#",
+            "#.#.#.#.#.#.#.#",
+            "#.............#",
+            "#.#.#.#.#.#.#.#",
+            "#.............#",
+            "#.#.#.#.#.#...#",
+            "#.........#...#",
+            "#.#.#.#.#.#.###",
+            "#.........#...#",
+            "#.#.#.#.#.#...#",
+            "#.........##.##",
+            "###############"
+          ],
+          "entities": [
+            {
+              "id": "lever_1",
+              "col": 12,
+              "row": 9,
+              "type": "lever",
+              "wall": "S",
+              "targets": [
+                "door_1"
+              ]
+            },
+            {
+              "id": "door_1",
+              "col": 11,
+              "row": 10,
+              "type": "door"
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 9,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 3,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 11,
+              "row": 11,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "equipment",
+              "itemId": "iron_sword"
+            },
+            {
+              "col": 1,
+              "row": 11,
+              "type": "equipment",
+              "itemId": "leather_armor"
+            },
+            {
+              "col": 5,
+              "row": 7,
+              "type": "consumable",
+              "itemId": "hp_pot_1"
+            },
+            {
+              "col": 13,
+              "row": 3,
+              "type": "consumable",
+              "itemId": "hp_pot_2"
+            },
+            {
+              "col": 9,
+              "row": 11,
+              "type": "consumable",
+              "itemId": "hp_pot_3"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "mossy",
+            "floorTexture": "dirt",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bone_pit",
+      "name": "The Bone Pit",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "#############",
+            "#.#.#.......#",
+            "#...........#",
+            "#...#.#.#.#.#",
+            "#####.......#",
+            "#.....#.#.#.#",
+            "#.......#...#",
+            "#.#.#.....#.#",
+            "#.......#...#",
+            "#.#.#.#...#.#",
+            "#.........#.#",
+            "#.#.#.#.#...#",
+            "#...........#",
+            "#############"
+          ],
+          "entities": [
+            {
+              "id": "door_1",
+              "col": 4,
+              "row": 2,
+              "type": "door"
+            },
+            {
+              "col": 2,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "equipment",
+              "itemId": "gold_ring"
+            },
+            {
+              "col": 7,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 11,
+              "row": 8,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 3,
+              "row": 10,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 9,
+              "row": 12,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 1,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 11,
+              "row": 6,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 1,
+              "row": 8,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 11,
+              "row": 12,
+              "type": "torch_sconce",
+              "wall": "S"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "brick",
+            "floorTexture": "dirt",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    }
+  ]
+}

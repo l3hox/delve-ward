@@ -1,0 +1,62 @@
+{
+  "name": "The Grand Hall",
+  "playerStart": {
+    "col": 9,
+    "row": 9,
+    "facing": "N"
+  },
+  "charDefs": [
+    {
+      "char": "m",
+      "solid": false,
+      "wallTexture": "mossy",
+      "floorTexture": "dirt"
+    },
+    {
+      "char": ",",
+      "solid": false,
+      "floorTexture": "cobblestone"
+    },
+    {
+      "char": "b",
+      "solid": false,
+      "wallTexture": "brick",
+      "floorTexture": "stone_tile"
+    },
+    {
+      "char": "w",
+      "solid": false,
+      "wallTexture": "wood",
+      "floorTexture": "stone_tile",
+      "ceilingTexture": "wooden_beams"
+    }
+  ],
+  "layers": [
+    {
+      "id": "0",
+      "grid": [
+        "####################",
+        "##mmmm########,,,,##",
+        "##mmmm########,,,,##",
+        "##mmmm########,,,,##",
+        "##mmmm########,,,,##",
+        "###,############,###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###bbbbbbbbbbbbbb###",
+        "###,############,###",
+        "##wwww########mmmm##",
+        "##wwww########mmmm##",
+        "##wwww########mmmm##",
+        "##wwww########mmmm##",
+        "####################"
+      ],
+      "entities": []
+    }
+  ]
+}

@@ -1,0 +1,415 @@
+{
+  "name": "Boulders",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "E"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "environment": "forest",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#.#.#..........#",
+            "#..............#",
+            "#.###..........#",
+            "#..............#",
+            "#...#..........#",
+            "#.#............#",
+            "#......#.......#",
+            "#..............#",
+            "#..............#",
+            "#.....#####....#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 9,
+              "row": 2,
+              "type": "boulder",
+              "id": "boulder_1",
+              "direction": "W",
+              "state": "rolling",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 3,
+              "row": 1,
+              "type": "boulder",
+              "id": "boulder_3",
+              "direction": "N",
+              "state": "idle",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 12,
+              "row": 4,
+              "type": "boulder",
+              "id": "boulder_2",
+              "direction": "W",
+              "state": "idle",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "boulder",
+              "id": "boulder_4",
+              "direction": "N",
+              "state": "idle",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "boulder",
+              "id": "boulder_5",
+              "direction": "N",
+              "state": "idle",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 6,
+              "row": 4,
+              "type": "boulder",
+              "id": "boulder_6",
+              "direction": "N",
+              "state": "idle",
+              "active": true,
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 5,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "boulder_2"
+              ],
+              "wall": "N",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 2,
+              "row": 9,
+              "type": "lever",
+              "id": "lever_2",
+              "targets": [
+                "boulder_7"
+              ],
+              "wall": "N",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 7,
+              "row": 8,
+              "type": "lever",
+              "id": "lever_6",
+              "targets": [
+                "boulder_10"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 11,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "W",
+              "style": "ramp"
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "boulder",
+              "id": "boulder_9",
+              "direction": "N",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "boulder",
+              "id": "boulder_11",
+              "direction": "N",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "boulder",
+              "id": "boulder_12",
+              "direction": "N",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#...#..........#",
+            "#..............#",
+            "#...#..........#",
+            "#..............#",
+            "#..............#",
+            "#.....####.....#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 10,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_2",
+              "facing": "W",
+              "style": "ramp"
+            },
+            {
+              "col": 5,
+              "row": 5,
+              "type": "boulder",
+              "id": "boulder_8",
+              "direction": "N",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            }
+          ]
+        },
+        {
+          "id": "2",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#...#..........#",
+            "#...#..........#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#.....###......#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 8,
+              "type": "lever",
+              "id": "lever_3",
+              "targets": [
+                "boulder_7"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 9,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_3",
+              "facing": "W",
+              "style": "ramp"
+            }
+          ]
+        },
+        {
+          "id": "3",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#.....##.......#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 7,
+              "type": "boulder",
+              "id": "boulder_7",
+              "direction": "S",
+              "state": "idle",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": false
+            },
+            {
+              "col": 8,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_4",
+              "facing": "W",
+              "style": "ramp"
+            },
+            {
+              "col": 1,
+              "row": 1,
+              "type": "boulder",
+              "id": "boulder_13",
+              "direction": "S",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            }
+          ]
+        },
+        {
+          "id": "4",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..#...........#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 9,
+              "type": "lever",
+              "id": "lever_4",
+              "targets": [
+                "boulder_7"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 2,
+              "row": 9,
+              "type": "lever",
+              "id": "lever_5",
+              "targets": [
+                "boulder_7"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 6,
+              "row": 12,
+              "type": "boulder",
+              "id": "boulder_10",
+              "direction": "E",
+              "state": "idle",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            }
+          ]
+        },
+        {
+          "id": "5",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": []
+        }
+      ]
+    }
+  ]
+}

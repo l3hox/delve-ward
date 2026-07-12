@@ -1,0 +1,97 @@
+{
+  "startNode": "greeting",
+  "nodes": {
+    "greeting": {
+      "speaker": "Gregor the Merchant",
+      "text": "Welcome, traveler! I've got supplies if you've got coin.",
+      "choices": [
+        {
+          "text": "Show me your wares.",
+          "next": null,
+          "effects": [
+            {
+              "type": "openShop"
+            }
+          ],
+          "conditions": []
+        },
+        {
+          "text": "Any work for a sell-sword?",
+          "next": "quest_intro",
+          "conditions": [
+            {
+              "type": "questStage",
+              "questId": "fetch_amulet",
+              "stage": "undiscovered"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "I found your amulet.",
+          "next": "quest_complete",
+          "conditions": [
+            {
+              "type": "hasItem",
+              "itemId": "amulet_gregor"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "Farewell.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [],
+      "conditions": []
+    },
+    "quest_intro": {
+      "speaker": "Gregor the Merchant",
+      "text": "As a matter of fact... I lost a family amulet deeper in the dungeon. Bring it back and I'll make it worth your while.",
+      "choices": [
+        {
+          "text": "I'll find it.",
+          "next": null,
+          "effects": [
+            {
+              "type": "startQuest",
+              "questId": "fetch_amulet"
+            }
+          ],
+          "conditions": []
+        },
+        {
+          "text": "Maybe later.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [],
+      "conditions": []
+    },
+    "quest_complete": {
+      "speaker": "Gregor the Merchant",
+      "text": "My grandmother's amulet! You have my eternal gratitude. Here, take this — and I've unlocked some special stock for you.",
+      "next": null,
+      "effects": [
+        {
+          "type": "takeItem",
+          "itemId": "amulet_gregor"
+        },
+        {
+          "type": "advanceQuest",
+          "questId": "fetch_amulet"
+        },
+        {
+          "type": "setFlag",
+          "flag": "gregor_special_stock"
+        }
+      ],
+      "conditions": []
+    }
+  }
+}

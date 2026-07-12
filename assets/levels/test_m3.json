@@ -1,0 +1,142 @@
+{
+  "name": "test_m3",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#...#....###...#",
+            "#........#.#...#",
+            "#........###...#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 2,
+              "type": "fountain",
+              "id": "fountain_1",
+              "healAmount": 20
+            },
+            {
+              "col": 5,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_1",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 1,
+              "row": 4,
+              "type": "bookshelf",
+              "id": "bookshelf_1",
+              "wall": "W",
+              "text": "Tomes\n"
+            },
+            {
+              "col": 4,
+              "row": 1,
+              "type": "bookshelf",
+              "id": "bookshelf_2",
+              "wall": "N",
+              "text": "asdfadsf"
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "bookshelf",
+              "id": "bookshelf_3",
+              "wall": "S",
+              "text": ""
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "bookshelf",
+              "id": "bookshelf_4",
+              "wall": "W",
+              "text": ""
+            },
+            {
+              "col": 4,
+              "row": 5,
+              "type": "bookshelf",
+              "id": "bookshelf_5",
+              "wall": "N",
+              "text": ""
+            },
+            {
+              "col": 3,
+              "row": 4,
+              "type": "bookshelf",
+              "id": "bookshelf_6",
+              "wall": "E",
+              "text": ""
+            },
+            {
+              "col": 7,
+              "row": 2,
+              "type": "altar",
+              "id": "altar_1",
+              "buffType": "str",
+              "buffAmount": 5,
+              "buffDuration": 60
+            },
+            {
+              "col": 6,
+              "row": 3,
+              "type": "barrel",
+              "id": "barrel_1",
+              "hp": 10,
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "rations",
+                    "quality": "masterwork"
+                  },
+                  {
+                    "itemId": "rations",
+                    "quality": "masterwork"
+                  },
+                  {
+                    "itemId": "torch_oil",
+                    "quality": "common"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "bookshelf",
+              "id": "bookshelf_7",
+              "wall": "N",
+              "text": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

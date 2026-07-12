@@ -1,0 +1,819 @@
+{
+  "name": "DelveWard \u2014 Milestone 1 Dungeon",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "The Upper Crypts",
+      "environment": "outdoor",
+      "skybox": "daylight",
+      "dustMotes": false,
+      "waterDrips": false,
+      "charDefs": [
+        {
+          "char": "F",
+          "solid": true,
+          "wallTexture": "forest"
+        },
+        {
+          "char": "T",
+          "solid": true,
+          "seeThrough": true,
+          "wallTexture": "forest",
+          "floorTexture": "grass"
+        },
+        {
+          "char": "'",
+          "solid": false,
+          "floorTexture": "grass"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "FFFFFFFFFFFFFFFFF",
+            "F''''T'T'TT'T'TTF",
+            "F'#''''''''''''TF",
+            "F'''''''''''''TTF",
+            "######.##########",
+            "#....#..........#",
+            "#....#..........#",
+            "#...............#",
+            "#....#..........#",
+            "######..........#",
+            "#...............#",
+            "#...............#",
+            "#...............#",
+            "#####.###########",
+            "#...............#",
+            "#############.###",
+            "#################"
+          ],
+          "entities": [
+            {
+              "type": "npc",
+              "npcId": "merchant_gregor",
+              "col": 3,
+              "row": 3,
+              "facing": "N"
+            },
+            {
+              "id": "door_1",
+              "col": 6,
+              "row": 4,
+              "type": "door"
+            },
+            {
+              "id": "door_2",
+              "col": 5,
+              "row": 7,
+              "type": "door"
+            },
+            {
+              "id": "door_3",
+              "col": 5,
+              "row": 13,
+              "type": "door"
+            },
+            {
+              "id": "stairs_1",
+              "col": 13,
+              "row": 15,
+              "type": "stairs",
+              "direction": "down",
+              "facing": "N",
+              "target": "stairs_2"
+            },
+            {
+              "col": 2,
+              "row": 3,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 10,
+              "row": 3,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "col": 8,
+              "row": 5,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 8,
+              "row": 14,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 4,
+              "row": 2,
+              "type": "equipment",
+              "itemId": "sword_rusty"
+            },
+            {
+              "col": 2,
+              "row": 3,
+              "type": "equipment",
+              "itemId": "armor_leather_vest"
+            },
+            {
+              "col": 10,
+              "row": 6,
+              "type": "consumable",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 14,
+              "row": 6,
+              "type": "consumable",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 8,
+              "row": 11,
+              "type": "consumable",
+              "itemId": "torch_oil"
+            },
+            {
+              "col": 9,
+              "row": 2,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 13,
+              "row": 2,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 1,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 3,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 7,
+              "row": 6,
+              "type": "enemy",
+              "enemyType": "giant_bat"
+            },
+            {
+              "col": 11,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "giant_bat"
+            },
+            {
+              "col": 15,
+              "row": 8,
+              "type": "enemy",
+              "enemyType": "giant_bat"
+            },
+            {
+              "col": 3,
+              "row": 14,
+              "type": "enemy",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 11,
+              "row": 14,
+              "type": "enemy",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 6,
+              "row": 14,
+              "type": "enemy",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 13,
+              "row": 14,
+              "type": "enemy",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 6,
+              "row": 2,
+              "type": "npc",
+              "id": "npc_1",
+              "npcId": "questgiver_hilda",
+              "facing": "W"
+            },
+            {
+              "col": 8,
+              "row": 2,
+              "type": "npc",
+              "id": "npc_2",
+              "npcId": "lorekeeper_owen",
+              "facing": "S"
+            },
+            {
+              "col": 8,
+              "row": 6,
+              "type": "equipment",
+              "id": "equipment_1",
+              "itemId": "amulet_gregor"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "stone",
+            "floorTexture": "stone_tile",
+            "ceilingTexture": "dark_rock"
+          },
+          "areas": [
+            {
+              "fromCol": 0,
+              "toCol": 16,
+              "fromRow": 4,
+              "toRow": 16,
+              "wallTexture": "stone",
+              "floorTexture": "stone_tile",
+              "ceilingTexture": "dark_rock",
+              "environment": "dungeon"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_2",
+      "name": "The Dark Warrens",
+      "dustMotes": false,
+      "waterDrips": true,
+      "charDefs": [
+        {
+          "char": "s",
+          "solid": false,
+          "wallTexture": "stone",
+          "floorTexture": "dirt"
+        },
+        {
+          "char": "c",
+          "solid": false,
+          "wallTexture": "brick",
+          "floorTexture": "cobblestone"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "###################",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss#........#",
+            "#ssssssss.........#",
+            "####.##############",
+            "#cccccccc.....#####",
+            "#cccccccc#........#",
+            "#cccccccc#...#....#",
+            "#cccccccc#...#....#",
+            "#cccccccc#...#....#",
+            "#cccccccc#...#....#",
+            "#cccccccc#...#....#",
+            "###################"
+          ],
+          "entities": [
+            {
+              "id": "stairs_2",
+              "col": 13,
+              "row": 1,
+              "type": "stairs",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_1"
+            },
+            {
+              "id": "stairs_3",
+              "col": 12,
+              "row": 17,
+              "type": "stairs",
+              "direction": "down",
+              "facing": "N",
+              "target": "stairs_4"
+            },
+            {
+              "id": "door_1",
+              "col": 4,
+              "row": 10,
+              "type": "door",
+              "state": "closed",
+              "keyId": "warrens_key"
+            },
+            {
+              "id": "door_2",
+              "col": 9,
+              "row": 11,
+              "type": "door"
+            },
+            {
+              "id": "door_3",
+              "col": 9,
+              "row": 9,
+              "type": "door"
+            },
+            {
+              "id": "door_4",
+              "col": 13,
+              "row": 12,
+              "type": "door"
+            },
+            {
+              "id": "key_1",
+              "col": 5,
+              "row": 7,
+              "type": "key",
+              "keyId": "warrens_key"
+            },
+            {
+              "id": "lever_1",
+              "col": 13,
+              "row": 11,
+              "type": "lever",
+              "targets": [
+                "door_4"
+              ],
+              "wall": "E"
+            },
+            {
+              "col": 11,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 1,
+              "row": 4,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 17,
+              "row": 4,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 1,
+              "row": 12,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 17,
+              "row": 13,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 17,
+              "row": 16,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 14,
+              "row": 4,
+              "type": "equipment",
+              "itemId": "dagger_iron"
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "equipment",
+              "itemId": "spear_wooden"
+            },
+            {
+              "col": 2,
+              "row": 12,
+              "type": "equipment",
+              "itemId": "armor_leather_cap"
+            },
+            {
+              "col": 4,
+              "row": 13,
+              "type": "equipment",
+              "itemId": "armor_wooden_buckler"
+            },
+            {
+              "col": 15,
+              "row": 13,
+              "type": "consumable",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 15,
+              "row": 15,
+              "type": "consumable",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 6,
+              "row": 14,
+              "type": "consumable",
+              "itemId": "health_potion_medium"
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "spider"
+            },
+            {
+              "col": 6,
+              "row": 6,
+              "type": "enemy",
+              "enemyType": "spider"
+            },
+            {
+              "col": 4,
+              "row": 8,
+              "type": "enemy",
+              "enemyType": "spider"
+            },
+            {
+              "col": 12,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 15,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 13,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 16,
+              "row": 8,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 2,
+              "row": 11,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 3,
+              "row": 13,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 5,
+              "row": 15,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 17,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 14,
+              "row": 6,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 7,
+              "row": 11,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 6,
+              "row": 15,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 8,
+              "row": 9,
+              "type": "consumable",
+              "id": "consumable_1",
+              "itemId": "antidote"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "mossy",
+            "floorTexture": "dirt",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "level_3",
+      "name": "The Troll's Domain",
+      "dustMotes": false,
+      "waterDrips": false,
+      "charDefs": [
+        {
+          "char": "m",
+          "solid": false,
+          "wallTexture": "mossy",
+          "floorTexture": "dirt"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "#####################",
+            "#####################",
+            "##.##################",
+            "##.##################",
+            "##.##################",
+            "##.##............####",
+            "##.##............####",
+            "##.##............####",
+            "##...............####",
+            "##.##............####",
+            "##.##............####",
+            "##.##......###.######",
+            "####mmmmmmm#........#",
+            "####mmmmmmm#........#",
+            "####mmmmmmm.........#",
+            "####mmmmmmm#........#",
+            "####mmmmmmm#........#",
+            "####mmmmmmm#........#",
+            "#####################",
+            "#####################"
+          ],
+          "entities": [
+            {
+              "id": "stairs_4",
+              "col": 2,
+              "row": 2,
+              "type": "stairs",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_3"
+            },
+            {
+              "id": "door_1",
+              "col": 3,
+              "row": 8,
+              "type": "door"
+            },
+            {
+              "id": "door_2",
+              "col": 14,
+              "row": 11,
+              "type": "door"
+            },
+            {
+              "id": "door_3",
+              "col": 11,
+              "row": 14,
+              "type": "door",
+              "state": "closed",
+              "keyId": "troll_key"
+            },
+            {
+              "id": "key_1",
+              "col": 7,
+              "row": 16,
+              "type": "key",
+              "keyId": "troll_key"
+            },
+            {
+              "col": 2,
+              "row": 4,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 8,
+              "row": 5,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 14,
+              "row": 5,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 16,
+              "row": 9,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 2,
+              "row": 9,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 4,
+              "row": 13,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 19,
+              "row": 15,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 8,
+              "row": 7,
+              "type": "equipment",
+              "itemId": "sword_iron"
+            },
+            {
+              "col": 12,
+              "row": 8,
+              "type": "equipment",
+              "itemId": "axe_hand"
+            },
+            {
+              "col": 6,
+              "row": 15,
+              "type": "equipment",
+              "itemId": "mace_iron"
+            },
+            {
+              "col": 10,
+              "row": 9,
+              "type": "equipment",
+              "itemId": "armor_chainmail"
+            },
+            {
+              "col": 7,
+              "row": 9,
+              "type": "equipment",
+              "itemId": "armor_iron_helm"
+            },
+            {
+              "col": 17,
+              "row": 13,
+              "type": "equipment",
+              "itemId": "ring_of_vitality"
+            },
+            {
+              "col": 17,
+              "row": 16,
+              "type": "equipment",
+              "itemId": "armor_iron_kite_shield"
+            },
+            {
+              "col": 14,
+              "row": 17,
+              "type": "equipment",
+              "itemId": "ring_of_power"
+            },
+            {
+              "col": 5,
+              "row": 12,
+              "type": "consumable",
+              "itemId": "health_potion_medium"
+            },
+            {
+              "col": 14,
+              "row": 13,
+              "type": "consumable",
+              "itemId": "health_potion_medium"
+            },
+            {
+              "col": 18,
+              "row": 17,
+              "type": "consumable",
+              "itemId": "health_potion_large"
+            },
+            {
+              "col": 7,
+              "row": 6,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 11,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 13,
+              "row": 9,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 5,
+              "row": 13,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 8,
+              "row": 14,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 5,
+              "row": 16,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 9,
+              "row": 15,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 15,
+              "row": 15,
+              "type": "enemy",
+              "enemyType": "troll",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_steel"
+                  }
+                ],
+                "suppressTable": false
+              }
+            },
+            {
+              "col": 9,
+              "row": 6,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 14,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 6,
+              "row": 13,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 9,
+              "row": 16,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "col": 13,
+              "row": 10,
+              "type": "enemy",
+              "enemyType": "orc"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "brick",
+            "floorTexture": "cobblestone",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    }
+  ]
+}

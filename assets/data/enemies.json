@@ -1,0 +1,131 @@
+{
+  "version": "1.0",
+  "enemies": [
+    {
+      "id": "rat",
+      "name": "Rat",
+      "maxHp": 8,
+      "atk": 2,
+      "def": 0,
+      "aggroRange": 3,
+      "moveInterval": 0.6,
+      "blocksMovement": true,
+      "xp": 10,
+      "sprite": { "path": "/sprites/rat.png", "size": 1.2, "yOffset": -0.25 },
+      "behaviors": []
+    },
+    {
+      "id": "skeleton",
+      "name": "Skeleton",
+      "maxHp": 20,
+      "atk": 3,
+      "def": 1,
+      "aggroRange": 4,
+      "moveInterval": 1.0,
+      "blocksMovement": true,
+      "xp": 25,
+      "sprite": { "path": "/sprites/skeleton.png", "size": 2.0 },
+      "behaviors": []
+    },
+    {
+      "id": "orc",
+      "name": "Orc",
+      "maxHp": 40,
+      "atk": 5,
+      "def": 2,
+      "aggroRange": 5,
+      "moveInterval": 1.4,
+      "blocksMovement": true,
+      "xp": 50,
+      "sprite": { "path": "/sprites/orc.png", "size": 2.0 },
+      "behaviors": []
+    },
+    {
+      "id": "goblin",
+      "name": "Goblin",
+      "maxHp": 10,
+      "atk": 2,
+      "def": 0,
+      "aggroRange": 4,
+      "moveInterval": 0.5,
+      "blocksMovement": true,
+      "xp": 12,
+      "sprite": { "path": "/sprites/goblin.png", "size": 1.6 },
+      "behaviors": []
+    },
+    {
+      "id": "giant_bat",
+      "name": "Giant Bat",
+      "maxHp": 6,
+      "atk": 1,
+      "def": 0,
+      "aggroRange": 5,
+      "moveInterval": 0.4,
+      "blocksMovement": true,
+      "fly": true,
+      "xp": 8,
+      "sprite": { "path": "/sprites/giant_bat.png", "size": 1.4, "yOffset": 1.0 },
+      "behaviors": [
+        { "type": "erratic", "params": { "chance": 0.3 } }
+      ]
+    },
+    {
+      "id": "spider",
+      "name": "Spider",
+      "maxHp": 14,
+      "atk": 3,
+      "def": 0,
+      "aggroRange": 4,
+      "moveInterval": 0.6,
+      "blocksMovement": true,
+      "xp": 18,
+      "sprite": { "path": "/sprites/spider.png", "size": 1.8 },
+      "behaviors": [
+        { "type": "onHit", "params": { "statusEffect": "poison", "chance": 0.3, "duration": 10 } }
+      ]
+    },
+    {
+      "id": "kobold",
+      "name": "Kobold",
+      "maxHp": 12,
+      "atk": 2,
+      "def": 1,
+      "aggroRange": 4,
+      "moveInterval": 0.7,
+      "blocksMovement": true,
+      "xp": 20,
+      "sprite": { "path": "/sprites/kobold.png", "size": 1.6 },
+      "behaviors": [
+        { "type": "flee", "params": { "hpThreshold": 0.3, "speedMultiplier": 2 } }
+      ]
+    },
+    {
+      "id": "zombie",
+      "name": "Zombie",
+      "maxHp": 50,
+      "atk": 3,
+      "def": 1,
+      "aggroRange": 3,
+      "moveInterval": 1.6,
+      "blocksMovement": true,
+      "xp": 30,
+      "sprite": { "path": "/sprites/zombie.png", "size": 2.0 },
+      "behaviors": []
+    },
+    {
+      "id": "troll",
+      "name": "Troll",
+      "maxHp": 80,
+      "atk": 5,
+      "def": 2,
+      "aggroRange": 5,
+      "moveInterval": 1.2,
+      "blocksMovement": true,
+      "xp": 120,
+      "sprite": { "path": "/sprites/troll.png", "size": 2.4 },
+      "behaviors": [
+        { "type": "regen", "params": { "hpPerTick": 7, "tickInterval": 1, "pauseOnDamage": 3 } }
+      ]
+    }
+  ]
+}

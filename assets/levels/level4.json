@@ -1,0 +1,62 @@
+{
+  "name": "The Sunken Crypt",
+  "playerStart": {
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "charDefs": [
+    {
+      "char": "b",
+      "solid": false,
+      "wallTexture": "brick",
+      "floorTexture": "stone_tile"
+    },
+    {
+      "char": ",",
+      "solid": false,
+      "floorTexture": "cobblestone"
+    },
+    {
+      "char": "m",
+      "solid": false,
+      "wallTexture": "mossy",
+      "floorTexture": "dirt"
+    },
+    {
+      "char": "w",
+      "solid": false,
+      "wallTexture": "wood",
+      "floorTexture": "cobblestone",
+      "ceilingTexture": "wooden_beams"
+    }
+  ],
+  "layers": [
+    {
+      "id": "0",
+      "grid": [
+        "####################",
+        "#bbbbbbb############",
+        "#bbbbbbb############",
+        "#bbbbbbb############",
+        "#bbbbbbb############",
+        "#bbbbbbb############",
+        "####,###############",
+        "####,###############",
+        "####mmmmmmm#########",
+        "####mmmmmmm#########",
+        "####mmmmmmm#########",
+        "####mmmmmmm#########",
+        "####mmmmmmm#########",
+        "#########,##########",
+        "#########,##########",
+        "#########wwwwww#####",
+        "#########wwwwww#####",
+        "#########wwwwww#####",
+        "#########wwwwww#####",
+        "####################"
+      ],
+      "entities": []
+    }
+  ]
+}

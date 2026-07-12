@@ -1,0 +1,128 @@
+{
+  "version": "1.0",
+  "note": "Drops are rolled independently. 'chance' is 0.0-1.0. 'quality' overrides the standard quality roll for that drop. Drop rates subject to playtesting.",
+
+  "qualityWeights": {
+    "poor":       0.10,
+    "common":     0.50,
+    "fine":       0.25,
+    "masterwork": 0.12,
+    "enchanted":  0.03
+  },
+
+  "enemies": {
+
+    "rat": {
+      "xp": 10,
+      "gold": [1, 3],
+      "drops": [
+        { "itemId": "bone",                 "chance": 0.30 },
+        { "itemId": "health_potion_small",  "chance": 0.10 },
+        { "itemId": "torch_oil",            "chance": 0.05 }
+      ]
+    },
+
+    "giant_bat": {
+      "xp": 8,
+      "gold": [0, 2],
+      "drops": [
+        { "itemId": "bone",                 "chance": 0.20 }
+      ]
+    },
+
+    "goblin": {
+      "xp": 12,
+      "gold": [2, 5],
+      "drops": [
+        { "itemId": "bone",                 "chance": 0.25 },
+        { "itemId": "health_potion_small",  "chance": 0.15 },
+        { "itemId": "dagger_bent_knife",    "chance": 0.15 },
+        { "itemId": "dagger_iron",          "chance": 0.08, "quality": "poor" },
+        { "itemId": "torch_oil",            "chance": 0.08 }
+      ]
+    },
+
+    "spider": {
+      "xp": 18,
+      "gold": [3, 7],
+      "drops": [
+        { "itemId": "antidote",             "chance": 0.30 },
+        { "itemId": "health_potion_small",  "chance": 0.15 },
+        { "itemId": "dagger_bent_knife",    "chance": 0.12 },
+        { "itemId": "dagger_iron",          "chance": 0.08 }
+      ]
+    },
+
+    "kobold": {
+      "xp": 20,
+      "gold": [4, 9],
+      "note": "Kobolds are hoarders — guaranteed to drop at least one item (use per-entity override to design specific drops). Base table gives variety for non-overridden spawns.",
+      "drops": [
+        { "itemId": "health_potion_small",  "chance": 0.40 },
+        { "itemId": "torch_oil",            "chance": 0.30 },
+        { "itemId": "dagger_iron",          "chance": 0.18 },
+        { "itemId": "armor_leather_cap",    "chance": 0.12 },
+        { "itemId": "ring_of_the_fox",      "chance": 0.04 }
+      ]
+    },
+
+    "skeleton": {
+      "xp": 25,
+      "gold": [5, 12],
+      "drops": [
+        { "itemId": "bone",                 "chance": 0.40 },
+        { "itemId": "health_potion_small",  "chance": 0.20 },
+        { "itemId": "sword_rusty",          "chance": 0.20 },
+        { "itemId": "sword_iron",           "chance": 0.10 },
+        { "itemId": "armor_leather_cap",    "chance": 0.15 },
+        { "itemId": "armor_leather_vest",   "chance": 0.12 },
+        { "itemId": "armor_cracked_shield", "chance": 0.15 }
+      ]
+    },
+
+    "zombie": {
+      "xp": 30,
+      "gold": [3, 8],
+      "note": "Zombies were people once — drops skew toward worn armor scraps.",
+      "drops": [
+        { "itemId": "bone",                 "chance": 0.45 },
+        { "itemId": "health_potion_small",  "chance": 0.20 },
+        { "itemId": "armor_leather_cap",    "chance": 0.18 },
+        { "itemId": "armor_leather_vest",   "chance": 0.15 },
+        { "itemId": "armor_cracked_shield", "chance": 0.18 },
+        { "itemId": "armor_leather_greaves","chance": 0.12 }
+      ]
+    },
+
+    "orc": {
+      "xp": 50,
+      "gold": [15, 25],
+      "drops": [
+        { "itemId": "health_potion_medium", "chance": 0.25 },
+        { "itemId": "health_potion_small",  "chance": 0.20 },
+        { "itemId": "sword_iron",           "chance": 0.15 },
+        { "itemId": "axe_hand",             "chance": 0.12 },
+        { "itemId": "armor_iron_helm",      "chance": 0.10 },
+        { "itemId": "armor_chainmail",      "chance": 0.08 },
+        { "itemId": "armor_wooden_buckler", "chance": 0.10 }
+      ]
+    },
+
+    "troll": {
+      "xp": 120,
+      "gold": [30, 50],
+      "note": "Trolls always drop something meaningful. Use per-entity override to guarantee a specific item for designed encounters.",
+      "drops": [
+        { "itemId": "health_potion_large",  "chance": 0.40 },
+        { "itemId": "health_potion_medium", "chance": 0.35 },
+        { "itemId": "axe_battle",           "chance": 0.20 },
+        { "itemId": "sword_steel",          "chance": 0.15 },
+        { "itemId": "armor_chainmail",      "chance": 0.15 },
+        { "itemId": "amulet_of_fortitude",  "chance": 0.10 },
+        { "itemId": "ring_of_vitality",     "chance": 0.12 },
+        { "itemId": "armor_iron_kite_shield","chance": 0.12 }
+      ]
+    }
+
+  }
+}

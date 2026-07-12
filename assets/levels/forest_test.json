@@ -1,0 +1,57 @@
+{
+  "name": "Forest Test",
+  "playerStart": {
+    "levelId": "forest_clearing",
+    "col": 5,
+    "row": 3,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "forest_clearing",
+      "name": "Forest Clearing",
+      "environment": "forest",
+      "skybox": "starry-night",
+      "fireflies": true,
+      "dustMotes": false,
+      "charDefs": [
+        {
+          "char": "F",
+          "solid": true,
+          "wallTexture": "forest"
+        },
+        {
+          "char": "T",
+          "solid": true,
+          "seeThrough": true,
+          "wallTexture": "forest",
+          "floorTexture": "grass",
+          "ceilingTexture": "canopy"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "FFFFFFFFFFFF",
+            "FTTTTTTTTTTF",
+            "FT........TF",
+            "FT........TF",
+            "FT...##...TF",
+            "FT...##...TF",
+            "FT........TF",
+            "FT........TF",
+            "FTTTTTTTTTTF",
+            "FFFFFFFFFFFF"
+          ],
+          "entities": [],
+          "ceiling": false,
+          "defaults": {
+            "floorTexture": "grass",
+            "ceilingTexture": "canopy"
+          }
+        }
+      ]
+    }
+  ]
+}

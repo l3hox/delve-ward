@@ -1,0 +1,11 @@
+{
+  "id": "collect_lore",
+  "name": "Lost Knowledge",
+  "description": "Owen seeks three ancient scrolls scattered through the dungeon.",
+  "stages": [
+    {
+      "description": "Find the three ancient scrolls and return them to Owen the Lorekeeper.",
+      "rewards": { "xp": 60, "gold": 50 }
+    }
+  ]
+}

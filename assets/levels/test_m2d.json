@@ -1,0 +1,266 @@
+{
+  "name": "Test M2 D",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 6,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..#...........#",
+            "#..#.....#.....#",
+            "####...#.......#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 1,
+              "type": "breakable_wall",
+              "id": "breakable_wall_1",
+              "hp": 10,
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "bone",
+                    "quality": "common"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "secret_wall",
+              "id": "secret_wall_1",
+              "persistent": true
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "chest",
+              "id": "chest_1",
+              "state": "closed",
+              "facing": "N",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_rusty",
+                    "quality": "masterwork"
+                  }
+                ],
+                "extra": [
+                  {
+                    "itemId": "sword_iron",
+                    "chance": 1
+                  }
+                ]
+              }
+            },
+            {
+              "col": 8,
+              "row": 1,
+              "type": "pressure_plate",
+              "id": "pressure_plate_1",
+              "targets": [
+                "trap_launcher_1"
+              ],
+              "signalMode": "one_shot"
+            },
+            {
+              "col": 4,
+              "row": 2,
+              "type": "trap_launcher",
+              "id": "trap_launcher_1",
+              "facing": "E",
+              "projectileType": "fireball",
+              "fireMode": "single",
+              "reloadTime": 1
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "chest",
+              "id": "chest_2",
+              "state": "closed",
+              "keyId": "key_1",
+              "facing": "N",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_flamebrand",
+                    "quality": "common"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 5,
+              "row": 5,
+              "type": "key",
+              "id": "key_1",
+              "keyId": "key_1"
+            },
+            {
+              "col": 7,
+              "row": 2,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "chest_3"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 8,
+              "row": 3,
+              "type": "lever",
+              "id": "lever_2",
+              "targets": [],
+              "wall": "W",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 6,
+              "row": 3,
+              "type": "chest",
+              "id": "chest_3",
+              "state": "closed",
+              "facing": "N",
+              "targets": [
+                "trap_launcher_2"
+              ]
+            },
+            {
+              "col": 6,
+              "row": 1,
+              "type": "trap_launcher",
+              "id": "trap_launcher_2",
+              "facing": "S",
+              "projectileType": "fireball",
+              "fireMode": "single",
+              "reloadTime": 1
+            },
+            {
+              "col": 13,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_1",
+              "enemyType": "goblin",
+              "drops": {
+                "extra": [
+                  {
+                    "itemId": "bone",
+                    "chance": 0.5
+                  }
+                ],
+                "guaranteed": [
+                  {
+                    "itemId": "sword_iron",
+                    "quality": "masterwork"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 11,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_2",
+              "enemyType": "goblin",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_rusty",
+                    "quality": "common"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 9,
+              "row": 1,
+              "type": "sign",
+              "id": "sign_1",
+              "wall": "N",
+              "text": "Abandon all hopes, travelers."
+            },
+            {
+              "col": 6,
+              "row": 2,
+              "type": "block",
+              "id": "block_3"
+            },
+            {
+              "col": 1,
+              "row": 6,
+              "type": "stairs",
+              "id": "stairs_1",
+              "direction": "down",
+              "facing": "S",
+              "target": "stairs_2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_2",
+      "name": "Untitled",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 1,
+              "row": 5,
+              "type": "stairs",
+              "id": "stairs_2",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

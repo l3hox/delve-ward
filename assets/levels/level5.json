@@ -1,0 +1,60 @@
+{
+  "name": "Winding Depths",
+  "playerStart": {
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "charDefs": [
+    {
+      "char": "m",
+      "solid": false,
+      "wallTexture": "mossy",
+      "floorTexture": "dirt"
+    },
+    {
+      "char": ",",
+      "solid": false,
+      "floorTexture": "cobblestone"
+    },
+    {
+      "char": "b",
+      "solid": false,
+      "wallTexture": "brick",
+      "floorTexture": "cobblestone"
+    },
+    {
+      "char": "w",
+      "solid": false,
+      "wallTexture": "wood",
+      "floorTexture": "stone_tile",
+      "ceilingTexture": "wooden_beams"
+    }
+  ],
+  "layers": [
+    {
+      "id": "0",
+      "grid": [
+        "##################",
+        "#mmmmmm###########",
+        "#mmmmmm###########",
+        "#mmmmmm###########",
+        "#mmmmmm###########",
+        "#mmmmmm###########",
+        "###,##############",
+        "###,##############",
+        "###bbbbbbb########",
+        "###bbbbbbb########",
+        "###bbbbbbb########",
+        "###bbbbbbb########",
+        "###bbbbbbb########",
+        "########,#########",
+        "########,#########",
+        "########wwwww#####",
+        "########wwwww#####",
+        "##################"
+      ],
+      "entities": []
+    }
+  ]
+}

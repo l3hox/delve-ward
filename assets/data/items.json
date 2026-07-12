@@ -1,0 +1,715 @@
+{
+  "version": "1.0",
+  "note": "Base stats are at Common quality. Quality multipliers: poor ×0.7, common ×1.0, fine ×1.3, masterwork ×1.7, enchanted ×2.2. Numeric values subject to playtesting.",
+  "items": [
+
+    {
+      "id": "sword_rusty",
+      "name": "Rusty Sword",
+      "type": "weapon", "subtype": "sword", "quality": "poor",
+      "icon": "sword",
+      "weight": 4, "value": 3,
+      "description": "Pitted with rust and notched along the edge. Still cuts.",
+      "stats": { "atk": 3 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "sword_iron",
+      "name": "Iron Sword",
+      "type": "weapon", "subtype": "sword", "quality": "common",
+      "icon": "sword",
+      "weight": 5, "value": 20,
+      "description": "Standard military issue. Reliable and unadorned.",
+      "stats": { "atk": 5 },
+      "modifiers": [],
+      "requirements": { "str": 3 }
+    },
+    {
+      "id": "sword_steel",
+      "name": "Steel Sword",
+      "type": "weapon", "subtype": "sword", "quality": "fine",
+      "icon": "sword",
+      "weight": 5, "value": 60,
+      "description": "Well-tempered steel. Holds an edge well.",
+      "stats": { "atk": 7 },
+      "modifiers": [],
+      "requirements": { "str": 5 }
+    },
+    {
+      "id": "sword_knights_blade",
+      "name": "Knight's Blade",
+      "type": "weapon", "subtype": "sword", "quality": "masterwork",
+      "icon": "sword",
+      "weight": 5, "value": 150,
+      "description": "Forged by a master smith. Perfectly balanced.",
+      "stats": { "atk": 9, "dex": 1 },
+      "modifiers": [],
+      "requirements": { "str": 7 }
+    },
+    {
+      "id": "sword_flamebrand",
+      "name": "Flamebrand",
+      "type": "weapon", "subtype": "sword", "quality": "enchanted",
+      "icon": "sword",
+      "weight": 5, "value": 400,
+      "description": "The blade hums with trapped heat. Enemies flinch from the warmth before the edge even lands.",
+      "stats": { "atk": 11 },
+      "modifiers": [
+        { "id": "fire_damage", "name": "of Flame", "effect": "Deals 2 bonus fire damage per hit", "stats": {} }
+      ],
+      "requirements": { "str": 8 }
+    },
+
+    {
+      "id": "axe_hand",
+      "name": "Hand Axe",
+      "type": "weapon", "subtype": "axe", "quality": "common",
+      "icon": "axe",
+      "weight": 5, "value": 18,
+      "description": "A short-hafted axe. Crude but punishing.",
+      "stats": { "atk": 6 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "axe_battle",
+      "name": "Battle Axe",
+      "type": "weapon", "subtype": "axe", "quality": "fine",
+      "icon": "axe",
+      "weight": 7, "value": 70,
+      "description": "A two-handed axe with a broad head. Slow, but cleaves deep.",
+      "stats": { "atk": 9 },
+      "modifiers": [],
+      "requirements": { "str": 6 }
+    },
+    {
+      "id": "axe_war",
+      "name": "War Axe",
+      "type": "weapon", "subtype": "axe", "quality": "masterwork",
+      "icon": "axe",
+      "weight": 8, "value": 180,
+      "description": "Weighted perfectly for maximum impact. Leaves nothing standing.",
+      "stats": { "atk": 12 },
+      "modifiers": [],
+      "requirements": { "str": 8 }
+    },
+    {
+      "id": "axe_bloodcleaver",
+      "name": "Bloodcleaver",
+      "type": "weapon", "subtype": "axe", "quality": "enchanted",
+      "icon": "axe",
+      "weight": 8, "value": 450,
+      "description": "The blade thirsts. Each wound feeds something old bound within the steel.",
+      "stats": { "atk": 15 },
+      "modifiers": [
+        { "id": "life_steal", "name": "of the Vampire", "effect": "Restores 2 HP per hit", "stats": {} }
+      ],
+      "requirements": { "str": 9 }
+    },
+
+    {
+      "id": "dagger_bent_knife",
+      "name": "Bent Knife",
+      "type": "weapon", "subtype": "dagger", "quality": "poor",
+      "icon": "dagger",
+      "weight": 1, "value": 2,
+      "description": "A kitchen knife, bent at the tip. It'll do in a pinch.",
+      "stats": { "atk": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "dagger_iron",
+      "name": "Iron Dagger",
+      "type": "weapon", "subtype": "dagger", "quality": "common",
+      "icon": "dagger",
+      "weight": 2, "value": 15,
+      "description": "Light and quick. Rewards precision over strength.",
+      "stats": { "atk": 3 },
+      "modifiers": [],
+      "requirements": { "dex": 3 }
+    },
+    {
+      "id": "dagger_steel",
+      "name": "Steel Dagger",
+      "type": "weapon", "subtype": "dagger", "quality": "fine",
+      "icon": "dagger",
+      "weight": 2, "value": 55,
+      "description": "Thin and sharp as a needle. Finds gaps in armor.",
+      "stats": { "atk": 5 },
+      "modifiers": [],
+      "requirements": { "dex": 5 }
+    },
+    {
+      "id": "dagger_shadow_blade",
+      "name": "Shadow Blade",
+      "type": "weapon", "subtype": "dagger", "quality": "masterwork",
+      "icon": "dagger",
+      "weight": 2, "value": 160,
+      "description": "Dark metal that seems to absorb the torchlight around it.",
+      "stats": { "atk": 7, "dex": 2 },
+      "modifiers": [],
+      "requirements": { "dex": 6 }
+    },
+    {
+      "id": "dagger_vipers_fang",
+      "name": "Viper's Fang",
+      "type": "weapon", "subtype": "dagger", "quality": "enchanted",
+      "icon": "dagger",
+      "weight": 2, "value": 380,
+      "description": "Grooved blade. Whatever coats it hasn't dried in years.",
+      "stats": { "atk": 7 },
+      "modifiers": [
+        { "id": "crit_bonus", "name": "of the Viper", "effect": "+15% critical hit chance", "stats": { "critChance": 15 } }
+      ],
+      "requirements": { "dex": 7 }
+    },
+
+    {
+      "id": "mace_iron",
+      "name": "Iron Mace",
+      "type": "weapon", "subtype": "mace", "quality": "common",
+      "icon": "mace",
+      "weight": 6, "value": 18,
+      "description": "Blunt and heavy. Armor is less of a comfort when you're being bludgeoned.",
+      "stats": { "atk": 5 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "mace_spiked",
+      "name": "Spiked Mace",
+      "type": "weapon", "subtype": "mace", "quality": "fine",
+      "icon": "mace",
+      "weight": 7, "value": 65,
+      "description": "Iron flanges concentrate the impact. Leaves ugly dents.",
+      "stats": { "atk": 7 },
+      "modifiers": [],
+      "requirements": { "str": 6 }
+    },
+    {
+      "id": "mace_warhammer",
+      "name": "Warhammer",
+      "type": "weapon", "subtype": "mace", "quality": "masterwork",
+      "icon": "mace",
+      "weight": 9, "value": 175,
+      "description": "Built to crack plate. What it hits doesn't get up quickly.",
+      "stats": { "atk": 10, "str": 1 },
+      "modifiers": [],
+      "requirements": { "str": 8 }
+    },
+    {
+      "id": "mace_bonecrusher",
+      "name": "Bonecrusher",
+      "type": "weapon", "subtype": "mace", "quality": "enchanted",
+      "icon": "mace",
+      "weight": 9, "value": 430,
+      "description": "The head glows faintly. Enemies struck by it falter, as if the will to fight drains from them.",
+      "stats": { "atk": 12 },
+      "modifiers": [
+        { "id": "bonus_str", "name": "of the Giant", "effect": "+2 STR while equipped", "stats": { "str": 2 } }
+      ],
+      "requirements": { "str": 9 }
+    },
+
+    {
+      "id": "spear_wooden",
+      "name": "Wooden Spear",
+      "type": "weapon", "subtype": "spear", "quality": "poor",
+      "icon": "spear",
+      "weight": 4, "value": 4,
+      "description": "A sharpened stake. The tip will splinter eventually.",
+      "stats": { "atk": 3 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "spear_iron",
+      "name": "Iron Spear",
+      "type": "weapon", "subtype": "spear", "quality": "common",
+      "icon": "spear",
+      "weight": 5, "value": 22,
+      "description": "Iron-tipped and well-balanced. Good reach.",
+      "stats": { "atk": 5 },
+      "modifiers": [],
+      "requirements": { "str": 3 }
+    },
+    {
+      "id": "spear_steel_pike",
+      "name": "Steel Pike",
+      "type": "weapon", "subtype": "spear", "quality": "fine",
+      "icon": "spear",
+      "weight": 6, "value": 75,
+      "description": "A long pike with a leaf-shaped head. Keeps enemies at a safe distance.",
+      "stats": { "atk": 7 },
+      "modifiers": [],
+      "requirements": { "str": 5 }
+    },
+    {
+      "id": "spear_soldiers_pike",
+      "name": "Soldier's Pike",
+      "type": "weapon", "subtype": "spear", "quality": "masterwork",
+      "icon": "spear",
+      "weight": 6, "value": 165,
+      "description": "Issued to elite infantry. Perfectly weighted for continuous thrusting.",
+      "stats": { "atk": 9, "str": 1 },
+      "modifiers": [],
+      "requirements": { "str": 7 }
+    },
+    {
+      "id": "spear_serpent",
+      "name": "Serpent Spear",
+      "type": "weapon", "subtype": "spear", "quality": "enchanted",
+      "icon": "spear",
+      "weight": 5, "value": 420,
+      "description": "The shaft is carved with scales. It moves with you like an extension of your arm.",
+      "stats": { "atk": 12 },
+      "modifiers": [
+        { "id": "bonus_dex", "name": "of the Serpent", "effect": "+2 DEX while equipped", "stats": { "dex": 2 } }
+      ],
+      "requirements": { "str": 6, "dex": 4 }
+    },
+
+    {
+      "id": "armor_leather_cap",
+      "name": "Leather Cap",
+      "type": "armor", "subtype": "head", "quality": "common",
+      "icon": "leather-cap",
+      "weight": 1, "value": 10,
+      "description": "Boiled leather shaped into a cap. Better than nothing.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_iron_helm",
+      "name": "Iron Helm",
+      "type": "armor", "subtype": "head", "quality": "fine",
+      "icon": "helm",
+      "weight": 3, "value": 45,
+      "description": "A rounded iron helm with a simple nasal guard.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": { "str": 3 }
+    },
+    {
+      "id": "armor_steel_helm",
+      "name": "Steel Helm",
+      "type": "armor", "subtype": "head", "quality": "masterwork",
+      "icon": "helm",
+      "weight": 4, "value": 120,
+      "description": "Full-coverage steel with a visor slit. Inspires confidence.",
+      "stats": { "def": 3, "vit": 1 },
+      "modifiers": [],
+      "requirements": { "str": 5 }
+    },
+
+
+    {
+      "id": "armor_leather_vest",
+      "name": "Leather Vest",
+      "type": "armor", "subtype": "chest", "quality": "common",
+      "icon": "leather-vest",
+      "weight": 3, "value": 20,
+      "description": "Studded leather. Flexible enough to move in, tough enough to matter.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_chainmail",
+      "name": "Chainmail",
+      "type": "armor", "subtype": "chest", "quality": "fine",
+      "icon": "chainmail",
+      "weight": 8, "value": 90,
+      "description": "Interlocked iron rings. Heavy, but distributes impact well.",
+      "stats": { "def": 4 },
+      "modifiers": [],
+      "requirements": { "str": 5 }
+    },
+    {
+      "id": "armor_plate",
+      "name": "Plate Armor",
+      "type": "armor", "subtype": "chest", "quality": "masterwork",
+      "icon": "chainmail",
+      "weight": 14, "value": 220,
+      "description": "Full plate with articulated shoulders. The best money can buy.",
+      "stats": { "def": 6 },
+      "modifiers": [],
+      "requirements": { "str": 8 }
+    },
+    {
+      "id": "armor_dragonscale_vest",
+      "name": "Dragonscale Vest",
+      "type": "armor-steel", "subtype": "chest", "quality": "enchanted",
+      "icon": "chainmail",
+      "weight": 5, "value": 500,
+      "description": "Scales that shimmer between green and black. Warm to the touch, even here.",
+      "stats": { "def": 6 },
+      "modifiers": [
+        { "id": "hp_regen", "name": "of Regeneration", "effect": "Restores 1 HP every 10 seconds", "stats": {} }
+      ],
+      "requirements": { "str": 4 }
+    },
+
+
+    {
+      "id": "armor_leather_greaves",
+      "name": "Leather Greaves",
+      "type": "armor", "subtype": "legs", "quality": "common",
+      "icon": "armor-legs-leather",
+      "weight": 2, "value": 12,
+      "description": "Leather leggings reinforced at the knees.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_iron_greaves",
+      "name": "Iron Greaves",
+      "type": "armor", "subtype": "legs", "quality": "fine",
+      "icon": "armor-legs-steel",
+      "weight": 5, "value": 50,
+      "description": "Plate protection for the legs. Slows you down a little.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "armor_steel_greaves",
+      "name": "Steel Greaves",
+      "type": "armor", "subtype": "legs", "quality": "masterwork",
+      "icon": "armor-legs-steel",
+      "weight": 6, "value": 130,
+      "description": "Full leg coverage with articulated knee joints.",
+      "stats": { "def": 3 },
+      "modifiers": [],
+      "requirements": { "str": 6 }
+    },
+
+
+    {
+      "id": "armor_leather_gloves",
+      "name": "Leather Gloves",
+      "type": "armor", "subtype": "hands", "quality": "common",
+      "icon": "gloves-leather",
+      "weight": 1, "value": 8,
+      "description": "Thin leather gloves. Grip and a little protection.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_iron_gauntlets",
+      "name": "Iron Gauntlets",
+      "type": "armor", "subtype": "hands", "quality": "fine",
+      "icon": "gloves-steel",
+      "weight": 3, "value": 40,
+      "description": "Articulated iron plates over the knuckles and back of the hand.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "armor_steel_gauntlets",
+      "name": "Steel Gauntlets",
+      "type": "armor", "subtype": "hands", "quality": "masterwork",
+      "icon": "gloves-steel",
+      "weight": 4, "value": 110,
+      "description": "Full coverage. The grip is reinforced at the palm for heavy weapons.",
+      "stats": { "def": 2, "str": 1 },
+      "modifiers": [],
+      "requirements": { "str": 6 }
+    },
+
+
+    {
+      "id": "armor_leather_boots",
+      "name": "Leather Boots",
+      "type": "armor", "subtype": "feet", "quality": "common",
+      "icon": "leather-boots",
+      "weight": 2, "value": 10,
+      "description": "Sturdy and well-worn. Good for long dungeon walks.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_iron_sabatons",
+      "name": "Iron Sabatons",
+      "type": "armor", "subtype": "feet", "quality": "fine",
+      "icon": "steel-boots",
+      "weight": 4, "value": 40,
+      "description": "Plated foot protection. Heavier than you'd like.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "armor_steel_sabatons",
+      "name": "Steel Sabatons",
+      "type": "armor", "subtype": "feet", "quality": "masterwork",
+      "icon": "steel-boots",
+      "weight": 5, "value": 115,
+      "description": "Full plate foot protection with flexible toe joints.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": { "str": 5 }
+    },
+
+
+    {
+      "id": "armor_cracked_shield",
+      "name": "Cracked Shield",
+      "type": "armor", "subtype": "shield", "quality": "poor",
+      "icon": "shield",
+      "weight": 3, "value": 3,
+      "description": "Split down the middle and held together by a leather strap. Still blocks.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_wooden_buckler",
+      "name": "Wooden Buckler",
+      "type": "armor", "subtype": "shield", "quality": "common",
+      "icon": "shield",
+      "weight": 3, "value": 15,
+      "description": "Small and light. Won't stop a greataxe but handles the rest.",
+      "stats": { "def": 1 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "armor_iron_kite_shield",
+      "name": "Iron Kite Shield",
+      "type": "armor", "subtype": "shield", "quality": "fine",
+      "icon": "kite-shield",
+      "weight": 6, "value": 70,
+      "description": "Tall enough to cover most of the body. A reliable wall.",
+      "stats": { "def": 3 },
+      "modifiers": [],
+      "requirements": { "str": 4 }
+    },
+    {
+      "id": "armor_tower_shield",
+      "name": "Tower Shield",
+      "type": "armor", "subtype": "shield", "quality": "masterwork",
+      "icon": "kite-shield",
+      "weight": 10, "value": 190,
+      "description": "A slab of steel. You can barely see over the top.",
+      "stats": { "def": 4 },
+      "modifiers": [],
+      "requirements": { "str": 7 }
+    },
+
+
+    {
+      "id": "ring_of_power",
+      "name": "Ring of Power",
+      "type": "accessory", "subtype": "ring", "quality": "common",
+      "icon": "ring-red",
+      "weight": 0, "value": 60,
+      "description": "A heavy iron band. Wearing it feels like carrying less.",
+      "stats": { "str": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "ring_of_the_fox",
+      "name": "Ring of the Fox",
+      "type": "accessory", "subtype": "ring", "quality": "common",
+      "icon": "ring-red",
+      "weight": 0, "value": 60,
+      "description": "Engraved with a small running fox. Your fingers feel nimbler.",
+      "stats": { "dex": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "ring_of_iron_skin",
+      "name": "Ring of Iron Skin",
+      "type": "accessory", "subtype": "ring", "quality": "common",
+      "icon": "ring-blue",
+      "weight": 0, "value": 60,
+      "description": "Your skin feels slightly harder when this is on.",
+      "stats": { "def": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "ring_of_vitality",
+      "name": "Ring of Vitality",
+      "type": "accessory", "subtype": "ring", "quality": "common",
+      "icon": "ring-blue",
+      "weight": 0, "value": 70,
+      "description": "Faintly warm. Your heartbeat steadies while it's worn.",
+      "stats": { "vit": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "ring_of_the_bear",
+      "name": "Ring of the Bear",
+      "type": "accessory", "subtype": "ring", "quality": "fine",
+      "icon": "ring-green",
+      "weight": 0, "value": 140,
+      "description": "Thick gold band with a bear's head. Strength flows through you.",
+      "stats": { "str": 3, "hp": 10 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "ring_of_shadows",
+      "name": "Ring of Shadows",
+      "type": "accessory", "subtype": "ring", "quality": "enchanted",
+      "icon": "ring-green",
+      "weight": 0, "value": 350,
+      "description": "Black glass. The dungeon seems quieter when you wear it.",
+      "stats": { "dex": 3 },
+      "modifiers": [
+        { "id": "crit_bonus", "name": "of Shadows", "effect": "+10% critical hit chance", "stats": { "critChance": 10 } }
+      ],
+      "requirements": {}
+    },
+
+
+    {
+      "id": "amulet_of_warding",
+      "name": "Amulet of Warding",
+      "type": "accessory", "subtype": "amulet", "quality": "common",
+      "icon": "amulet-gold",
+      "weight": 0, "value": 75,
+      "description": "A carved ward on a leather cord. Old protective magic.",
+      "stats": { "def": 1, "hp": 5 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "amulet_of_fortitude",
+      "name": "Amulet of Fortitude",
+      "type": "accessory", "subtype": "amulet", "quality": "fine",
+      "icon": "amulet-gold",
+      "weight": 0, "value": 160,
+      "description": "Heavy bronze pendant. Your lungs feel bigger.",
+      "stats": { "vit": 3, "hp": 15 },
+      "modifiers": [],
+      "requirements": {}
+    },
+    {
+      "id": "amulet_of_the_warrior",
+      "name": "Amulet of the Warrior",
+      "type": "accessory", "subtype": "amulet", "quality": "fine",
+      "icon": "amulet-gold",
+      "weight": 0, "value": 155,
+      "description": "Stamped with a clenched fist. Worn by soldiers before battle.",
+      "stats": { "str": 2, "def": 2 },
+      "modifiers": [],
+      "requirements": {}
+    },
+
+    {
+      "id": "amulet_gregor",
+      "name": "Gregor's Family Amulet",
+      "type": "accessory", "subtype": "amulet", "quality": "common",
+      "icon": "amulet-gold",
+      "weight": 0, "value": 0,
+      "description": "A tarnished silver amulet engraved with a merchant's crest. Gregor would want this back.",
+      "stats": {},
+      "modifiers": [],
+      "requirements": {}
+    },
+
+    {
+      "id": "health_potion_small",
+      "name": "Health Potion",
+      "type": "consumable", "subtype": "health_potion", "quality": "common",
+      "icon": "red-potion",
+      "weight": 1, "value": 15,
+      "description": "A small vial of red liquid. Smells sharp. Works fast.",
+      "stats": { "hp": 15 },
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 10
+    },
+    {
+      "id": "health_potion_medium",
+      "name": "Health Potion (Medium)",
+      "type": "consumable", "subtype": "health_potion", "quality": "common",
+      "icon": "red-potion",
+      "weight": 1, "value": 35,
+      "description": "A generous flask of healing draught.",
+      "stats": { "hp": 35 },
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 5
+    },
+    {
+      "id": "health_potion_large",
+      "name": "Health Potion (Large)",
+      "type": "consumable", "subtype": "health_potion", "quality": "fine",
+      "icon": "red-potion",
+      "weight": 2, "value": 70,
+      "description": "A thick, dark potion. Restores considerably.",
+      "stats": { "hp": 60 },
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 3
+    },
+    {
+      "id": "torch_oil",
+      "name": "Torch Oil",
+      "type": "consumable", "subtype": "torch_oil", "quality": "common",
+      "icon": "oil-flask",
+      "weight": 1, "value": 10,
+      "description": "A small flask of lamp oil. Keeps the dark at bay a little longer.",
+      "stats": {},
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 5,
+      "effect": { "torchFuel": 100 }
+    },
+    {
+      "id": "antidote",
+      "name": "Antidote",
+      "type": "consumable", "subtype": "antidote", "quality": "common",
+      "icon": "green-potion",
+      "weight": 1, "value": 20,
+      "description": "Bitter and acrid. Cures poison. Hold your nose.",
+      "stats": {},
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 5,
+      "effect": { "curePoison": true }
+    },
+
+    {
+      "id": "rations",
+      "name": "Rations",
+      "type": "consumable", "subtype": "food", "quality": "common",
+      "icon": "bread",
+      "weight": 1, "value": 5,
+      "description": "A meager portion of dried meat and hard bread. Keeps the hunger at bay.",
+      "stats": {},
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 20,
+      "effect": { "restoreHunger": 30 }
+    },
+
+    {
+      "id": "bone",
+      "name": "Old Bone",
+      "type": "consumable", "subtype": "junk", "quality": "poor",
+      "icon": "bone",
+      "weight": 1, "value": 0,
+      "description": "It used to be part of something. Not useful.",
+      "stats": {},
+      "modifiers": [],
+      "requirements": {},
+      "stackable": true, "stackMax": 20
+    }
+
+  ]
+}

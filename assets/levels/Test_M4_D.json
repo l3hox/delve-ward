@@ -1,0 +1,155 @@
+{
+  "name": "Test M4 D",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#...#..#..#....#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#...#..#..#....#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_1",
+              "propId": "pillar"
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_2",
+              "propId": "rubble"
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_3",
+              "propId": "stalactite"
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_4",
+              "propId": "stalagmite"
+            },
+            {
+              "col": 6,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_5",
+              "propId": "statue"
+            },
+            {
+              "col": 8,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_6",
+              "propId": "banner"
+            },
+            {
+              "col": 7,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_7",
+              "propId": "crate_stack"
+            },
+            {
+              "col": 9,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_8",
+              "propId": "banner",
+              "wall": "S"
+            },
+            {
+              "col": 10,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_9",
+              "propId": "banner",
+              "wall": "E"
+            },
+            {
+              "col": 11,
+              "row": 3,
+              "type": "prop",
+              "id": "prop_10",
+              "propId": "banner",
+              "wall": "W"
+            },
+            {
+              "col": 4,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "N"
+            },
+            {
+              "col": 7,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "N"
+            },
+            {
+              "col": 10,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_3",
+              "wall": "N"
+            },
+            {
+              "col": 10,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_4",
+              "wall": "S"
+            },
+            {
+              "col": 7,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_5",
+              "wall": "S"
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_6",
+              "wall": "S"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

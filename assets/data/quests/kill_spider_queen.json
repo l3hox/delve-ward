@@ -1,0 +1,11 @@
+{
+  "id": "kill_spider_queen",
+  "name": "The Spider Queen",
+  "description": "A massive spider queen nests in the lower halls. Hilda wants her dead.",
+  "stages": [
+    {
+      "description": "Kill the spider queen and report back to Hilda the Bold.",
+      "rewards": { "xp": 75, "gold": 100 }
+    }
+  ]
+}

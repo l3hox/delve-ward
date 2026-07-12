@@ -1,0 +1,84 @@
+{
+  "startNode": "greeting",
+  "nodes": {
+    "greeting": {
+      "speaker": "Hilda the Bold",
+      "text": "Another adventurer! The dungeon's been crawling with vermin lately.",
+      "choices": [
+        {
+          "text": "Need something killed?",
+          "next": "bounty_intro",
+          "conditions": [
+            {
+              "type": "questStage",
+              "questId": "kill_spider_queen",
+              "stage": "undiscovered"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "The spider queen is dead.",
+          "next": "bounty_complete",
+          "conditions": [
+            {
+              "type": "questStage",
+              "questId": "kill_spider_queen",
+              "stage": "active"
+            },
+            {
+              "type": "hasFlag",
+              "flag": "spider_queen_killed"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "Farewell.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [],
+      "conditions": []
+    },
+    "bounty_intro": {
+      "speaker": "Hilda the Bold",
+      "text": "There's a massive spider nesting in the lower halls. Kill her and I'll pay a bounty of 100 gold.",
+      "choices": [
+        {
+          "text": "Consider it done.",
+          "next": null,
+          "effects": [
+            {
+              "type": "startQuest",
+              "questId": "kill_spider_queen"
+            }
+          ],
+          "conditions": []
+        },
+        {
+          "text": "I'll think about it.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [],
+      "conditions": []
+    },
+    "bounty_complete": {
+      "speaker": "Hilda the Bold",
+      "text": "Ha! You actually did it. Here's your gold, warrior. Well earned.",
+      "next": null,
+      "effects": [
+        {
+          "type": "advanceQuest",
+          "questId": "kill_spider_queen"
+        }
+      ],
+      "conditions": []
+    }
+  }
+}

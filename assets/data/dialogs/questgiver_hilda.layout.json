@@ -1,0 +1,14 @@
+{
+  "greeting": {
+    "x": 100,
+    "y": 100
+  },
+  "bounty_intro": {
+    "x": 398,
+    "y": 100
+  },
+  "bounty_complete": {
+    "x": 400,
+    "y": 300
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "name": "test_ramps",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 7,
+    "row": 9,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#....#.#.......#",
+            "#....###.......#",
+            "#..#######.....#",
+            "#...#####......#",
+            "#..#######.....#",
+            "#....######.#..#",
+            "#....#.######..#",
+            "#.......########",
+            "#........#####.#",
+            "#.......########",
+            "#.........###..#",
+            "#.........#.#..#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_2",
+              "facing": "S",
+              "style": "stairs"
+            },
+            {
+              "col": 9,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_3",
+              "facing": "W",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_4",
+              "facing": "N",
+              "style": "stairs"
+            },
+            {
+              "col": 11,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_5",
+              "facing": "N",
+              "style": "ramp"
+            },
+            {
+              "col": 11,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_6",
+              "facing": "S",
+              "style": "ramp"
+            },
+            {
+              "col": 14,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_7",
+              "facing": "W",
+              "style": "ramp"
+            },
+            {
+              "col": 8,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_8",
+              "facing": "E",
+              "style": "ramp"
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "S"
+            },
+            {
+              "col": 8,
+              "row": 3,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "S"
+            },
+            {
+              "col": 4,
+              "row": 7,
+              "type": "torch_sconce",
+              "id": "torch_sconce_3",
+              "wall": "N"
+            },
+            {
+              "col": 10,
+              "row": 6,
+              "type": "torch_sconce",
+              "id": "torch_sconce_4",
+              "wall": "S"
+            },
+            {
+              "col": 9,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_5",
+              "wall": "N"
+            },
+            {
+              "col": 13,
+              "row": 8,
+              "type": "torch_sconce",
+              "id": "torch_sconce_6",
+              "wall": "S"
+            },
+            {
+              "col": 13,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_7",
+              "wall": "N"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": []
+        }
+      ]
+    }
+  ]
+}

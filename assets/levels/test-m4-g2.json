@@ -1,0 +1,121 @@
+{
+  "name": "test-m4-g2",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#...#........#.#",
+            "#######.......##",
+            "##.............#",
+            "#......#####...#",
+            "####.......#...#",
+            "####...........#",
+            "#..............#",
+            "#......#...#...#",
+            "#.......#.#....#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..#...........#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 1,
+              "type": "block",
+              "id": "block_2"
+            },
+            {
+              "col": 1,
+              "row": 2,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "boulder_spawner_2"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 8,
+              "row": 6,
+              "type": "boulder_spawner",
+              "id": "boulder_spawner_1",
+              "direction": "E",
+              "interval": 5,
+              "active": true,
+              "rollDamage": 5,
+              "fallDamage": 5,
+              "instaKillEnemies": false,
+              "pushable": true
+            },
+            {
+              "col": 11,
+              "row": 6,
+              "type": "secret_wall",
+              "id": "secret_wall_1",
+              "persistent": false
+            },
+            {
+              "col": 10,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "S",
+              "style": "stairs"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "#..............#",
+            "#...#........#.#",
+            "#..#..........##",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..#...........#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 6,
+              "type": "boulder_spawner",
+              "id": "boulder_spawner_2",
+              "direction": "N",
+              "interval": 0.5,
+              "active": true,
+              "rollDamage": 5,
+              "fallDamage": 5,
+              "instaKillEnemies": false,
+              "pushable": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

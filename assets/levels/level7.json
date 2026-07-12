@@ -1,0 +1,88 @@
+{
+  "name": "The Locked Vault",
+  "playerStart": {
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "layers": [
+    {
+      "id": "0",
+      "grid": [
+        "###########",
+        "#.........#",
+        "#.###.###.#",
+        "#.#.....#.#",
+        "#.#.###.#.#",
+        "#...#.#...#",
+        "#.#.#.#.#.#",
+        "#.#...#.#.#",
+        "#.#.###.#.#",
+        "#.#...#.#.#",
+        "###########"
+      ],
+      "entities": [
+        {
+          "id": "door_1",
+          "col": 5,
+          "row": 2,
+          "type": "door",
+          "state": "closed"
+        },
+        {
+          "id": "door_2",
+          "col": 2,
+          "row": 5,
+          "type": "door",
+          "state": "closed",
+          "keyId": "gold_key"
+        },
+        {
+          "id": "door_3",
+          "col": 8,
+          "row": 5,
+          "type": "door",
+          "state": "closed"
+        },
+        {
+          "id": "door_4",
+          "col": 4,
+          "row": 7,
+          "type": "door",
+          "state": "closed"
+        },
+        {
+          "id": "key_1",
+          "col": 9,
+          "row": 1,
+          "type": "key",
+          "keyId": "gold_key"
+        },
+        {
+          "id": "lever_1",
+          "col": 7,
+          "row": 8,
+          "type": "lever",
+          "wall": "E",
+          "targets": [
+            "door_3"
+          ]
+        },
+        {
+          "id": "plate_1",
+          "col": 4,
+          "row": 9,
+          "type": "pressure_plate",
+          "targets": [
+            "door_4"
+          ]
+        }
+      ],
+      "defaults": {
+        "wallTexture": "stone",
+        "floorTexture": "cobblestone",
+        "ceilingTexture": "dark_rock"
+      }
+    }
+  ]
+}

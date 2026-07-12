@@ -1,0 +1,337 @@
+{
+  "name": "Test M2B",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#...#.##.##....#",
+            "#.#...#...#....#",
+            "#...#.#...#....#",
+            "#.....#...#....#",
+            "#...#.#####....#",
+            "#..............#",
+            "###............#",
+            "#.#............#",
+            "#.#............#",
+            "#.#............#",
+            "#.#............#",
+            "#.#............#",
+            "#.#######......#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "N"
+            },
+            {
+              "col": 2,
+              "row": 7,
+              "type": "torch_sconce",
+              "id": "torch_sconce_5",
+              "wall": "S"
+            },
+            {
+              "col": 14,
+              "row": 1,
+              "type": "stairs",
+              "id": "stairs_1",
+              "direction": "down",
+              "facing": "S",
+              "target": "stairs_2"
+            },
+            {
+              "col": 1,
+              "row": 2,
+              "type": "pressure_plate",
+              "id": "pressure_plate_2",
+              "targets": [
+                "gate_2"
+              ],
+              "signalMode": "toggle"
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_1",
+              "facing": "E",
+              "projectileType": "fireball",
+              "reloadTime": 1
+            },
+            {
+              "col": 1,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_2",
+              "facing": "E",
+              "projectileType": "fireball",
+              "reloadTime": 1
+            },
+            {
+              "col": 1,
+              "row": 5,
+              "type": "trap_launcher",
+              "id": "trap_launcher_3",
+              "facing": "E",
+              "projectileType": "fireball",
+              "reloadTime": 1
+            },
+            {
+              "col": 1,
+              "row": 6,
+              "type": "trap_launcher",
+              "id": "trap_launcher_4",
+              "facing": "E",
+              "projectileType": "fireball",
+              "reloadTime": 1
+            },
+            {
+              "col": 2,
+              "row": 3,
+              "type": "gate",
+              "id": "gate_2",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_1",
+                "gate_3"
+              ],
+              "delay": 0.2
+            },
+            {
+              "col": 2,
+              "row": 4,
+              "type": "gate",
+              "id": "gate_3",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_2",
+                "gate_4"
+              ],
+              "delay": 0.2
+            },
+            {
+              "col": 2,
+              "row": 5,
+              "type": "gate",
+              "id": "gate_4",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_3",
+                "gate_5"
+              ],
+              "delay": 0.2
+            },
+            {
+              "col": 2,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_5",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_4"
+              ],
+              "delay": 0.2
+            },
+            {
+              "col": 4,
+              "row": 5,
+              "type": "door",
+              "id": "door_1",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 9,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_6",
+              "facing": "W",
+              "projectileType": "fireball",
+              "reloadTime": 1,
+              "fireMode": "single"
+            },
+            {
+              "col": 9,
+              "row": 5,
+              "type": "trap_launcher",
+              "id": "trap_launcher_7",
+              "facing": "N",
+              "projectileType": "fireball",
+              "reloadTime": 1,
+              "fireMode": "single"
+            },
+            {
+              "col": 7,
+              "row": 5,
+              "type": "trap_launcher",
+              "id": "trap_launcher_8",
+              "facing": "E",
+              "projectileType": "fireball",
+              "reloadTime": 1,
+              "fireMode": "single"
+            },
+            {
+              "col": 8,
+              "row": 4,
+              "type": "pressure_plate",
+              "id": "pressure_plate_1",
+              "targets": [
+                "trap_launcher_7",
+                "trap_launcher_6",
+                "trap_launcher_8",
+                "trap_launcher_5"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "col": 7,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_5",
+              "facing": "S",
+              "projectileType": "dart",
+              "fireMode": "single",
+              "reloadTime": 3
+            },
+            {
+              "col": 3,
+              "row": 8,
+              "type": "enemy",
+              "id": "enemy_1",
+              "enemyType": "orc"
+            },
+            {
+              "col": 5,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_2",
+              "enemyType": "spider"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_2",
+      "name": "Level 2",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#...#....#.....#",
+            "#...#....#.....#",
+            "#........#.....#",
+            "#...#....#.....#",
+            "#...#....#.....#",
+            "#...######.....#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 6,
+              "row": 1,
+              "type": "stairs",
+              "id": "stairs_2",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_1"
+            },
+            {
+              "col": 5,
+              "row": 5,
+              "type": "lever",
+              "id": "lever_5",
+              "targets": [
+                "door_7"
+              ],
+              "wall": "S"
+            },
+            {
+              "col": 6,
+              "row": 5,
+              "type": "lever",
+              "id": "lever_6",
+              "targets": [
+                "door_7"
+              ],
+              "wall": "S"
+            },
+            {
+              "col": 7,
+              "row": 5,
+              "type": "lever",
+              "id": "lever_7",
+              "targets": [
+                "door_7"
+              ],
+              "wall": "S"
+            },
+            {
+              "col": 8,
+              "row": 5,
+              "type": "lever",
+              "id": "lever_8",
+              "targets": [
+                "door_7"
+              ],
+              "wall": "S"
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_18",
+              "wall": "W"
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_19",
+              "wall": "W"
+            },
+            {
+              "col": 8,
+              "row": 3,
+              "type": "torch_sconce",
+              "id": "torch_sconce_20",
+              "wall": "E"
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "door",
+              "id": "door_7",
+              "state": "closed"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "fetch_amulet",
+  "name": "The Lost Amulet",
+  "description": "Gregor's family amulet was lost deep in the dungeon.",
+  "stages": [
+    {
+      "description": "Find Gregor's family amulet and return it to him.",
+      "rewards": { "xp": 50, "gold": 75 }
+    }
+  ]
+}

@@ -1,0 +1,1061 @@
+{
+  "name": "Ruins in the forest",
+  "playerStart": {
+    "levelId": "level_forest",
+    "col": 4,
+    "row": 4,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_forest",
+      "name": "Forest",
+      "environment": "outdoor",
+      "skybox": "daylight",
+      "dustMotes": false,
+      "charDefs": [
+        {
+          "char": "T",
+          "solid": true,
+          "seeThrough": true,
+          "floorTexture": "grass",
+          "wallTexture": "forest"
+        },
+        {
+          "char": "D",
+          "solid": true,
+          "wallTexture": "mossy"
+        },
+        {
+          "char": "S",
+          "solid": false,
+          "floorTexture": "stone_tile"
+        },
+        {
+          "char": "E",
+          "solid": true,
+          "wallTexture": "stone"
+        },
+        {
+          "char": "I",
+          "solid": false,
+          "floorTexture": "dirt",
+          "ceilingTexture": "dark_rock"
+        },
+        {
+          "char": "L",
+          "solid": true,
+          "wallTexture": "wood"
+        }
+      ],
+      "layers": [
+        {
+          "id": "-1",
+          "grid": [
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################",
+            "################################"
+          ],
+          "entities": []
+        },
+        {
+          "id": "0",
+          "grid": [
+            "################################",
+            "################################",
+            "################################",
+            "###TTT##########################",
+            "###T.T##########################",
+            "###T.TT#########################",
+            "###TSTTTTTTTTTT#################",
+            "##..SSSSSSSSSTT#################",
+            "###S..TT.TTTSTT#################",
+            "###E.T.TTT#TS.TT################",
+            "####.######TSS.TTT##############",
+            "##.....####DSSSSTT##############",
+            "##.....####DDDDSTT##############",
+            "##.....####D..DSTT##############",
+            "##.....####DDDDSTT##############",
+            "############TTTS.TTT############",
+            "############TTTS..TT############",
+            "###########TTT.S.TT#############",
+            "########TTTTT..STTT#############",
+            "#######TTTTTTTTS.TTTT###########",
+            "#######TTT.TTT.S...TTTTT########",
+            "######TT.......SSSSSSSTT########",
+            "######TT.TSS.SSS..TTTS.TTTTT####",
+            "#####TT...T.T...TT...S..TT.TT###",
+            "#####TT.TTTTTTTTTT...S......T###",
+            "#####TTTTTTTTTTTT..DDSDSDDD.TT##",
+            "#####TTTTTT####TTT.DIIIIIED..T##",
+            "######TTT#######TT.DIIEIIID.TT##",
+            "################TTTDIIIIIED.T###",
+            "#################TTDIDDDDDDTTT##",
+            "#################TTDDD###TTTTT##",
+            "################################"
+          ],
+          "entities": [
+            {
+              "col": 12,
+              "row": 11,
+              "type": "npc",
+              "id": "npc_1",
+              "npcId": "merchant_gregor"
+            },
+            {
+              "col": 13,
+              "row": 11,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "S"
+            },
+            {
+              "col": 21,
+              "row": 25,
+              "type": "door",
+              "id": "door_1",
+              "state": "closed",
+              "gateMode": "or",
+              "keyId": "key_1"
+            },
+            {
+              "col": 23,
+              "row": 25,
+              "type": "door",
+              "id": "door_2",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 20,
+              "row": 24,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "S"
+            },
+            {
+              "col": 22,
+              "row": 24,
+              "type": "torch_sconce",
+              "id": "torch_sconce_4",
+              "wall": "S"
+            },
+            {
+              "col": 18,
+              "row": 27,
+              "type": "key",
+              "id": "key_1",
+              "keyId": "key_1"
+            },
+            {
+              "col": 7,
+              "row": 24,
+              "type": "chest",
+              "id": "chest_1",
+              "state": "closed",
+              "facing": "N",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "rations",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "health_potion_medium",
+                    "quality": "common"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 17,
+              "row": 16,
+              "type": "enemy",
+              "id": "enemy_2",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 13,
+              "row": 18,
+              "type": "enemy",
+              "id": "enemy_3",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 16,
+              "row": 19,
+              "type": "enemy",
+              "id": "enemy_4",
+              "enemyType": "goblin"
+            },
+            {
+              "col": 9,
+              "row": 23,
+              "type": "enemy",
+              "id": "enemy_5",
+              "enemyType": "rat"
+            },
+            {
+              "col": 25,
+              "row": 27,
+              "type": "stairs",
+              "id": "stairs_1",
+              "direction": "down",
+              "facing": "W",
+              "target": "stairs_2"
+            },
+            {
+              "col": 24,
+              "row": 26,
+              "type": "enemy",
+              "id": "enemy_7",
+              "enemyType": "rat"
+            },
+            {
+              "col": 23,
+              "row": 28,
+              "type": "enemy",
+              "id": "enemy_8",
+              "enemyType": "rat"
+            },
+            {
+              "col": 22,
+              "row": 26,
+              "type": "door",
+              "id": "door_3",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 22,
+              "row": 28,
+              "type": "door",
+              "id": "door_4",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 20,
+              "row": 27,
+              "type": "torch_sconce",
+              "id": "torch_sconce_3",
+              "wall": "W"
+            },
+            {
+              "col": 20,
+              "row": 27,
+              "type": "enemy",
+              "id": "enemy_6",
+              "enemyType": "rat",
+              "drops": {
+                "suppressTable": true
+              }
+            },
+            {
+              "col": 21,
+              "row": 27,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "door_3",
+                "door_4"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 24,
+              "row": 26,
+              "type": "torch_sconce",
+              "id": "torch_sconce_5",
+              "wall": "E"
+            },
+            {
+              "col": 24,
+              "row": 28,
+              "type": "torch_sconce",
+              "id": "torch_sconce_6",
+              "wall": "E"
+            },
+            {
+              "col": 20,
+              "row": 29,
+              "type": "stairs",
+              "id": "stairs_3",
+              "direction": "down",
+              "facing": "N",
+              "target": "stairs_4"
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "equipment",
+              "id": "equipment_1",
+              "itemId": "sword_iron"
+            },
+            {
+              "col": 4,
+              "row": 7,
+              "type": "consumable",
+              "id": "consumable_1",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 13,
+              "row": 21,
+              "type": "thin_wall",
+              "id": "thin_wall_1",
+              "wall": "E",
+              "solid": true,
+              "height": "half",
+              "texture": "railing",
+              "textureBack": "railing"
+            },
+            {
+              "col": 13,
+              "row": 21,
+              "type": "thin_wall",
+              "id": "thin_wall_2",
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "railing",
+              "textureBack": "railing"
+            },
+            {
+              "id": "thin_wall_3",
+              "type": "thin_wall",
+              "col": 3,
+              "row": 11,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_4",
+              "type": "thin_wall",
+              "col": 4,
+              "row": 11,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_5",
+              "type": "thin_wall",
+              "col": 5,
+              "row": 11,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_6",
+              "type": "thin_wall",
+              "col": 3,
+              "row": 13,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_7",
+              "type": "thin_wall",
+              "col": 4,
+              "row": 13,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_8",
+              "type": "thin_wall",
+              "col": 5,
+              "row": 13,
+              "wall": "S",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_9",
+              "type": "thin_wall",
+              "col": 2,
+              "row": 12,
+              "wall": "E",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_10",
+              "type": "thin_wall",
+              "col": 2,
+              "row": 13,
+              "wall": "E",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_11",
+              "type": "thin_wall",
+              "col": 5,
+              "row": 12,
+              "wall": "E",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "id": "thin_wall_12",
+              "type": "thin_wall",
+              "col": 5,
+              "row": 13,
+              "wall": "E",
+              "solid": true,
+              "height": "full",
+              "texture": "wood_fence"
+            },
+            {
+              "col": 3,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "S",
+              "style": "ramp"
+            }
+          ],
+          "ceiling": false,
+          "defaults": {
+            "wallTexture": "forest",
+            "floorTexture": "grass"
+          },
+          "areas": [
+            {
+              "fromCol": 19,
+              "toCol": 26,
+              "fromRow": 25,
+              "toRow": 30,
+              "environment": "dungeon",
+              "ceilingTexture": "dark_rock",
+              "wallTexture": "stone"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "...........EEEE.................",
+            "...........EEEE.................",
+            "...........EEEE.................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "...................EEEEEEEE.....",
+            "...................EEEEEEEE.....",
+            "...................EEEEEEEE.....",
+            "...................EEEEEEEE.....",
+            "...................EEEEEEEE.....",
+            "................................",
+            "................................"
+          ],
+          "entities": [],
+          "ceiling": false,
+          "defaults": {
+            "wallTexture": "forest",
+            "floorTexture": "grass",
+            "ceilingTexture": "canopy"
+          }
+        },
+        {
+          "id": "2",
+          "grid": [
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "...........EEEE.................",
+            "...........EEEE.................",
+            "...........EEEE.................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "...................E.EE..EE.....",
+            "........................EEE.....",
+            "...................E.EE...E.....",
+            "...................E....EEE.....",
+            "...................EEEEEEEE.....",
+            "................................",
+            "................................"
+          ],
+          "entities": [],
+          "ceiling": false,
+          "defaults": {
+            "wallTexture": "forest",
+            "floorTexture": "grass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "level_dungeon",
+      "name": "Dungeon 1",
+      "dustMotes": false,
+      "waterDrips": true,
+      "layers": [
+        {
+          "id": "-2",
+          "grid": [
+            "################",
+            "################",
+            "####.....#######",
+            "################",
+            "####.....#######",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################"
+          ],
+          "entities": []
+        },
+        {
+          "id": "-1",
+          "grid": [
+            "################",
+            "################",
+            "####.....#######",
+            "################",
+            "####.....#######",
+            "################",
+            "################",
+            "########...#...#",
+            "########.###...#",
+            "########.#.....#",
+            "########.#####.#",
+            "########.....#.#",
+            "########.....#.#",
+            "################",
+            "################",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_7",
+              "wall": "W"
+            },
+            {
+              "col": 8,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_8",
+              "wall": "E"
+            },
+            {
+              "col": 8,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_9",
+              "wall": "E"
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_10",
+              "wall": "W"
+            }
+          ]
+        },
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "################",
+            "####.....##.####",
+            "#...........####",
+            "####.....##.####",
+            "###########.####",
+            "###########.####",
+            "########.......#",
+            "########.......#",
+            "#####.##.......#",
+            "#####.##.......#",
+            "##.....#.......#",
+            "##.....#.......#",
+            "#####.#######.##",
+            "#####..#.#....##",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_2",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_3",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "col": 6,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_4",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "col": 7,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_5",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_2",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_2",
+                "gate_3"
+              ],
+              "delay": 0.35
+            },
+            {
+              "col": 5,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_3",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_3",
+                "gate_4"
+              ],
+              "delay": 0.35
+            },
+            {
+              "col": 6,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_4",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_4",
+                "gate_5"
+              ],
+              "delay": 0.35
+            },
+            {
+              "col": 7,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_5",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_5",
+                "gate_6"
+              ],
+              "delay": 0.35
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "stairs",
+              "id": "stairs_2",
+              "direction": "up",
+              "facing": "E",
+              "target": "stairs_1"
+            },
+            {
+              "col": 8,
+              "row": 4,
+              "type": "trap_launcher",
+              "id": "trap_launcher_6",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "col": 8,
+              "row": 6,
+              "type": "gate",
+              "id": "gate_6",
+              "gateType": "delay",
+              "targets": [
+                "trap_launcher_6"
+              ],
+              "delay": 0.35
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "tripwire",
+              "id": "tripwire_1",
+              "targets": [
+                "gate_2"
+              ],
+              "visibilityThreshold": 8,
+              "orientation": "NS"
+            },
+            {
+              "col": 9,
+              "row": 9,
+              "type": "enemy",
+              "id": "enemy_9",
+              "enemyType": "orc"
+            },
+            {
+              "col": 11,
+              "row": 10,
+              "type": "enemy",
+              "id": "enemy_10",
+              "enemyType": "orc"
+            },
+            {
+              "col": 13,
+              "row": 11,
+              "type": "enemy",
+              "id": "enemy_11",
+              "enemyType": "orc"
+            },
+            {
+              "col": 12,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_11",
+              "wall": "S"
+            },
+            {
+              "col": 14,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_12",
+              "wall": "S"
+            },
+            {
+              "col": 11,
+              "row": 2,
+              "type": "stairs",
+              "id": "stairs_4",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_3"
+            },
+            {
+              "col": 5,
+              "row": 13,
+              "type": "door",
+              "id": "door_5",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 5,
+              "row": 10,
+              "type": "door",
+              "id": "door_6",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 5,
+              "row": 12,
+              "type": "pressure_plate",
+              "id": "pressure_plate_1",
+              "targets": [
+                "door_6"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "col": 3,
+              "row": 12,
+              "type": "block",
+              "id": "block_1"
+            },
+            {
+              "col": 9,
+              "row": 14,
+              "type": "breakable_wall",
+              "id": "breakable_wall_1",
+              "hp": 30
+            },
+            {
+              "col": 7,
+              "row": 14,
+              "type": "secret_wall",
+              "id": "secret_wall_1",
+              "persistent": false
+            },
+            {
+              "col": 10,
+              "row": 14,
+              "type": "sign",
+              "id": "sign_1",
+              "wall": "N",
+              "text": "Sometime, the path can be cleared by the sheer force of the weapon.\nAnd sometimes you must not trust your eyes."
+            },
+            {
+              "col": 5,
+              "row": 9,
+              "type": "stairs",
+              "id": "stairs_5",
+              "direction": "down",
+              "facing": "S",
+              "target": "stairs_6"
+            },
+            {
+              "col": 4,
+              "row": 11,
+              "type": "torch_sconce",
+              "id": "torch_sconce_16",
+              "wall": "N"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "########.......#",
+            "########.......#",
+            "########.......#",
+            "########.......#",
+            "########.......#",
+            "########.......#",
+            "################",
+            "################",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 13,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_13",
+              "wall": "S"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_dungeon2",
+      "name": "Dungeon 2",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "#######....#####",
+            "#######....#####",
+            "#######......###",
+            "#######....#.###",
+            "#######....#.###",
+            "############.###",
+            "###########...##",
+            "###########...##",
+            "############.###",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 11,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_14",
+              "wall": "N"
+            },
+            {
+              "col": 13,
+              "row": 12,
+              "type": "torch_sconce",
+              "id": "torch_sconce_15",
+              "wall": "N"
+            },
+            {
+              "col": 12,
+              "row": 12,
+              "type": "fountain",
+              "id": "fountain_1",
+              "healAmount": 20
+            },
+            {
+              "col": 12,
+              "row": 11,
+              "type": "door",
+              "id": "door_7",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 12,
+              "row": 14,
+              "type": "stairs",
+              "id": "stairs_6",
+              "direction": "up",
+              "facing": "N",
+              "target": "stairs_5"
+            },
+            {
+              "col": 11,
+              "row": 8,
+              "type": "door",
+              "id": "door_8",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 10,
+              "row": 7,
+              "type": "enemy",
+              "id": "enemy_12",
+              "enemyType": "spider"
+            },
+            {
+              "col": 8,
+              "row": 9,
+              "type": "enemy",
+              "id": "enemy_13",
+              "enemyType": "spider"
+            },
+            {
+              "col": 11,
+              "row": 13,
+              "type": "chest",
+              "id": "chest_2",
+              "state": "closed",
+              "facing": "W",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "antidote",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "antidote",
+                    "quality": "common"
+                  }
+                ]
+              }
+            }
+          ],
+          "defaults": {
+            "wallTexture": "brick",
+            "floorTexture": "stone_tile",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    }
+  ]
+}

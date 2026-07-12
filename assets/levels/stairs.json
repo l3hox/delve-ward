@@ -1,0 +1,773 @@
+{
+  "name": "Stairs",
+  "playerStart": {
+    "levelId": "level1",
+    "col": 1,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level1",
+      "name": "Level1",
+      "environment": "outdoor",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..####.########",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "#..#############",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 9,
+              "type": "ramp",
+              "id": "ramp_9",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_10",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 11,
+              "type": "ramp",
+              "id": "ramp_11",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_12",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_13",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 14,
+              "type": "ramp",
+              "id": "ramp_14",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_2",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_3",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_4",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_5",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_6",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_7",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "ramp",
+              "id": "ramp_8",
+              "facing": "E",
+              "style": "stairs"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "#...############",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 1,
+              "type": "ramp",
+              "id": "ramp_15",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_16",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_17",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_18",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_19",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_20",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_21",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_22",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_23",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_24",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 9,
+              "type": "ramp",
+              "id": "ramp_25",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_26",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_27",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 11,
+              "type": "ramp",
+              "id": "ramp_28",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_29",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 14,
+              "type": "ramp",
+              "id": "ramp_30",
+              "facing": "E",
+              "style": "stairs"
+            }
+          ]
+        },
+        {
+          "id": "2",
+          "grid": [
+            "################",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "#....###########",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 1,
+              "type": "ramp",
+              "id": "ramp_31",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_32",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_33",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_34",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_35",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_36",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_37",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_38",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_39",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 9,
+              "type": "ramp",
+              "id": "ramp_40",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_41",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 11,
+              "type": "ramp",
+              "id": "ramp_42",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_43",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 14,
+              "type": "ramp",
+              "id": "ramp_44",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_45",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_6",
+              "wall": "N"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_7",
+              "wall": "N"
+            },
+            {
+              "col": 2,
+              "row": 14,
+              "type": "torch_sconce",
+              "id": "torch_sconce_8",
+              "wall": "S"
+            }
+          ]
+        },
+        {
+          "id": "3",
+          "grid": [
+            "################",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "#.....##########",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 5,
+              "row": 1,
+              "type": "ramp",
+              "id": "ramp_46",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_47",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_48",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_49",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_50",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_51",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_52",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_53",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 9,
+              "type": "ramp",
+              "id": "ramp_54",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 11,
+              "type": "ramp",
+              "id": "ramp_55",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_56",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_57",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 14,
+              "type": "ramp",
+              "id": "ramp_58",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 5,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_59",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 3,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_4",
+              "wall": "N"
+            },
+            {
+              "col": 3,
+              "row": 14,
+              "type": "torch_sconce",
+              "id": "torch_sconce_5",
+              "wall": "S"
+            }
+          ]
+        },
+        {
+          "id": "4",
+          "grid": [
+            "################",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "#......#########",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 6,
+              "row": 2,
+              "type": "ramp",
+              "id": "ramp_60",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 1,
+              "type": "ramp",
+              "id": "ramp_61",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_62",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 4,
+              "type": "ramp",
+              "id": "ramp_63",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 5,
+              "type": "ramp",
+              "id": "ramp_64",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 6,
+              "type": "ramp",
+              "id": "ramp_65",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 7,
+              "type": "ramp",
+              "id": "ramp_66",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 8,
+              "type": "ramp",
+              "id": "ramp_67",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 9,
+              "type": "ramp",
+              "id": "ramp_68",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 10,
+              "type": "ramp",
+              "id": "ramp_69",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 11,
+              "type": "ramp",
+              "id": "ramp_70",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 12,
+              "type": "ramp",
+              "id": "ramp_71",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 13,
+              "type": "ramp",
+              "id": "ramp_72",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 6,
+              "row": 14,
+              "type": "ramp",
+              "id": "ramp_73",
+              "facing": "E",
+              "style": "stairs"
+            },
+            {
+              "col": 4,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "N"
+            },
+            {
+              "col": 4,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "N"
+            },
+            {
+              "col": 4,
+              "row": 14,
+              "type": "torch_sconce",
+              "id": "torch_sconce_3",
+              "wall": "S"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,311 @@
+{
+  "name": "m4g2-test",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 7,
+    "row": 6,
+    "facing": "E"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "-2",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": []
+        },
+        {
+          "id": "-1",
+          "grid": [
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################"
+          ],
+          "entities": []
+        },
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..#############",
+            "#..............#",
+            "#...........#..#",
+            "#..............#",
+            "#.......#...#..#",
+            "#.......#####..#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_1",
+              "enemyType": "rat"
+            },
+            {
+              "col": 5,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_2",
+              "enemyType": "rat"
+            },
+            {
+              "col": 6,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_3",
+              "enemyType": "rat"
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_4",
+              "enemyType": "rat"
+            },
+            {
+              "col": 8,
+              "row": 1,
+              "type": "enemy",
+              "id": "enemy_5",
+              "enemyType": "rat"
+            },
+            {
+              "col": 13,
+              "row": 1,
+              "type": "boulder",
+              "id": "boulder_1",
+              "direction": "W",
+              "state": "rolling",
+              "rollDamage": 7,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 3,
+              "row": 1,
+              "type": "door",
+              "id": "door_1",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "door",
+              "id": "door_2",
+              "state": "open",
+              "gateMode": "or"
+            },
+            {
+              "col": 13,
+              "row": 3,
+              "type": "boulder",
+              "id": "boulder_2",
+              "direction": "W",
+              "state": "rolling",
+              "rollDamage": 7,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 1,
+              "row": 5,
+              "type": "block",
+              "id": "block_1"
+            },
+            {
+              "col": 14,
+              "row": 5,
+              "type": "boulder",
+              "id": "boulder_3",
+              "direction": "W",
+              "state": "rolling",
+              "rollDamage": 7,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 14,
+              "row": 5,
+              "type": "boulder",
+              "id": "boulder_4",
+              "direction": "W",
+              "state": "rolling",
+              "rollDamage": 7,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 12,
+              "row": 5,
+              "type": "tripwire",
+              "id": "tripwire_3",
+              "targets": [
+                "trap_launcher_1"
+              ],
+              "visibilityThreshold": 8,
+              "orientation": "NS"
+            },
+            {
+              "col": 10,
+              "row": 5,
+              "type": "pressure_plate",
+              "id": "pressure_plate_1",
+              "targets": [
+                "trap_launcher_2"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "col": 8,
+              "row": 5,
+              "type": "trigger",
+              "id": "trigger_1",
+              "targets": [
+                "trap_launcher_3"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "col": 11,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_1",
+              "facing": "S",
+              "projectileType": "fireball",
+              "fireMode": "single",
+              "reloadTime": 0.5,
+              "maxRange": 20
+            },
+            {
+              "col": 10,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_2",
+              "facing": "S",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 0.5,
+              "maxRange": 20
+            },
+            {
+              "col": 9,
+              "row": 3,
+              "type": "trap_launcher",
+              "id": "trap_launcher_3",
+              "facing": "S",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 0.5,
+              "maxRange": 20
+            },
+            {
+              "col": 8,
+              "row": 3,
+              "type": "boulder",
+              "id": "boulder_5",
+              "direction": "S",
+              "state": "rolling",
+              "rollDamage": 30,
+              "fallDamage": 60,
+              "instaKillEnemies": true,
+              "pushable": true
+            },
+            {
+              "col": 6,
+              "row": 6,
+              "type": "chest",
+              "id": "chest_1",
+              "state": "closed",
+              "facing": "S",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_rusty",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "sword_steel",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "axe_hand",
+                    "quality": "masterwork"
+                  },
+                  {
+                    "itemId": "axe_bloodcleaver",
+                    "quality": "enchanted"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 7,
+              "row": 5,
+              "type": "pit_trap",
+              "id": "pit_trap_1",
+              "state": "closed"
+            },
+            {
+              "col": 7,
+              "row": 6,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "pit_trap_1"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

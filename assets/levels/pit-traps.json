@@ -1,0 +1,344 @@
+{
+  "name": "pit-traps",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 1,
+    "row": 1,
+    "facing": "S",
+    "layerIndex": 1
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "environment": "mist",
+      "layers": [
+        {
+          "id": "-1",
+          "grid": [
+            "################",
+            "#..............#",
+            "#..............#",
+            "#..........#...#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 4,
+              "row": 2,
+              "type": "pit_trap",
+              "id": "pit_trap_7",
+              "state": "closed"
+            },
+            {
+              "col": 4,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_6",
+              "targets": [
+                "pit_trap_7"
+              ],
+              "wall": "N",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 12,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_2",
+              "facing": "W",
+              "style": "ramp"
+            }
+          ]
+        },
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "################",
+            "################",
+            "###########..###",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 11,
+              "row": 3,
+              "type": "ramp",
+              "id": "ramp_1",
+              "facing": "W",
+              "style": "ramp"
+            }
+          ]
+        },
+        {
+          "id": "1",
+          "grid": [
+            "################",
+            "#..........#...#",
+            "##.....#.......#",
+            "#.......#.#....#",
+            "#..#.#..###....#",
+            "#..#.#.........#",
+            "#..#.#.........#",
+            "#..............#",
+            "##.#...........#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 3,
+              "type": "pit_trap",
+              "id": "pit_trap_1",
+              "state": "closed"
+            },
+            {
+              "col": 1,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_1",
+              "targets": [
+                "pit_trap_1"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 5,
+              "row": 2,
+              "type": "pressure_plate",
+              "id": "pressure_plate_1",
+              "targets": [
+                "pit_trap_2"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "col": 5,
+              "row": 3,
+              "type": "pit_trap",
+              "id": "pit_trap_2",
+              "state": "closed"
+            },
+            {
+              "col": 8,
+              "row": 2,
+              "type": "pit_trap",
+              "id": "pit_trap_3",
+              "state": "closed"
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_2",
+              "targets": [
+                "pit_trap_3"
+              ],
+              "wall": "S",
+              "signalMode": "timed",
+              "signalDuration": 3
+            },
+            {
+              "col": 4,
+              "row": 5,
+              "type": "tripwire",
+              "id": "tripwire_1",
+              "targets": [
+                "pit_trap_4"
+              ],
+              "visibilityThreshold": 8,
+              "orientation": "EW"
+            },
+            {
+              "col": 4,
+              "row": 6,
+              "type": "pit_trap",
+              "id": "pit_trap_4",
+              "state": "closed"
+            },
+            {
+              "col": 2,
+              "row": 8,
+              "type": "pit_trap",
+              "id": "pit_trap_5",
+              "state": "closed",
+              "gateMode": "and"
+            },
+            {
+              "col": 1,
+              "row": 7,
+              "type": "lever",
+              "id": "lever_3",
+              "targets": [
+                "pit_trap_5"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 3,
+              "row": 7,
+              "type": "lever",
+              "id": "lever_4",
+              "targets": [
+                "pit_trap_5"
+              ],
+              "wall": "S",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 1,
+              "row": 5,
+              "type": "lever",
+              "id": "lever_5",
+              "targets": [
+                "pit_trap_6"
+              ],
+              "wall": "W",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 1,
+              "row": 5,
+              "type": "pit_trap",
+              "id": "pit_trap_6",
+              "state": "closed"
+            },
+            {
+              "col": 3,
+              "row": 1,
+              "type": "pit_trap",
+              "id": "pit_trap_8",
+              "state": "open",
+              "gateMode": "xor"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_7",
+              "targets": [
+                "gate_1"
+              ],
+              "wall": "N",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 3,
+              "row": 0,
+              "type": "gate",
+              "id": "gate_1",
+              "gateType": "not",
+              "targets": [
+                "pit_trap_8"
+              ]
+            },
+            {
+              "col": 11,
+              "row": 2,
+              "type": "pit_trap",
+              "id": "pit_trap_9",
+              "state": "closed"
+            },
+            {
+              "col": 12,
+              "row": 2,
+              "type": "pit_trap",
+              "id": "pit_trap_10",
+              "state": "closed"
+            },
+            {
+              "col": 10,
+              "row": 1,
+              "type": "lever",
+              "id": "lever_8",
+              "targets": [
+                "pit_trap_9",
+                "pit_trap_10"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "col": 9,
+              "row": 3,
+              "type": "stairs",
+              "id": "stairs_1",
+              "direction": "down",
+              "facing": "N",
+              "target": "stairs_2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_2",
+      "name": "Level Below",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "################",
+            "####...........#",
+            "##.#...........#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "#..............#",
+            "################"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 2,
+              "type": "stairs",
+              "id": "stairs_2",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

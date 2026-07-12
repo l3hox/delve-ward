@@ -1,0 +1,855 @@
+{
+  "name": "The Architect's Tomb",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 2,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "The Antechamber",
+      "dustMotes": true,
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "####################",
+            "#........#.....#...#",
+            "#........#.....#..##",
+            "#..................#",
+            "#........#.....#..##",
+            "#........#.....#...#",
+            "####.###############",
+            "#..#...............#",
+            "#..#...............#",
+            "#..#...............#",
+            "#..#..........#....#",
+            "####...............#",
+            "####..........#....#",
+            "####################"
+          ],
+          "entities": [
+            {
+              "id": "l1_sign_1",
+              "col": 2,
+              "row": 1,
+              "type": "sign",
+              "wall": "N",
+              "text": "Welcome, adventurer. WASD to move. Q/E to turn. Press F to attack."
+            },
+            {
+              "id": "l1_sign_2",
+              "col": 4,
+              "row": 1,
+              "type": "sign",
+              "wall": "N",
+              "text": "The Architect left traps for tomb robbers. Watch where you step."
+            },
+            {
+              "id": "l1_sign_3",
+              "col": 6,
+              "row": 1,
+              "type": "sign",
+              "wall": "N",
+              "text": "Not all walls are as solid as they seem."
+            },
+            {
+              "id": "l1_sign_4",
+              "col": 8,
+              "row": 5,
+              "type": "sign",
+              "wall": "E",
+              "text": "Press Space to interact with doors and levers."
+            },
+            {
+              "col": 1,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 8,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 10,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 5,
+              "row": 7,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 10,
+              "row": 12,
+              "type": "torch_sconce",
+              "wall": "S"
+            },
+            {
+              "id": "l1_door_1",
+              "col": 9,
+              "row": 3,
+              "type": "door",
+              "state": "closed",
+              "keyId": "l1_antechamber_key"
+            },
+            {
+              "id": "l1_lever_1",
+              "col": 10,
+              "row": 2,
+              "type": "lever",
+              "targets": [
+                "l1_door_2"
+              ],
+              "wall": "W",
+              "signalMode": "toggle"
+            },
+            {
+              "id": "l1_door_2",
+              "col": 15,
+              "row": 3,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "col": 17,
+              "row": 2,
+              "type": "equipment",
+              "itemId": "sword_iron"
+            },
+            {
+              "id": "l1_stairs_down_1",
+              "col": 18,
+              "row": 3,
+              "type": "stairs",
+              "direction": "down",
+              "facing": "W",
+              "target": "l2_stairs_up_1"
+            },
+            {
+              "id": "l1_trigger_1",
+              "col": 4,
+              "row": 6,
+              "type": "trigger",
+              "targets": [
+                "l1_door_3"
+              ],
+              "signalMode": "one_shot"
+            },
+            {
+              "id": "l1_door_3",
+              "col": 4,
+              "row": 7,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "id": "l1_tripwire_1",
+              "col": 7,
+              "row": 8,
+              "type": "tripwire",
+              "targets": [
+                "l1_launcher_1"
+              ]
+            },
+            {
+              "id": "l1_launcher_1",
+              "col": 18,
+              "row": 8,
+              "type": "trap_launcher",
+              "facing": "W",
+              "projectileType": "dart",
+              "fireMode": "single",
+              "reloadTime": 3
+            },
+            {
+              "id": "l1_enemy_1",
+              "col": 8,
+              "row": 9,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "id": "l1_enemy_2",
+              "col": 12,
+              "row": 10,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "id": "l1_enemy_3",
+              "col": 10,
+              "row": 11,
+              "type": "enemy",
+              "enemyType": "goblin"
+            },
+            {
+              "id": "l1_key_1",
+              "col": 6,
+              "row": 11,
+              "type": "key",
+              "keyId": "l1_antechamber_key"
+            },
+            {
+              "col": 16,
+              "row": 11,
+              "type": "consumable",
+              "itemId": "health_potion_small"
+            },
+            {
+              "col": 17,
+              "row": 11,
+              "type": "consumable",
+              "itemId": "torch_oil"
+            },
+            {
+              "col": 18,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "N"
+            },
+            {
+              "col": 1,
+              "row": 6,
+              "type": "secret_wall",
+              "id": "secret_wall_1",
+              "persistent": true
+            },
+            {
+              "col": 1,
+              "row": 10,
+              "type": "chest",
+              "id": "chest_1",
+              "state": "closed",
+              "facing": "N",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "armor_wooden_buckler",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "health_potion_small",
+                    "quality": "common"
+                  },
+                  {
+                    "itemId": "sword_rusty",
+                    "quality": "common"
+                  }
+                ]
+              }
+            }
+          ],
+          "defaults": {
+            "wallTexture": "brick"
+          }
+        }
+      ]
+    },
+    {
+      "id": "level_2",
+      "name": "The Puzzle Halls",
+      "dustMotes": true,
+      "charDefs": [
+        {
+          "char": "c",
+          "solid": false,
+          "wallTexture": "stone",
+          "floorTexture": "cobblestone"
+        },
+        {
+          "char": "m",
+          "solid": false,
+          "wallTexture": "mossy",
+          "floorTexture": "dirt"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "####################",
+            "##c##.....#mmmmmmm##",
+            "#ccc#.....#mmmmmmm##",
+            "#ccc#.....#mmmmmmm##",
+            "#ccc.......mmmmmmm##",
+            "#ccc#.....#mmmmmmm##",
+            "#ccc#.....####.#####",
+            "#ccc###.######.#####",
+            "#ccc###.######.#####",
+            "#######.######.#####",
+            "#.......#.........##",
+            "#.................##",
+            "#.......#.........##",
+            "#.......#....#.#..##",
+            "#########....#.#..##",
+            "####################"
+          ],
+          "entities": [
+            {
+              "id": "l2_stairs_up_1",
+              "col": 2,
+              "row": 1,
+              "type": "stairs",
+              "direction": "up",
+              "facing": "S",
+              "target": "l1_stairs_down_1"
+            },
+            {
+              "id": "l2_stairs_down_1",
+              "col": 14,
+              "row": 14,
+              "type": "stairs",
+              "direction": "down",
+              "facing": "N",
+              "target": "l3_stairs_up_1"
+            },
+            {
+              "id": "l2_sign_1",
+              "col": 6,
+              "row": 1,
+              "type": "sign",
+              "wall": "N",
+              "text": "Two levers, one gate. Both must yield before the way opens."
+            },
+            {
+              "id": "l2_lever_a",
+              "col": 5,
+              "row": 2,
+              "type": "lever",
+              "targets": [
+                "l2_and_gate_1"
+              ],
+              "wall": "W",
+              "signalMode": "toggle"
+            },
+            {
+              "id": "l2_lever_b",
+              "col": 9,
+              "row": 2,
+              "type": "lever",
+              "targets": [
+                "l2_and_gate_1"
+              ],
+              "wall": "E",
+              "signalMode": "toggle"
+            },
+            {
+              "id": "l2_and_gate_1",
+              "col": 7,
+              "row": 4,
+              "type": "gate",
+              "gateType": "and",
+              "targets": [
+                "l2_door_and"
+              ]
+            },
+            {
+              "id": "l2_door_and",
+              "col": 10,
+              "row": 4,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "id": "l2_lever_timed",
+              "col": 1,
+              "row": 13,
+              "type": "lever",
+              "targets": [
+                "l2_door_timed"
+              ],
+              "wall": "W",
+              "signalMode": "timed",
+              "signalDuration": 6
+            },
+            {
+              "id": "l2_door_timed",
+              "col": 8,
+              "row": 11,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "id": "l2_block_1",
+              "col": 12,
+              "row": 11,
+              "type": "block"
+            },
+            {
+              "id": "l2_plate_1",
+              "col": 12,
+              "row": 13,
+              "type": "pressure_plate",
+              "targets": [
+                "door_1"
+              ],
+              "signalMode": "momentary"
+            },
+            {
+              "id": "l2_chest_1",
+              "col": 16,
+              "row": 3,
+              "type": "chest",
+              "state": "closed",
+              "facing": "S",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "armor_leather_vest"
+                  },
+                  {
+                    "itemId": "health_potion_medium"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "l2_enemy_spider",
+              "col": 13,
+              "row": 2,
+              "type": "enemy",
+              "enemyType": "spider"
+            },
+            {
+              "id": "l2_enemy_skeleton_1",
+              "col": 15,
+              "row": 5,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "id": "l2_enemy_skeleton_2",
+              "col": 11,
+              "row": 12,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "id": "l2_enemy_kobold",
+              "col": 4,
+              "row": 12,
+              "type": "enemy",
+              "enemyType": "kobold"
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 14,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 17,
+              "row": 2,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 1,
+              "row": 10,
+              "type": "torch_sconce",
+              "wall": "W"
+            },
+            {
+              "col": 17,
+              "row": 10,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 15,
+              "row": 1,
+              "type": "consumable",
+              "itemId": "antidote"
+            },
+            {
+              "col": 3,
+              "row": 11,
+              "type": "consumable",
+              "itemId": "health_potion_medium"
+            },
+            {
+              "col": 14,
+              "row": 13,
+              "type": "door",
+              "id": "door_1",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 3,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_3",
+              "wall": "N"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "stone"
+          }
+        }
+      ]
+    },
+    {
+      "id": "level_3",
+      "name": "The Architect's Tomb",
+      "waterDrips": true,
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "####################",
+            "##.#...............#",
+            "#...............#..#",
+            "#...............#..#",
+            "#.......#########..#",
+            "######....#######..#",
+            "######..#......#####",
+            "######..#......#####",
+            "#.......#......#####",
+            "#.......#......#####",
+            "#.......############",
+            "######.........#####",
+            "######.........#####",
+            "######............##",
+            "######............##",
+            "######............##",
+            "########..........##",
+            "####################"
+          ],
+          "entities": [
+            {
+              "id": "l3_stairs_up_1",
+              "col": 2,
+              "row": 1,
+              "type": "stairs",
+              "direction": "up",
+              "facing": "S",
+              "target": "l2_stairs_down_1"
+            },
+            {
+              "id": "l3_door_troll",
+              "col": 16,
+              "row": 1,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "id": "l3_door_treasure",
+              "col": 8,
+              "row": 12,
+              "type": "door",
+              "state": "closed"
+            },
+            {
+              "id": "l3_sign_1",
+              "col": 10,
+              "row": 1,
+              "type": "sign",
+              "wall": "N",
+              "text": "He who built these halls feared nothing save his own ambition. The Architect sealed himself within, that none might inherit his craft."
+            },
+            {
+              "id": "l3_sign_2",
+              "col": 1,
+              "row": 3,
+              "type": "sign",
+              "wall": "W",
+              "text": "Turn back. The tomb remembers."
+            },
+            {
+              "col": 7,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 13,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 10,
+              "row": 6,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "id": "l3_zombie_1",
+              "col": 9,
+              "row": 2,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "id": "l3_zombie_2",
+              "col": 13,
+              "row": 2,
+              "type": "enemy",
+              "enemyType": "zombie"
+            },
+            {
+              "id": "l3_orc_1",
+              "col": 11,
+              "row": 8,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "id": "l3_troll_1",
+              "col": 17,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "troll"
+            },
+            {
+              "id": "l3_trigger_fb",
+              "col": 7,
+              "row": 12,
+              "type": "trigger",
+              "targets": [
+                "l3_launcher_fb1",
+                "l3_launcher_fb2"
+              ],
+              "signalMode": "one_shot"
+            },
+            {
+              "id": "l3_launcher_fb1",
+              "col": 7,
+              "row": 15,
+              "type": "trap_launcher",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "id": "l3_launcher_fb2",
+              "col": 8,
+              "row": 15,
+              "type": "trap_launcher",
+              "facing": "N",
+              "projectileType": "fireball",
+              "fireMode": "repeat",
+              "reloadTime": 3
+            },
+            {
+              "id": "l3_tripwire_1",
+              "col": 9,
+              "row": 12,
+              "type": "tripwire",
+              "targets": [
+                "l3_gate_d1"
+              ],
+              "orientation": "EW"
+            },
+            {
+              "id": "l3_gate_d1",
+              "col": 10,
+              "row": 11,
+              "type": "gate",
+              "gateType": "delay",
+              "delay": 1,
+              "targets": [
+                "l3_launcher_d1"
+              ]
+            },
+            {
+              "id": "l3_launcher_d1",
+              "col": 9,
+              "row": 11,
+              "type": "trap_launcher",
+              "facing": "S",
+              "projectileType": "dart",
+              "fireMode": "single",
+              "reloadTime": 2
+            },
+            {
+              "id": "l3_tripwire_2",
+              "col": 11,
+              "row": 12,
+              "type": "tripwire",
+              "targets": [
+                "l3_gate_d2"
+              ],
+              "orientation": "EW"
+            },
+            {
+              "id": "l3_gate_d2",
+              "col": 12,
+              "row": 11,
+              "type": "gate",
+              "gateType": "delay",
+              "delay": 0.5,
+              "targets": [
+                "l3_launcher_d2"
+              ]
+            },
+            {
+              "id": "l3_launcher_d2",
+              "col": 11,
+              "row": 11,
+              "type": "trap_launcher",
+              "facing": "S",
+              "projectileType": "dart",
+              "fireMode": "single",
+              "reloadTime": 2
+            },
+            {
+              "id": "l3_tripwire_3",
+              "col": 13,
+              "row": 12,
+              "type": "tripwire",
+              "targets": [
+                "l3_gate_d3"
+              ],
+              "orientation": "EW"
+            },
+            {
+              "id": "l3_gate_d3",
+              "col": 14,
+              "row": 11,
+              "type": "gate",
+              "gateType": "delay",
+              "delay": 1.5,
+              "targets": [
+                "l3_launcher_ar"
+              ]
+            },
+            {
+              "id": "l3_launcher_ar",
+              "col": 13,
+              "row": 11,
+              "type": "trap_launcher",
+              "facing": "S",
+              "projectileType": "arrow",
+              "fireMode": "single",
+              "reloadTime": 2
+            },
+            {
+              "id": "l3_key_boss",
+              "col": 12,
+              "row": 9,
+              "type": "key",
+              "keyId": "l3_boss_key"
+            },
+            {
+              "id": "l3_chest_locked",
+              "col": 12,
+              "row": 15,
+              "type": "chest",
+              "state": "closed",
+              "facing": "N",
+              "keyId": "l3_boss_key",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "sword_knights_blade"
+                  },
+                  {
+                    "itemId": "armor_chainmail"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "l3_chest_normal",
+              "col": 10,
+              "row": 14,
+              "type": "chest",
+              "state": "closed",
+              "facing": "N",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "mace_spiked"
+                  },
+                  {
+                    "itemId": "health_potion_large"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "l3_chest_troll",
+              "col": 18,
+              "row": 4,
+              "type": "chest",
+              "state": "closed",
+              "facing": "W",
+              "drops": {
+                "guaranteed": [
+                  {
+                    "itemId": "axe_battle"
+                  },
+                  {
+                    "itemId": "armor_iron_kite_shield"
+                  }
+                ]
+              }
+            },
+            {
+              "col": 15,
+              "row": 14,
+              "type": "equipment",
+              "itemId": "armor_iron_helm"
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "consumable",
+              "itemId": "health_potion_large"
+            },
+            {
+              "col": 9,
+              "row": 5,
+              "type": "consumable",
+              "itemId": "health_potion_medium"
+            },
+            {
+              "col": 9,
+              "row": 13,
+              "type": "consumable",
+              "itemId": "health_potion_large"
+            },
+            {
+              "col": 8,
+              "row": 5,
+              "type": "door",
+              "id": "door_2",
+              "state": "closed",
+              "gateMode": "or"
+            },
+            {
+              "col": 1,
+              "row": 2,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "N"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "mossy",
+            "floorTexture": "dirt"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "name": "The Descent",
+  "playerStart": {
+    "levelId": "entry_hall",
+    "col": 4,
+    "row": 1,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "entry_hall",
+      "name": "Entry Hall",
+      "dustMotes": false,
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "#########",
+            "#.......#",
+            "#.#.#.#.#",
+            "#.......#",
+            "##.#.#.##",
+            "#.......#",
+            "#.#...#.#",
+            "#.......#",
+            "####.####"
+          ],
+          "entities": [
+            {
+              "col": 1,
+              "row": 5,
+              "type": "key",
+              "keyId": "vault_key"
+            },
+            {
+              "col": 4,
+              "row": 4,
+              "type": "door",
+              "state": "closed",
+              "keyId": "vault_key",
+              "id": "door_1"
+            },
+            {
+              "col": 7,
+              "row": 3,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 1,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "rat"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "torch_sconce",
+              "wall": "N"
+            },
+            {
+              "col": 7,
+              "row": 5,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 3,
+              "row": 3,
+              "type": "equipment",
+              "itemId": "rusty_sword"
+            },
+            {
+              "col": 7,
+              "row": 7,
+              "type": "consumable",
+              "itemId": "health_potion"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "stone",
+            "floorTexture": "stone_tile",
+            "ceilingTexture": "dark_rock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lower_vault",
+      "name": "Lower Vault",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "####.####",
+            "#.......#",
+            "#.#.#.#.#",
+            "#.......#",
+            "#.......#",
+            "#.#...#.#",
+            "#.......#",
+            "#.......#",
+            "#########"
+          ],
+          "entities": [
+            {
+              "col": 3,
+              "row": 4,
+              "type": "enemy",
+              "enemyType": "skeleton"
+            },
+            {
+              "col": 5,
+              "row": 7,
+              "type": "enemy",
+              "enemyType": "orc"
+            },
+            {
+              "col": 7,
+              "row": 4,
+              "type": "torch_sconce",
+              "wall": "E"
+            },
+            {
+              "col": 7,
+              "row": 7,
+              "type": "equipment",
+              "itemId": "iron_shield"
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "equipment",
+              "itemId": "power_ring"
+            },
+            {
+              "col": 1,
+              "row": 7,
+              "type": "consumable",
+              "itemId": "torch_oil"
+            },
+            {
+              "col": 3,
+              "row": 7,
+              "type": "consumable",
+              "itemId": "health_potion_2"
+            }
+          ],
+          "defaults": {
+            "wallTexture": "brick",
+            "floorTexture": "dirt",
+            "ceilingTexture": "wooden_beams"
+          }
+        }
+      ]
+    }
+  ]
+}

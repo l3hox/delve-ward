@@ -1,0 +1,74 @@
+{
+  "name": "fixture1",
+  "playerStart": {
+    "levelId": "level_1",
+    "col": 2,
+    "row": 2,
+    "facing": "S"
+  },
+  "levels": [
+    {
+      "id": "level_1",
+      "name": "Level 1",
+      "layers": [
+        {
+          "id": "0",
+          "grid": [
+            "###########",
+            "#...##.####",
+            "#...#...###",
+            "#...#...###",
+            "##.##...###",
+            "##.########",
+            "###########",
+            "###########",
+            "###########",
+            "###########",
+            "###########"
+          ],
+          "entities": [
+            {
+              "col": 2,
+              "row": 5,
+              "type": "stairs",
+              "id": "stairs_1",
+              "direction": "down",
+              "facing": "N",
+              "target": "stairs_2"
+            },
+            {
+              "col": 6,
+              "row": 1,
+              "type": "stairs",
+              "id": "stairs_2",
+              "direction": "up",
+              "facing": "S",
+              "target": "stairs_1"
+            },
+            {
+              "col": 1,
+              "row": 3,
+              "type": "equipment",
+              "id": "equipment_1",
+              "itemId": "sword_iron"
+            },
+            {
+              "col": 2,
+              "row": 1,
+              "type": "torch_sconce",
+              "id": "torch_sconce_1",
+              "wall": "N"
+            },
+            {
+              "col": 6,
+              "row": 4,
+              "type": "torch_sconce",
+              "id": "torch_sconce_2",
+              "wall": "S"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

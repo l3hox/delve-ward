@@ -1,0 +1,95 @@
+{
+  "startNode": "greeting",
+  "nodes": {
+    "greeting": {
+      "speaker": "Owen the Lorekeeper",
+      "text": "Ah, a seeker of knowledge? There are ancient texts scattered through these halls.",
+      "choices": [
+        {
+          "text": "I'd like to help preserve them.",
+          "next": "lore_intro",
+          "conditions": [
+            {
+              "type": "questStage",
+              "questId": "collect_lore",
+              "stage": "undiscovered"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "I've found all the texts.",
+          "next": "lore_complete",
+          "conditions": [
+            {
+              "type": "questStage",
+              "questId": "collect_lore",
+              "stage": "active"
+            },
+            {
+              "type": "hasFlag",
+              "flag": "lore_all_found"
+            }
+          ],
+          "effects": []
+        },
+        {
+          "text": "Farewell.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [],
+      "conditions": []
+    },
+    "lore_intro": {
+      "speaker": "Owen the Lorekeeper",
+      "text": "Three ancient scrolls lie within these walls. Find them all and I shall share their wisdom with you.",
+      "choices": [
+        {
+          "text": "I'll search for them.",
+          "next": null,
+          "effects": [
+            {
+              "type": "startQuest",
+              "questId": "collect_lore"
+            }
+          ],
+          "conditions": []
+        },
+        {
+          "text": "Perhaps later.",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        },
+        {
+          "text": "",
+          "next": null,
+          "conditions": [],
+          "effects": []
+        }
+      ],
+      "effects": [
+        {
+          "type": "setFlag",
+          "flag": ""
+        }
+      ],
+      "conditions": []
+    },
+    "lore_complete": {
+      "speaker": "Owen the Lorekeeper",
+      "text": "All three! Remarkable. The knowledge within will serve you well. Take this as thanks.",
+      "next": null,
+      "effects": [
+        {
+          "type": "advanceQuest",
+          "questId": "collect_lore ss"
+        }
+      ],
+      "conditions": []
+    }
+  }
+}

@@ -1,0 +1,4 @@
+/target
+/saves
+.worktrees/
+.DS_Store

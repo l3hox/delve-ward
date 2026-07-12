@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "npcs": [
+    {
+      "id": "merchant_gregor",
+      "name": "Gregor the Merchant",
+      "sprite": { "path": "/sprites/merchant.png", "size": 2.0 },
+      "dialog": "merchant_gregor",
+      "stock": ["health_potion_small", "antidote", "torch_oil", "rations"],
+      "markup": 1.5,
+      "facing": "S"
+    },
+    {
+      "id": "questgiver_hilda",
+      "name": "Hilda the Bold",
+      "sprite": { "path": "/sprites/questgiver.png", "size": 2.0 },
+      "dialog": "questgiver_hilda",
+      "facing": "S"
+    },
+    {
+      "id": "lorekeeper_owen",
+      "name": "Owen the Lorekeeper",
+      "sprite": { "path": "/sprites/lorekeeper.png", "size": 2.0 },
+      "dialog": "lorekeeper_owen",
+      "facing": "S"
+    },
+    {
+      "id": "nameless_girl",
+      "name": "Nameless",
+      "sprite": { "path": "/sprites/questgiver.png", "size": 2.0 },
+      "dialog": "nameless_girl",
+      "facing": "S"
+    }
+  ]
+}
