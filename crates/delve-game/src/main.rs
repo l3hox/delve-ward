@@ -328,6 +328,7 @@ fn main() {
         .init_resource::<LevelSnapshots>()
         .init_resource::<sconces::SconceFlicker>()
         .init_resource::<char_creation::CharCreation>()
+        .init_resource::<session::BlockedDoors>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,

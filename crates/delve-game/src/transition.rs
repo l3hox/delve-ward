@@ -129,6 +129,7 @@ pub struct SwapWorld<'w, 's> {
     tripwire_handles: ResMut<'w, TripwireHandles>,
     projectiles: ResMut<'w, ProjectileManagerRes>,
     projectile_billboards: ResMut<'w, ProjectileBillboards>,
+    blocked_doors: ResMut<'w, crate::session::BlockedDoors>,
 }
 
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
@@ -170,6 +171,7 @@ pub fn perform_level_swap(
         .clone()
         .unwrap_or_else(|| target_level.name.clone());
 
+    world.blocked_doors.clear();
     let session = &mut *world.session;
     world.snapshots.0.insert(
         session.current_level_id.clone(),

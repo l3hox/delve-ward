@@ -13,7 +13,7 @@ use crate::transition::Transition;
 use crate::tripwires::{self, TripwireHandles};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, LeverState, MultiLayerSnapshot, WorldEvent};
+use delve_core::game_state::{DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent};
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::random::Mulberry32;
@@ -168,6 +168,27 @@ pub fn on_player_moved(
     if moved {
         game.deactivate_pressure_plate(i64::from(prev_col), i64::from(prev_row));
         game.deactivate_trigger(i64::from(prev_col), i64::from(prev_row));
+
+        // Safety: if the player ended up on a closed door cell, force it
+        // open and hand it to the blocked-door retry cycle.
+        let key = delve_core::game_state::door_key(col, row);
+        let closed_underfoot = game
+            .active_layer()
+            .doors
+            .get(&key)
+            .is_some_and(|door| door.state == DoorState::Closed);
+        if closed_underfoot {
+            set_door_state(game, &key, DoorState::Open);
+            set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+            signal.blocked_doors.by_key.insert(
+                key,
+                BlockedDoor {
+                    col,
+                    row,
+                    timer: DOOR_RETRY_INTERVAL,
+                },
+            );
+        }
     }
 
     game.reveal_around(col, row, pose.2, grid);
@@ -200,7 +221,7 @@ pub fn on_player_moved(
     }
 
     let events = game.take_events();
-    apply_world_events(events, &mut signal);
+    apply_world_events(events, game, (col, row), &mut signal);
 
     if let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
@@ -219,6 +240,81 @@ pub struct SignalRenderState<'w, 's> {
     pub lever: LeverRender<'w, 's>,
     pub plate: PlateRender<'w, 's>,
     pub tripwires: Res<'w, TripwireHandles>,
+    pub blocked_doors: ResMut<'w, BlockedDoors>,
+}
+
+const DOOR_RETRY_INTERVAL: f32 = 1.5;
+
+/// Doors a signal tried to close while the cell was occupied. The close is
+/// held off and retried on a timer (with a panel bounce) until the cell
+/// clears — a signal-driven close can never land on a standing player or
+/// enemy, ported from the TS `blockedDoors` map.
+#[derive(Resource, Default)]
+pub struct BlockedDoors {
+    by_key: HashMap<String, BlockedDoor>,
+}
+
+impl BlockedDoors {
+    pub fn clear(&mut self) {
+        self.by_key.clear();
+    }
+}
+
+struct BlockedDoor {
+    col: i64,
+    row: i64,
+    timer: f32,
+}
+
+fn is_door_cell_occupied(game: &GameState, player_cell: (i64, i64), col: i64, row: i64) -> bool {
+    player_cell == (col, row) || game.get_enemy(col, row).is_some()
+}
+
+fn bounce_panel(panels: &DoorPanels, panel_query: &mut Query<&mut DoorPanel>, key: &str) {
+    if let Some(&entity) = panels.by_key.get(key)
+        && let Ok(mut panel) = panel_query.get_mut(entity)
+    {
+        panel.bounce();
+    }
+}
+
+fn set_door_state(game: &mut GameState, key: &str, state: DoorState) {
+    if let Some(door) = game.active_layer_mut().doors.get_mut(key) {
+        door.state = state;
+    }
+}
+
+/// Retry pending blocked-door closes: once the cell clears, the door
+/// actually closes; while it stays occupied, the panel bounces and the
+/// timer re-arms.
+fn tick_blocked_doors(
+    game: &mut GameState,
+    player_cell: (i64, i64),
+    signal: &mut SignalRenderState,
+    delta: f32,
+) {
+    let mut close_now = Vec::new();
+    let mut bounce_now = Vec::new();
+    for (key, entry) in &mut signal.blocked_doors.by_key {
+        entry.timer -= delta;
+        if entry.timer > 0.0 {
+            continue;
+        }
+        if is_door_cell_occupied(game, player_cell, entry.col, entry.row) {
+            entry.timer = DOOR_RETRY_INTERVAL;
+            bounce_now.push(key.clone());
+        } else {
+            close_now.push(key.clone());
+        }
+    }
+    for key in close_now {
+        signal.blocked_doors.by_key.remove(&key);
+        set_door_state(game, &key, DoorState::Closed);
+        set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+    }
+    for key in bounce_now {
+        bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
+    }
 }
 
 /// Advance the game state's timed signals each frame and apply the
@@ -235,9 +331,16 @@ pub fn tick_game(
     if gate.blocked() {
         return;
     }
-    session.game.tick_signals(f64::from(time.delta_secs()));
+    let delta = time.delta_secs();
+    let player_cell = (
+        i64::from(session.last_player_pose.0),
+        i64::from(session.last_player_pose.1),
+    );
+    session.game.tick_signals(f64::from(delta));
     let events = session.game.take_events();
-    apply_world_events(events, &mut signal);
+    let Session { game, .. } = &mut *session;
+    apply_world_events(events, game, player_cell, &mut signal);
+    tick_blocked_doors(game, player_cell, &mut signal, delta);
 }
 
 fn set_panel_open(
@@ -254,17 +357,37 @@ fn set_panel_open(
 }
 
 /// Apply drained world events to rendering: door panels, lever resets, and
-/// plate resets. Pit traps, spawners, and launchers land with their phases.
-pub fn apply_world_events(events: Vec<WorldEvent>, signal: &mut SignalRenderState) {
+/// plate resets. Pit traps and spawners land with their phases. Signal
+/// closes on occupied door cells are held open and retried via
+/// [`BlockedDoors`].
+pub fn apply_world_events(
+    events: Vec<WorldEvent>,
+    game: &mut GameState,
+    player_cell: (i64, i64),
+    signal: &mut SignalRenderState,
+) {
     for event in events {
         match event {
             WorldEvent::DoorSignalChanged { col, row, open } => {
-                set_panel_open(
-                    &signal.door_panels,
-                    &mut signal.panel_query,
-                    &delve_core::game_state::door_key(col, row),
-                    open,
-                );
+                let key = delve_core::game_state::door_key(col, row);
+                if open {
+                    signal.blocked_doors.by_key.remove(&key);
+                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+                } else if is_door_cell_occupied(game, player_cell, col, row) {
+                    set_door_state(game, &key, DoorState::Open);
+                    signal.blocked_doors.by_key.insert(
+                        key.clone(),
+                        BlockedDoor {
+                            col,
+                            row,
+                            timer: DOOR_RETRY_INTERVAL,
+                        },
+                    );
+                    bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
+                } else {
+                    signal.blocked_doors.by_key.remove(&key);
+                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+                }
             }
             WorldEvent::LeverReset { col, row } => {
                 levers::set_lever_target(
@@ -374,6 +497,7 @@ pub fn interact_input(
         info!("{message}");
     }
 
+    let player_cell = (i64::from(player_state.col), i64::from(player_state.row));
     let events = session.game.take_events();
-    apply_world_events(events, &mut signal);
+    apply_world_events(events, &mut session.game, player_cell, &mut signal);
 }
