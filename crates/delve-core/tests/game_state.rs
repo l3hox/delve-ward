@@ -1772,3 +1772,57 @@ fn pit_trap_parses_with_default_state() {
         PitTrapState::Closed
     );
 }
+
+// --- layer() peek accessor (phase 5: ramp MoveRules closures only get &GameState) ---
+
+fn two_layer_defs() -> Vec<LayerDef> {
+    serde_json::from_value(json!([
+        {
+            "id": "ground",
+            "grid": ["...", "...", "..."],
+            "entities": [door(1, 1, "closed")],
+        },
+        {
+            "id": "upper",
+            "grid": ["...", "...", "..."],
+            "entities": [door(2, 2, "open")],
+        },
+    ]))
+    .expect("layer defs parse")
+}
+
+fn multi_layer_state() -> GameState {
+    let layers = two_layer_defs();
+    GameState::new(&[], None, "default", Some(&layers), deps(), &mut || 0.5)
+}
+
+#[test]
+fn layer_returns_each_layer_by_index_regardless_of_which_is_active() {
+    let state = multi_layer_state();
+    assert_eq!(state.active_layer_index, 0);
+
+    let ground = state.layer(0).expect("layer 0 exists");
+    assert!(ground.doors.contains_key(&door_key(1, 1)));
+    assert!(!ground.doors.contains_key(&door_key(2, 2)));
+
+    let upper = state.layer(1).expect("layer 1 exists");
+    assert!(upper.doors.contains_key(&door_key(2, 2)));
+    assert!(!upper.doors.contains_key(&door_key(1, 1)));
+
+    // Peeking a non-active layer must not disturb which layer is active.
+    assert_eq!(state.active_layer_index, 0);
+}
+
+#[test]
+fn layer_returns_none_for_an_out_of_range_index() {
+    let state = multi_layer_state();
+    assert!(state.layer(2).is_none());
+    assert!(state.layer(usize::MAX).is_none());
+}
+
+#[test]
+fn layer_returns_the_only_layer_for_a_single_layer_level() {
+    let state = gs(json!([door(1, 1, "closed")]));
+    assert!(state.layer(0).is_some());
+    assert!(state.layer(1).is_none());
+}

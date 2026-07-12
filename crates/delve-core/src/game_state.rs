@@ -899,6 +899,15 @@ impl GameState {
         &mut self.layers[self.active_layer_index]
     }
 
+    /// Peek a layer by index without disturbing `active_layer_index`. Needed
+    /// by callers that only hold `&GameState` (the `MoveRules` closures, for
+    /// ramp accessibility across layers) and so can't use TS's
+    /// save-then-restore-`activeLayerIndex` trick to read another layer.
+    #[must_use]
+    pub fn layer(&self, index: usize) -> Option<&LayerState> {
+        self.layers.get(index)
+    }
+
     /// Drain outward world events produced since the last call.
     pub fn take_events(&mut self) -> Vec<WorldEvent> {
         std::mem::take(&mut self.pending_events)
