@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod billboard;
+mod char_creation;
 mod damage_numbers;
 mod doors;
 mod dungeon;
@@ -315,10 +316,12 @@ fn main() {
         .init_resource::<transition::Transition>()
         .init_resource::<LevelSnapshots>()
         .init_resource::<sconces::SconceFlicker>()
+        .init_resource::<char_creation::CharCreation>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
             (
+                char_creation::char_creation_input,
                 session::player_input,
                 session::interact_input,
                 enemies::attack_input,

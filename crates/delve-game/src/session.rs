@@ -85,10 +85,10 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     session: Res<Session>,
-    transition: Res<Transition>,
+    gate: crate::char_creation::InputGate,
     mut players: Query<&mut Player>,
 ) {
-    if transition.is_active() {
+    if gate.blocked() {
         return;
     }
     let Ok(mut player) = players.single_mut() else {
@@ -206,13 +206,13 @@ pub fn apply_world_events(
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    transition: Res<Transition>,
+    gate: crate::char_creation::InputGate,
     players: Query<&Player>,
     panels: Res<DoorPanels>,
     mut panel_query: Query<&mut DoorPanel>,
     mut sconce_render: SconceRender,
 ) {
-    if transition.is_active() || !keys.just_pressed(KeyCode::Space) {
+    if gate.blocked() || !keys.just_pressed(KeyCode::Space) {
         return;
     }
     let Ok(player) = players.single() else {

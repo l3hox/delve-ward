@@ -5,6 +5,7 @@
 //! fonts, so messages render uppercase.
 
 use crate::assets_dir;
+use crate::char_creation::{CharCreation, draw_char_creation};
 use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
@@ -208,18 +209,23 @@ pub fn draw_hud(
     mut images: ResMut<Assets<Image>>,
     session: Res<Session>,
     items: Res<ItemDb>,
+    creation: Res<CharCreation>,
 ) {
     let hud = &mut *hud;
     let delta = time.delta_secs();
     hud.time += delta;
-    let game = &session.game;
     let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
 
-    draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
-    draw_inventory_panel(&mut canvas, game, &items.0, &mut hud.icons);
-    draw_xp_bar(&mut canvas, game);
-    draw_level_up_hint(&mut canvas, game);
-    draw_message(&mut canvas, hud, delta);
+    if creation.active {
+        draw_char_creation(&mut canvas, &creation);
+    } else {
+        let game = &session.game;
+        draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
+        draw_inventory_panel(&mut canvas, game, &items.0, &mut hud.icons);
+        draw_xp_bar(&mut canvas, game);
+        draw_level_up_hint(&mut canvas, game);
+        draw_message(&mut canvas, hud, delta);
+    }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
         image.data = Some(canvas.into_rgba_bytes());

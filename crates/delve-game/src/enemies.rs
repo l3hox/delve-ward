@@ -1,12 +1,12 @@
 //! Enemy billboards and AI ticking: sprites face the camera's view plane,
 //! move with the core AI, and melee the player when adjacent.
 
+use crate::char_creation::CharCreation;
 use crate::dungeon::CELL_SIZE;
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
 use crate::player::Player;
 use crate::session::{GameRng, Session};
-use crate::transition::Transition;
 use bevy::prelude::*;
 use delve_core::combat::{CombatResultType, enemy_attack_player, player_attack};
 use delve_core::enemies::{DEFAULT_SPRITE_SIZE, EnemyDatabase};
@@ -97,9 +97,13 @@ pub fn tick_enemies(
     mut session: ResMut<Session>,
     mut rng: ResMut<GameRng>,
     database: Res<EnemyDb>,
+    creation: Res<CharCreation>,
     players: Query<&Player>,
     mut render: EnemyRenderState,
 ) {
+    if creation.active {
+        return;
+    }
     let Ok(player) = players.single() else {
         return;
     };
@@ -187,13 +191,13 @@ pub fn tick_enemies(
 pub fn attack_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    transition: Res<Transition>,
+    gate: crate::char_creation::InputGate,
     mut rng: ResMut<GameRng>,
     mut billboards: ResMut<EnemyBillboards>,
     players: Query<&Player>,
     mut kill_effects: KillEffects,
 ) {
-    if transition.is_active() || !keys.just_pressed(KeyCode::KeyF) {
+    if gate.blocked() || !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
     let Ok(player) = players.single() else {
