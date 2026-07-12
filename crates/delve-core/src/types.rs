@@ -185,3 +185,39 @@ pub struct Dungeon {
     pub levels: Vec<DungeonLevel>,
     pub player_start: DungeonPlayerStart,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnemyAiState {
+    Idle,
+    Chase,
+    Attack,
+    Flee,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnemyInstance {
+    pub col: i64,
+    pub row: i64,
+    #[serde(rename = "type")]
+    pub enemy_type: String,
+    pub hp: f64,
+    pub max_hp: f64,
+    pub atk: f64,
+    pub def: f64,
+    pub aggro_range: f64,
+    pub move_interval: f64,
+    pub blocks_movement: bool,
+    pub ai_state: EnemyAiState,
+    pub move_timer: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regen_timer: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regen_pause_timer: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drops: Option<crate::loot::DropsOverride>,
+    pub status_effects: Vec<crate::status_effects::StatusEffect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawner_id: Option<String>,
+}

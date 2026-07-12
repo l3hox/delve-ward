@@ -13,7 +13,7 @@ pub struct Rgba {
 }
 
 impl Rgba {
-    pub fn opaque(red: u8, green: u8, blue: u8) -> Self {
+    pub const fn opaque(red: u8, green: u8, blue: u8) -> Self {
         Self {
             red,
             green,
@@ -22,7 +22,7 @@ impl Rgba {
         }
     }
 
-    pub fn translucent(red: u8, green: u8, blue: u8, alpha: f32) -> Self {
+    pub const fn translucent(red: u8, green: u8, blue: u8, alpha: f32) -> Self {
         Self {
             red,
             green,
@@ -32,21 +32,38 @@ impl Rgba {
     }
 }
 
+/// A decoded RGBA image used as a blit source (item icons, paperdoll art).
+pub struct RgbaImage {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
+}
+
 pub struct PixelCanvas {
-    size: usize,
+    width: usize,
+    height: usize,
     pixels: Vec<u8>,
 }
 
 impl PixelCanvas {
     pub fn new(size: usize) -> Self {
+        Self::with_dimensions(size, size)
+    }
+
+    pub fn with_dimensions(width: usize, height: usize) -> Self {
         Self {
-            size,
-            pixels: vec![0; size * size * 4],
+            width,
+            height,
+            pixels: vec![0; width * height * 4],
         }
     }
 
-    pub fn size(&self) -> usize {
-        self.size
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.height
     }
 
     pub fn into_rgba_bytes(self) -> Vec<u8> {
@@ -55,10 +72,10 @@ impl PixelCanvas {
 
     /// Source-over blend of `color` onto the pixel at (x, y).
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba) {
-        if x < 0 || y < 0 || x as usize >= self.size || y as usize >= self.size {
+        if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return;
         }
-        let offset = (y as usize * self.size + x as usize) * 4;
+        let offset = (y as usize * self.width + x as usize) * 4;
         let source_alpha = color.alpha.clamp(0.0, 1.0);
         let destination_alpha = f32::from(self.pixels[offset + 3]) / 255.0;
         let out_alpha = source_alpha + destination_alpha * (1.0 - source_alpha);
@@ -83,6 +100,39 @@ impl PixelCanvas {
         for py in y..y + height {
             for px in x..x + width {
                 self.blend_pixel(px, py, color);
+            }
+        }
+    }
+
+    /// 1px rectangle outline, matching canvas strokeRect with lineWidth 1.
+    pub fn stroke_rect(&mut self, x: i32, y: i32, width: i32, height: i32, color: Rgba) {
+        self.fill_rect(x, y, width, 1, color);
+        self.fill_rect(x, y + height - 1, width, 1, color);
+        self.fill_rect(x, y, 1, height, color);
+        self.fill_rect(x + width - 1, y, 1, height, color);
+    }
+
+    /// Nearest-neighbor blit of an RGBA source image scaled into the target
+    /// rectangle, with an extra alpha multiplier (canvas globalAlpha).
+    pub fn blit_scaled(&mut self, source: &RgbaImage, target: (i32, i32, i32, i32), alpha: f32) {
+        let (target_x, target_y, target_w, target_h) = target;
+        if target_w <= 0 || target_h <= 0 || source.width == 0 || source.height == 0 {
+            return;
+        }
+        for py in 0..target_h {
+            for px in 0..target_w {
+                let source_x = (px * source.width as i32 / target_w)
+                    .clamp(0, source.width as i32 - 1) as usize;
+                let source_y = (py * source.height as i32 / target_h)
+                    .clamp(0, source.height as i32 - 1) as usize;
+                let offset = (source_y * source.width + source_x) * 4;
+                let color = Rgba {
+                    red: source.pixels[offset],
+                    green: source.pixels[offset + 1],
+                    blue: source.pixels[offset + 2],
+                    alpha: f32::from(source.pixels[offset + 3]) / 255.0 * alpha,
+                };
+                self.blend_pixel(target_x + px, target_y + py, color);
             }
         }
     }

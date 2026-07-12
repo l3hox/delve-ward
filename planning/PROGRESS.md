@@ -10,12 +10,19 @@ Session-to-session state. Read this at the start of every session.
 
 ## Next Steps
 
-- [ ] Phase 2: doors, keys, locked doors, stairs with entity pairing and cross-level transitions
-- [ ] Phase 2: items, inventory, equipment, character stats, loot tables (roll logic with injected RNG + deferred lootTable tests), ground item billboards
-- [ ] Phase 2: enemies — billboard sprites, AI movement, melee combat, XP, death, loot drops (`src/enemies/`)
-- [ ] Phase 2: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
-- [ ] Phase 2: character creation screen
-- [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test
+Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMPLETE — everything phase 2 (and much of phases 3-5) needs from `delve-core` exists with ported TS test suites, all gates green. What remains is the `delve-game` shell:
+
+- [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack, combat, pathfinding, enemy AI + `create_enemy_instance` (`EnemyDatabase` implements `EnemyRegistrar`), player interaction module
+- [x] Game: `Session` resource wires `GameState` into the app; movement blocked by doors/enemies/blocks/npcs/barrels/boulders; Space interacts (`interaction::interact`); doors render (frame + sliding panel with bounce, ported from doorRenderer/doorAnimator); enemy billboards + AI ticking + melee both ways (F attacks); keys picked up on walk-over; combat feedback via log lines until the HUD lands
+- [x] Game: stairs render (stepped slabs + depth-fade vertex colors, `stairs.rs`); cross-level transitions with fade overlay (`transition.rs` + `level_scene.rs` spawn/despawn via `LevelEntity` marker); player camera dips/pitches on stair cells; level state snapshots restore on return (D15: default dungeon is now ruins.json, CLI-arg override)
+- [x] Game: ground item billboards with seeded cell spread (`ground_items.rs` ← groundItemRenderer/itemSprites); walk-over equipment/consumable pickups with billboard collapse-to-one-remaining (TS parity); kills grant XP (`add_xp`, level-up log) and roll loot onto the ground (lootSpawner port, gold + created item entities)
+- [x] Game: key billboards (procedural gold-key sprite, hidden on pickup) and wall sconces (bracket/arm/torch meshes, flickering point lights, torch taken via Space extinguishes); shared `FacesCamera` billboard system replaces the per-type copies
+- [x] Game: HUD — 640x360 software pixel canvas stretched as a UI image (`hud.rs`, `hud_font.rs`): health bar with low-HP pulse, XP bar + level-up hint, mini inventory panel (keys, gold, equipment paperdoll, backpack with quick-slot numbers, weapon cooldown overlay), HUD messages (pixel font substitutes the TS browser monospace — uppercase only); floating damage numbers as world billboards (`damage_numbers.rs`)
+- [x] Game: character creation screen (`char_creation.rs`; `InputGate` bundles transition + creation input blocking); timed signals tick each frame via `session::tick_game`
+- [x] Core (subagent ports): `projectiles.rs` (projectileManager, 23 parity tests; hits returned as `ProjectileHitEvent`s) and `save_system.rs` (saveSystem, 39 parity tests; `SaveStore` trait abstracts localStorage — file-backed impl lands with the phase 3 shell; quest restore deferred to the phase 4 quest manager)
+- [x] Phase 2 gate: fmt/clippy/test green (449 tests, 11 suites) plus `cargo run` smoke test, merged to main
+
+Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts).
 
 ## State
 
@@ -28,6 +35,7 @@ Session-to-session state. Read this at the start of every session.
 
 ## Known Issues
 
+- macOS launch path: use `scripts/bundle-macos.sh` + `open target/DelveWard.app`. macOS 26 denies activation to bare terminal binaries, so `cargo run` renders but never gets keyboard focus — fine for launch/init smoke tests only. Resolution details in `planning/ISSUE-macos-focus.md`. User confirmed movement works in the bundled build.
 - Smoke test verified launch/init only (window + Metal renderer up, no panics, dungeon loads clean). Screen capture is blocked by macOS permissions in agent sessions, so brightness/fog tuning has not been visually compared against the TS build — user eyes welcome on `cargo run`.
 - `npcs.json` defines `nameless_girl` with dialog `nameless_girl`, but no such dialog file exists — in the TS repo either (its dialog would 404 at runtime there too). The assets-gate test allowlists it; remove the allowance if a re-sync brings the file.
 - `items.json` ships `armor_dragonscale_vest` with `"type": "armor-steel"`, outside the documented type union. Ported faithfully via the `Unknown` variant (see D14); the item matches no type filter, same as in TS.

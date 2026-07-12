@@ -10,6 +10,16 @@ Seed stage. The workspace compiles and the port plan lives in `planning/PORT-PLA
 
 ## Running
 
+On macOS, build and launch the app bundle (macOS 26 refuses to activate bare
+terminal binaries — the window would render but never accept keyboard focus):
+
+```sh
+scripts/bundle-macos.sh
+open target/DelveWard.app
+```
+
+Elsewhere:
+
 ```sh
 cargo run
 ```
