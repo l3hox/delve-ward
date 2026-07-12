@@ -33,7 +33,7 @@ Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (i
 
 ## Known Issues
 
-- macOS keyboard focus is STILL BROKEN on the user's machine (macOS 26.5 Tahoe): the window renders but the app cannot be activated at all — clicking does not bring it to the foreground, keys beep. The launch-grace focus re-assert did not help. Full diagnosis, evidence, and the ordered next steps (stock-example baseline → environment triggers → .app bundle wrapper) live in `planning/ISSUE-macos-focus.md`. Pick that up first next session.
+- macOS launch path: use `scripts/bundle-macos.sh` + `open target/DelveWard.app`. macOS 26 denies activation to bare terminal binaries, so `cargo run` renders but never gets keyboard focus — fine for launch/init smoke tests only. Resolution details in `planning/ISSUE-macos-focus.md`. User confirmed movement works in the bundled build.
 - Smoke test verified launch/init only (window + Metal renderer up, no panics, dungeon loads clean). Screen capture is blocked by macOS permissions in agent sessions, so brightness/fog tuning has not been visually compared against the TS build — user eyes welcome on `cargo run`.
 - `npcs.json` defines `nameless_girl` with dialog `nameless_girl`, but no such dialog file exists — in the TS repo either (its dialog would 404 at runtime there too). The assets-gate test allowlists it; remove the allowance if a re-sync brings the file.
 - `items.json` ships `armor_dragonscale_vest` with `"type": "armor-steel"`, outside the documented type union. Ported faithfully via the `Unknown` variant (see D14); the item matches no type filter, same as in TS.

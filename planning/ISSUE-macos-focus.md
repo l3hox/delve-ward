@@ -1,6 +1,21 @@
 # ISSUE: macOS keyboard focus / window activation
 
-Status: OPEN. Read this before touching input or window code.
+Status: RESOLVED 2026-07-12. macOS 26 (Tahoe) denies activation to bare
+binaries launched from a terminal; wrapping the binary in a minimal `.app`
+bundle and launching via `open` fixes it. Supported macOS launch path:
+
+```sh
+scripts/bundle-macos.sh
+open target/DelveWard.app
+```
+
+Confirmed on the user's machine: window activates, keys work, movement fine.
+`cargo run` still shows the window but cannot be focused on macOS 26; use it
+only for launch/init smoke tests. The launch-grace focus re-assert
+(`claim_initial_focus` in `main.rs`) stays — it is harmless, self-settling,
+and covers terminal launches on older macOS versions.
+
+The original diagnosis follows, kept for reference.
 
 ## Symptom (user machine, macOS 26.5 Tahoe, Darwin 25.5)
 
