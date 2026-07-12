@@ -18,6 +18,7 @@ use crate::dialogs::{DialogEffect, DialogNode, DialogTree};
 use crate::entities::ItemLocation;
 use crate::game_state::GameState;
 use crate::items::ItemQuality;
+use crate::quest_manager::QuestManager;
 
 /// A side effect that reaches beyond `GameState` — the TS `onStartQuest` /
 /// `onAdvanceQuest` / `onOpenShop` hooks. The caller (eventually a quest
@@ -31,8 +32,16 @@ pub enum DialogEvent {
 
 // --- Condition evaluation ---
 
+/// `quests` mirrors the TS `QuestManager`'s installed evaluator: with a
+/// manager in scope, `questStage` conditions read real quest progress; with
+/// `None`, every quest reads as "undiscovered", the TS default evaluator's
+/// own pre-install placeholder.
 #[must_use]
-pub fn evaluate_condition(condition: &DialogCondition, game: &GameState) -> bool {
+pub fn evaluate_condition(
+    condition: &DialogCondition,
+    game: &GameState,
+    quests: Option<&QuestManager>,
+) -> bool {
     match condition.condition_type {
         DialogConditionType::HasFlag => condition
             .flag
@@ -42,10 +51,13 @@ pub fn evaluate_condition(condition: &DialogCondition, game: &GameState) -> bool
             .item_id
             .as_deref()
             .is_some_and(|item_id| player_has_item(game, item_id)),
-        // Quest progress isn't tracked in `GameState` yet, so this mirrors
-        // the TS default evaluator's placeholder: quests read as
-        // "undiscovered" until a quest manager installs a real evaluator.
-        DialogConditionType::QuestStage => condition.stage.as_deref() == Some("undiscovered"),
+        DialogConditionType::QuestStage => match quests {
+            Some(quests) => quests.evaluate_quest_stage_condition(
+                condition.quest_id.as_deref(),
+                condition.stage.as_deref().unwrap_or(""),
+            ),
+            None => condition.stage.as_deref() == Some("undiscovered"),
+        },
         DialogConditionType::StatCheck => stat_check(condition, game),
     }
 }
@@ -88,12 +100,16 @@ fn stat_check(condition: &DialogCondition, game: &GameState) -> bool {
 }
 
 #[must_use]
-pub fn evaluate_conditions(conditions: Option<&[DialogCondition]>, game: &GameState) -> bool {
+pub fn evaluate_conditions(
+    conditions: Option<&[DialogCondition]>,
+    game: &GameState,
+    quests: Option<&QuestManager>,
+) -> bool {
     match conditions {
         None => true,
         Some(conditions) => conditions
             .iter()
-            .all(|condition| evaluate_condition(condition, game)),
+            .all(|condition| evaluate_condition(condition, game, quests)),
     }
 }
 
@@ -199,6 +215,7 @@ pub fn get_current_node(session: &DialogSession) -> Option<&DialogNode> {
 pub fn get_available_choices<'session>(
     session: &'session DialogSession,
     game: &GameState,
+    quests: Option<&QuestManager>,
 ) -> Vec<&'session DialogChoice> {
     let Some(node) = get_current_node(session) else {
         return Vec::new();
@@ -208,7 +225,7 @@ pub fn get_available_choices<'session>(
     };
     choices
         .iter()
-        .filter(|choice| evaluate_conditions(choice.conditions.as_deref(), game))
+        .filter(|choice| evaluate_conditions(choice.conditions.as_deref(), game, quests))
         .collect()
 }
 
@@ -220,9 +237,10 @@ pub fn select_choice(
     session: &mut DialogSession,
     choice_index: usize,
     game: &mut GameState,
+    quests: Option<&QuestManager>,
 ) -> Option<String> {
     let (next, effects) = {
-        let choices = get_available_choices(session, game);
+        let choices = get_available_choices(session, game, quests);
         let choice = choices.get(choice_index)?;
         (choice.next.clone(), choice.effects.clone())
     };

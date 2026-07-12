@@ -13,11 +13,11 @@
 //! into `dialogManager`'s mutable evaluator table — `dialog_manager`'s own
 //! doc comment rules that pattern out for the same reason.
 //! [`QuestManager::evaluate_quest_stage_condition`] exposes the same
-//! decision table as a plain method instead. Wiring it into
-//! `dialog_manager::evaluate_condition`'s `QuestStage` arm (currently a
-//! hardcoded "always undiscovered" placeholder — quest state isn't tracked
-//! there yet) needs that module to grow a way to consult quest state, which
-//! is out of scope for this port.
+//! decision table as a plain method instead, and `dialog_manager`'s
+//! `evaluate_condition`/`evaluate_conditions`/`get_available_choices`/
+//! `select_choice` take an `Option<&QuestManager>` that delegates straight
+//! to it for `questStage` conditions — the direct-parameter equivalent of
+//! installing the evaluator, without the global mutable registry.
 
 use crate::entities::ItemLocation;
 use crate::game_state::GameState;
