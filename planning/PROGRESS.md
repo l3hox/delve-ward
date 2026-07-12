@@ -10,12 +10,17 @@ Session-to-session state. Read this at the start of every session.
 
 ## Next Steps
 
-- [ ] Phase 2: doors, keys, locked doors, stairs with entity pairing and cross-level transitions
-- [ ] Phase 2: items, inventory, equipment, character stats, loot tables (roll logic with injected RNG + deferred lootTable tests), ground item billboards
-- [ ] Phase 2: enemies — billboard sprites, AI movement, melee combat, XP, death, loot drops (`src/enemies/`)
-- [ ] Phase 2: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
-- [ ] Phase 2: character creation screen
-- [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test
+Work in progress on branch `port/phase-2-loot-game` (core logic largely done, game shell pending):
+
+- [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack (`game_state.rs` with world entity instances/parsing/signals/snapshots, inventory + combat + status sub-states), combat module — all with ported TS test suites (345 tests green)
+- [ ] Core: `src/enemies/` module (enemyTypes createEnemyInstance, AI/behaviors) and `src/level/interaction.ts` with tests
+- [ ] Game: doors/keys/stairs rendering, cross-level transitions wired through `GameState` + `WorldEvent`s
+- [ ] Game: ground item billboards, enemy billboard sprites and AI ticking, melee combat input
+- [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
+- [ ] Game: character creation screen
+- [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main
+
+Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar traits) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal propagation events are applied internally by `gs.handle_signal_events`.
 
 ## State
 
