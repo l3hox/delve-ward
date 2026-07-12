@@ -55,6 +55,7 @@ pub fn spawn_dungeon(
     meshes: &mut Assets<Mesh>,
     materials: &DungeonMaterials,
     level: &DungeonLevel,
+    stair_cells: &HashSet<String>,
 ) {
     let grid: Vec<Vec<char>> = level.grid.iter().map(|row| row.chars().collect()).collect();
     let char_defs: &[CharDef] = level.char_defs.as_deref().unwrap_or(&[]);
@@ -80,6 +81,15 @@ pub fn spawn_dungeon(
             let row = row_index as i32;
             let center_x = col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
             let center_z = row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+
+            // Stair cells own their floor, ceiling, and walls (stepped
+            // geometry plus side/back walls come from the stair renderer).
+            if stair_cells.contains(&delve_core::game_state::door_key(
+                i64::from(col),
+                i64::from(row),
+            )) {
+                continue;
+            }
 
             let textures = resolve_textures(
                 col,

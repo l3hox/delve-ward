@@ -60,11 +60,19 @@ pub fn spawn_level_scene(
     assets: &mut SceneAssets,
     scene: &SceneContext,
 ) -> LevelSceneHandles {
+    let stair_cells = scene
+        .game
+        .active_layer()
+        .stairs
+        .values()
+        .map(|stair| delve_core::game_state::door_key(stair.col, stair.row))
+        .collect();
     dungeon::spawn_dungeon(
         commands,
         assets.meshes,
         scene.dungeon_materials,
         scene.level,
+        &stair_cells,
     );
     stairs::spawn_stairs(
         commands,
