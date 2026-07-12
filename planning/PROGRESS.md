@@ -10,17 +10,16 @@ Session-to-session state. Read this at the start of every session.
 
 ## Next Steps
 
-Work in progress on branch `port/phase-2-loot-game` (core logic largely done, game shell pending):
+Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMPLETE — everything phase 2 (and much of phases 3-5) needs from `delve-core` exists with ported TS test suites, all gates green. What remains is the `delve-game` shell:
 
-- [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack (`game_state.rs` with world entity instances/parsing/signals/snapshots, inventory + combat + status sub-states), combat module — all with ported TS test suites (345 tests green)
-- [ ] Core: `src/enemies/` module (enemyTypes createEnemyInstance, AI/behaviors) and `src/level/interaction.ts` with tests
-- [ ] Game: doors/keys/stairs rendering, cross-level transitions wired through `GameState` + `WorldEvent`s
-- [ ] Game: ground item billboards, enemy billboard sprites and AI ticking, melee combat input
+- [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack, combat, pathfinding, enemy AI + `create_enemy_instance` (`EnemyDatabase` implements `EnemyRegistrar`), player interaction module
+- [ ] Game: doors/keys/stairs rendering (`doorRenderer.ts`, `stairRenderer.ts`, `keyRenderer.ts`), cross-level transitions (`game/transitionSystem.ts`), wired through `GameState` + `WorldEvent`s
+- [ ] Game: ground item billboards (`groundItemRenderer.ts`, `itemSprites.ts`), enemy billboards (`enemyRenderer.ts`, `billboardMaterial.ts`), enemy AI ticking (`update_enemies` with `EnemyUpdateContext`), melee combat input (Space)
 - [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
 - [ ] Game: character creation screen
 - [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main
 
-Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar traits) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal propagation events are applied internally by `gs.handle_signal_events`.
+Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts).
 
 ## State
 
