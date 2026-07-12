@@ -164,6 +164,8 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | tradingOverlay.ts | Unported | — | Phase 4 | |
 | xpBar.ts | Ported | `hud.rs` (`draw_xp_bar`) | — | LV label, MAX-at-cap, fill ratio, progress text match. |
 
+Known shell gap: TS pushes blocks both by face+interact and by walking into them (a `setOnMoveBlocked` movement hook); the Rust shell implements face+interact only — the movement-blocked hook doesn't exist in `player.rs` yet. Revisit with the phase 4 input work.
+
 Phase 5 note: TS has a latent ground-item key-format bug (initial meshes keyed unprefixed, pickup hides with a layer-prefixed key — level-authored items leave a ghost billboard after pickup). `ground_items.rs` keys consistently and does not reproduce it. When layer-aware keying lands in phase 5, decide whether to preserve that incidental correctness or match TS bit-for-bit.
 
 ### `src/npcs/`, `src/enemies/`, `src/level/`
