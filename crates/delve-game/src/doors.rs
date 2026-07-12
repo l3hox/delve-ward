@@ -68,6 +68,10 @@ impl DoorPanel {
 /// Scale box UVs so each face samples texture proportional to its size,
 /// preventing squeeze on thin dimensions. When `full_front_back` is set the
 /// ±z faces keep their default 0..1 mapping (used for door panels).
+///
+/// Like the TS renderers, UVs are corner-anchored: each face's UV range
+/// starts at 0 and spans size/reference, so texture coursing lines up with
+/// the flat wall tiles.
 pub(crate) fn fix_box_uvs(mesh: &mut Mesh, reference_size: f32, full_front_back: bool) {
     let positions: Vec<[f32; 3]> = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(values)) => values.clone(),
@@ -77,6 +81,7 @@ pub(crate) fn fix_box_uvs(mesh: &mut Mesh, reference_size: f32, full_front_back:
         Some(VertexAttributeValues::Float32x3(values)) => values.clone(),
         _ => return,
     };
+    let half_extents = half_extents(&positions);
     let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
     else {
         return;
@@ -94,10 +99,20 @@ pub(crate) fn fix_box_uvs(mesh: &mut Mesh, reference_size: f32, full_front_back:
             }
             (0, 1) // ±z faces: U across width, V across height
         };
-        // Map local position to 0..(size/reference) per axis.
-        uv[0] = position[u_axis] / reference_size + 0.5;
-        uv[1] = position[v_axis] / reference_size + 0.5;
+        uv[0] = (position[u_axis] + half_extents[u_axis]) / reference_size;
+        uv[1] = (position[v_axis] + half_extents[v_axis]) / reference_size;
     }
+}
+
+/// Per-axis half sizes of a mesh centered on its origin.
+pub(crate) fn half_extents(positions: &[[f32; 3]]) -> [f32; 3] {
+    let mut extents = [0.0_f32; 3];
+    for position in positions {
+        for (axis, extent) in extents.iter_mut().enumerate() {
+            *extent = extent.max(position[axis].abs());
+        }
+    }
+    extents
 }
 
 fn box_mesh(

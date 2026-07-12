@@ -140,7 +140,7 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
 | attributePanel.ts | Unported | — | Unscoped — see Top Findings | Points earned but unspendable. |
-| compassRose.ts | Unported | — | Unscoped — see Top Findings | |
+| compassRose.ts | Ported | `hud.rs` (`draw_compass`) | — | |
 | dialogOverlay.ts | Unported | — | Phase 4 | |
 | healthBar.ts | Ported | `hud.rs` (`draw_health_bar`) | — | Bar, low-HP pulse, heart icon, HP text match. |
 | hudCanvas.ts | Partial | `hud.rs` (`draw_hud`) | — | TS orchestrator wires compass/torch/hunger/status-icons/minimap/stats-panel/inventory-overlay/attribute-panel/level-up-toast/sword-swing plus mouse drag-drop; `draw_hud` calls health/inventory/XP/level-up-hint/message only. |
@@ -150,19 +150,21 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | hungerBar.ts | Unported | — | Phase 4 | |
 | characterCreation.ts | Ported | `char_creation.rs` | — | Same points budget/min-stat/panel geometry; pixel font substitutes native canvas text. |
 | inventoryOverlay.ts | Unported | — | Unscoped — see Top Findings | Full-screen interactive inventory (cursor, drag-drop, tooltips); equip is walk-over-only in Rust. |
-| inventoryPanel.ts | Ported | `hud.rs` (`draw_inventory_panel`) | — | Key count, gold, equipment slots + paperdoll ghosts, cooldown overlay, backpack grid all match; display-only in both. |
+| inventoryPanel.ts | Partially ported | `hud.rs` (`draw_inventory_panel`) | Phase 4 | Drawing matches (key count, gold, equipment + paperdoll ghosts, cooldown overlay, backpack grid). The TS panel is additionally mouse-interactive (hover, drag-to-equip, double-click use, right-click drop); those land with the phase 4 overlay/mouse work. |
 | itemTooltip.ts | Unported | — | Unscoped — see Top Findings | Depends on inventoryOverlay.ts's cursor state. |
 | levelUpNotification.ts | Unported | — | Unscoped — see Top Findings | Not the same thing as `draw_level_up_hint` (a different, persistent prompt). |
-| minimapRenderer.ts | Unported | — | Unscoped — see Top Findings | |
+| minimapRenderer.ts | Ported | `hud.rs` (`draw_minimap`) | — | |
 | paperdollIcons.ts | Ported | `hud.rs` (`paperdoll_path`, `IconCache`) | — | Identical slot→path mapping. |
 | questLogOverlay.ts | Unported | — | Phase 4 | |
 | saveLoadOverlay.ts | Unported | — | Phase 3 | `save_system.rs` core fully implemented, no UI/keybinding. |
 | signOverlay.ts | Unported | — | Phase 3 | `SignRead`/`BookshelfRead` results computed and logged, no popup. |
 | statsPanel.ts | Unported | — | Unscoped — see Top Findings | |
 | statusEffectIcons.ts | Unported | — | Phase 3 | |
-| torchIndicator.ts | Unported | — | Unscoped — see Top Findings | |
+| torchIndicator.ts | Ported | `hud.rs` (`draw_torch_indicator`) | — | Fuel drain itself is phase 3 (player controller wiring). |
 | tradingOverlay.ts | Unported | — | Phase 4 | |
 | xpBar.ts | Ported | `hud.rs` (`draw_xp_bar`) | — | LV label, MAX-at-cap, fill ratio, progress text match. |
+
+Phase 5 note: TS has a latent ground-item key-format bug (initial meshes keyed unprefixed, pickup hides with a layer-prefixed key — level-authored items leave a ghost billboard after pickup). `ground_items.rs` keys consistently and does not reproduce it. When layer-aware keying lands in phase 5, decide whether to preserve that incidental correctness or match TS bit-for-bit.
 
 ### `src/npcs/`, `src/enemies/`, `src/level/`
 

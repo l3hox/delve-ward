@@ -74,7 +74,8 @@ fn apply_depth_fade(mesh: &mut Mesh, mesh_z: f32) {
 }
 
 /// Side walls span two floors: the wall texture repeats per WALL_HEIGHT
-/// vertically and per CELL_SIZE horizontally.
+/// vertically and per CELL_SIZE horizontally. Corner-anchored like the TS
+/// UV fix, so coursing aligns with the flat wall tiles.
 fn fix_side_wall_uvs(mesh: &mut Mesh) {
     let positions: Vec<[f32; 3]> = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(values)) => values.clone(),
@@ -84,6 +85,7 @@ fn fix_side_wall_uvs(mesh: &mut Mesh) {
         Some(VertexAttributeValues::Float32x3(values)) => values.clone(),
         _ => return,
     };
+    let half_extents = crate::doors::half_extents(&positions);
     let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
     else {
         return;
@@ -99,8 +101,8 @@ fn fix_side_wall_uvs(mesh: &mut Mesh) {
             (0, 1) // ±z faces: U across width, V across height
         };
         let v_reference = if v_axis == 1 { WALL_HEIGHT } else { CELL_SIZE };
-        uv[0] = position[u_axis] / CELL_SIZE + 0.5;
-        uv[1] = position[v_axis] / v_reference + 0.5;
+        uv[0] = (position[u_axis] + half_extents[u_axis]) / CELL_SIZE;
+        uv[1] = (position[v_axis] + half_extents[v_axis]) / v_reference;
     }
 }
 
