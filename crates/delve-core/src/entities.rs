@@ -167,8 +167,7 @@ impl EntityRegistry {
                     ..
                 } => {
                     id == level_id
-                        && layer_index
-                            .is_none_or(|wanted| item_layer.unwrap_or(0) == wanted)
+                        && layer_index.is_none_or(|wanted| item_layer.unwrap_or(0) == wanted)
                 }
                 _ => false,
             })
@@ -220,15 +219,14 @@ impl EntityRegistry {
     /// First free backpack slot, or `None` when the backpack is full.
     #[must_use]
     pub fn next_backpack_slot(&self) -> Option<u32> {
-        (0..BACKPACK_MAX_SLOTS)
-            .find(|&slot| self.backpack_item_at(slot).is_none())
+        (0..BACKPACK_MAX_SLOTS).find(|&slot| self.backpack_item_at(slot).is_none())
     }
 
     #[must_use]
     pub fn get_equipped(&self, slot: EquipSlot) -> Option<&ItemEntity> {
-        self.items.iter().find(
-            |item| matches!(item.location, ItemLocation::Equipped { slot: s } if s == slot),
-        )
+        self.items
+            .iter()
+            .find(|item| matches!(item.location, ItemLocation::Equipped { slot: s } if s == slot))
     }
 
     /// All equipped items with their slots.
@@ -416,7 +414,12 @@ mod tests {
 
         registry.clear();
         registry.create_item("sword_iron", Common, backpack(0), Vec::new());
-        registry.create_item("dagger_iron", Common, equipped(EquipSlot::Weapon), Vec::new());
+        registry.create_item(
+            "dagger_iron",
+            Common,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
         assert!(registry.ground_items("l1", 0, 0).is_empty());
     }
 
@@ -449,7 +452,12 @@ mod tests {
     #[test]
     fn backpack_items_excludes_world_and_equipped() {
         let mut registry = EntityRegistry::new();
-        registry.create_item("sword_iron", Common, equipped(EquipSlot::Weapon), Vec::new());
+        registry.create_item(
+            "sword_iron",
+            Common,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
         registry.create_item("dagger_iron", Common, world("l1", 0, 0), Vec::new());
         assert!(registry.backpack_items().is_empty());
     }
@@ -515,15 +523,24 @@ mod tests {
     fn next_backpack_slot_ignores_world_and_equipped() {
         let mut registry = EntityRegistry::new();
         registry.create_item("sword_iron", Common, world("l1", 0, 0), Vec::new());
-        registry.create_item("dagger_iron", Common, equipped(EquipSlot::Weapon), Vec::new());
+        registry.create_item(
+            "dagger_iron",
+            Common,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
         assert_eq!(registry.next_backpack_slot(), Some(0));
     }
 
     #[test]
     fn get_equipped_finds_slot_occupant() {
         let mut registry = EntityRegistry::new();
-        let entity =
-            registry.create_item("sword_iron", Common, equipped(EquipSlot::Weapon), Vec::new());
+        let entity = registry.create_item(
+            "sword_iron",
+            Common,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
         assert_eq!(
             registry
                 .get_equipped(EquipSlot::Weapon)
@@ -536,12 +553,30 @@ mod tests {
     #[test]
     fn all_equipped_returns_slot_item_pairs() {
         let mut registry = EntityRegistry::new();
-        registry.create_item("sword_iron", Common, equipped(EquipSlot::Weapon), Vec::new());
-        registry.create_item("armor_leather_cap", Common, equipped(EquipSlot::Head), Vec::new());
+        registry.create_item(
+            "sword_iron",
+            Common,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
+        registry.create_item(
+            "armor_leather_cap",
+            Common,
+            equipped(EquipSlot::Head),
+            Vec::new(),
+        );
         let equipped_items = registry.all_equipped();
         assert_eq!(equipped_items.len(), 2);
-        assert!(equipped_items.iter().any(|(slot, _)| *slot == EquipSlot::Weapon));
-        assert!(equipped_items.iter().any(|(slot, _)| *slot == EquipSlot::Head));
+        assert!(
+            equipped_items
+                .iter()
+                .any(|(slot, _)| *slot == EquipSlot::Weapon)
+        );
+        assert!(
+            equipped_items
+                .iter()
+                .any(|(slot, _)| *slot == EquipSlot::Head)
+        );
 
         registry.clear();
         registry.create_item("sword_iron", Common, backpack(0), Vec::new());
@@ -589,7 +624,9 @@ mod tests {
         assert_eq!(snapshot.len(), 2);
         snapshot[0].item_id = "tampered".to_string();
         assert_eq!(
-            registry.get_item(&entity.instance_id).map(|e| e.item_id.clone()),
+            registry
+                .get_item(&entity.instance_id)
+                .map(|e| e.item_id.clone()),
             Some("sword_iron".to_string())
         );
     }
@@ -604,7 +641,12 @@ mod tests {
             backpack(0),
             vec!["crit_bonus".to_string()],
         );
-        registry.create_item("axe_hand", Masterwork, equipped(EquipSlot::Weapon), Vec::new());
+        registry.create_item(
+            "axe_hand",
+            Masterwork,
+            equipped(EquipSlot::Weapon),
+            Vec::new(),
+        );
         let snapshot = registry.snapshot();
 
         let mut restored = EntityRegistry::new();
@@ -627,8 +669,7 @@ mod tests {
 
         let mut restored = EntityRegistry::new();
         restored.restore(snapshot);
-        let new_entity =
-            restored.create_item("mace_iron", Common, world("l1", 0, 0), Vec::new());
+        let new_entity = restored.create_item("mace_iron", Common, world("l1", 0, 0), Vec::new());
         assert!(instance_number(&new_entity) > 2);
     }
 

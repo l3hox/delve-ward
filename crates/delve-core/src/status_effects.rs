@@ -48,11 +48,7 @@ pub struct TickResult {
 
 /// Add or refresh a status effect. Same-type refreshes to
 /// `max(remaining, duration)`; no damage stacking.
-pub fn apply_effect(
-    effects: &mut Vec<StatusEffect>,
-    effect_type: StatusEffectType,
-    duration: f64,
-) {
+pub fn apply_effect(effects: &mut Vec<StatusEffect>, effect_type: StatusEffectType, duration: f64) {
     if let Some(existing) = effects
         .iter_mut()
         .find(|effect| effect.effect_type == effect_type)

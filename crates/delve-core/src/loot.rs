@@ -165,7 +165,9 @@ impl LootTables {
         let gold = entry.map_or(0, |entry| roll_gold(entry.gold[0], entry.gold[1], random));
         let mut items = Vec::new();
 
-        let mut push_item = |item_id: &str, quality: Option<ItemQuality>, random: &mut dyn FnMut() -> f64| {
+        let push_item = |item_id: &str,
+                         quality: Option<ItemQuality>,
+                         random: &mut dyn FnMut() -> f64| {
             let quality = quality.unwrap_or_else(|| roll_quality(&self.quality_weights, random));
             let modifiers = if quality == ItemQuality::Enchanted {
                 vec![pick_enchanted_modifier(random)]
@@ -187,8 +189,7 @@ impl LootTables {
         }
 
         // 2. Base table drops — skipped when suppressTable is set or no table exists.
-        let suppress_table =
-            drops_override.is_some_and(|o| o.suppress_table.unwrap_or(false));
+        let suppress_table = drops_override.is_some_and(|o| o.suppress_table.unwrap_or(false));
         if let Some(entry) = entry {
             if !suppress_table {
                 for drop in &entry.drops {
@@ -286,8 +287,7 @@ mod tests {
             *counts.entry(tier).or_insert(0u32) += 1;
         }
         for (tier, weight) in tables.quality_weights.tiers() {
-            let frequency =
-                f64::from(counts.get(&tier).copied().unwrap_or(0)) / f64::from(rolls);
+            let frequency = f64::from(counts.get(&tier).copied().unwrap_or(0)) / f64::from(rolls);
             assert!(
                 (frequency - weight).abs() < 0.03,
                 "{tier:?} frequency {frequency} too far from weight {weight}"
@@ -482,7 +482,12 @@ mod tests {
             ..DropsOverride::default()
         };
         let result = tables.roll_loot("rat", Some(&over), &mut || 0.0);
-        assert!(result.items.iter().any(|item| item.item_id == "ring_of_power"));
+        assert!(
+            result
+                .items
+                .iter()
+                .any(|item| item.item_id == "ring_of_power")
+        );
         assert!(result.items.iter().any(|item| item.item_id == "bone"));
     }
 
@@ -498,7 +503,12 @@ mod tests {
             ..DropsOverride::default()
         };
         let result = tables.roll_loot("rat", Some(&over), &mut || 0.99);
-        assert!(!result.items.iter().any(|item| item.item_id == "ring_of_power"));
+        assert!(
+            !result
+                .items
+                .iter()
+                .any(|item| item.item_id == "ring_of_power")
+        );
     }
 
     #[test]

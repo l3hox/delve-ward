@@ -142,11 +142,7 @@ impl SignalManager {
             delay_fire_at: 0.0,
             delay_pending: false,
         };
-        if let Some(existing) = self
-            .sources
-            .iter_mut()
-            .find(|s| s.entity_id == entity_id)
-        {
+        if let Some(existing) = self.sources.iter_mut().find(|s| s.entity_id == entity_id) {
             *existing = source;
         } else {
             self.sources.push(source);
@@ -159,11 +155,7 @@ impl SignalManager {
             gate_mode,
             active: false,
         };
-        if let Some(existing) = self
-            .receivers
-            .iter_mut()
-            .find(|r| r.entity_id == entity_id)
-        {
+        if let Some(existing) = self.receivers.iter_mut().find(|r| r.entity_id == entity_id) {
             *existing = receiver;
         } else {
             self.receivers.push(receiver);
@@ -197,11 +189,7 @@ impl SignalManager {
 
     pub fn set_source_active(&mut self, entity_id: &str, active: bool) -> Vec<SignalEvent> {
         let now = self.now;
-        let Some(source) = self
-            .sources
-            .iter_mut()
-            .find(|s| s.entity_id == entity_id)
-        else {
+        let Some(source) = self.sources.iter_mut().find(|s| s.entity_id == entity_id) else {
             return Vec::new();
         };
 
@@ -246,11 +234,7 @@ impl SignalManager {
     }
 
     pub fn deactivate_source(&mut self, entity_id: &str) -> Vec<SignalEvent> {
-        let Some(source) = self
-            .sources
-            .iter_mut()
-            .find(|s| s.entity_id == entity_id)
-        else {
+        let Some(source) = self.sources.iter_mut().find(|s| s.entity_id == entity_id) else {
             return Vec::new();
         };
         source.active = false;
@@ -709,7 +693,13 @@ mod tests {
         let mut sm = manager();
         source(&mut sm, "lever_1", &["gate_1"]);
         source(&mut sm, "lever_2", &["gate_1"]);
-        sm.register_gate("gate_1", GateType::And, vec!["door_1".to_string()], None, None);
+        sm.register_gate(
+            "gate_1",
+            GateType::And,
+            vec!["door_1".to_string()],
+            None,
+            None,
+        );
         sm.register_receiver("door_1", GateMode::Or);
 
         sm.set_source_active("lever_1", true);
@@ -722,7 +712,13 @@ mod tests {
     fn not_gate_inverts_input() {
         let mut sm = manager();
         source(&mut sm, "lever_1", &["gate_1"]);
-        sm.register_gate("gate_1", GateType::Not, vec!["door_1".to_string()], None, None);
+        sm.register_gate(
+            "gate_1",
+            GateType::Not,
+            vec!["door_1".to_string()],
+            None,
+            None,
+        );
         sm.register_receiver("door_1", GateMode::Or);
 
         sm.set_source_active("lever_1", false);
@@ -850,8 +846,20 @@ mod tests {
     fn or_gate_chains_through_another_or_gate() {
         let mut sm = manager();
         source(&mut sm, "lever_1", &["gate_1"]);
-        sm.register_gate("gate_1", GateType::Or, vec!["gate_2".to_string()], None, None);
-        sm.register_gate("gate_2", GateType::Or, vec!["door_1".to_string()], None, None);
+        sm.register_gate(
+            "gate_1",
+            GateType::Or,
+            vec!["gate_2".to_string()],
+            None,
+            None,
+        );
+        sm.register_gate(
+            "gate_2",
+            GateType::Or,
+            vec!["door_1".to_string()],
+            None,
+            None,
+        );
         sm.register_receiver("door_1", GateMode::Or);
 
         sm.set_source_active("lever_1", true);
@@ -902,7 +910,13 @@ mod tests {
             None,
             None,
         );
-        sm.register_gate("gate_2", GateType::Or, vec!["door_2".to_string()], None, None);
+        sm.register_gate(
+            "gate_2",
+            GateType::Or,
+            vec!["door_2".to_string()],
+            None,
+            None,
+        );
         sm.register_receiver("door_1", GateMode::Or);
         sm.register_receiver("door_2", GateMode::Or);
 
@@ -915,9 +929,27 @@ mod tests {
     fn three_deep_gate_chain_propagates() {
         let mut sm = manager();
         source(&mut sm, "lever_1", &["gate_1"]);
-        sm.register_gate("gate_1", GateType::Or, vec!["gate_2".to_string()], None, None);
-        sm.register_gate("gate_2", GateType::Not, vec!["gate_3".to_string()], None, None);
-        sm.register_gate("gate_3", GateType::Or, vec!["door_1".to_string()], None, None);
+        sm.register_gate(
+            "gate_1",
+            GateType::Or,
+            vec!["gate_2".to_string()],
+            None,
+            None,
+        );
+        sm.register_gate(
+            "gate_2",
+            GateType::Not,
+            vec!["gate_3".to_string()],
+            None,
+            None,
+        );
+        sm.register_gate(
+            "gate_3",
+            GateType::Or,
+            vec!["door_1".to_string()],
+            None,
+            None,
+        );
         sm.register_receiver("door_1", GateMode::Or);
 
         sm.set_source_active("lever_1", true);
@@ -941,8 +973,8 @@ mod tests {
         sm.set_source_active("lever_1", true);
 
         let deltas = [
-            0.016, 0.032, 0.008, 0.1, 0.05, 0.004, 0.016, 0.033, 0.016, 0.016, 0.08, 0.012,
-            0.016, 0.064, 0.016, 0.016, 0.016, 0.1, 0.016, 0.016,
+            0.016, 0.032, 0.008, 0.1, 0.05, 0.004, 0.016, 0.033, 0.016, 0.016, 0.08, 0.012, 0.016,
+            0.064, 0.016, 0.016, 0.016, 0.1, 0.016, 0.016,
         ];
         let mut rng = Mulberry32::new(7);
         let mut elapsed = 0.0_f64;
@@ -1015,7 +1047,9 @@ mod tests {
 
         sm.set_source_active("lever_1", true);
 
-        let steps = [0.3, 0.15, 0.05, 0.2, 0.1, 0.25, 0.05, 0.15, 0.3, 0.1, 0.15, 0.1];
+        let steps = [
+            0.3, 0.15, 0.05, 0.2, 0.1, 0.25, 0.05, 0.15, 0.3, 0.1, 0.15, 0.1,
+        ];
         let mut total = 0.0_f64;
         for delta in steps {
             sm.tick(delta);
