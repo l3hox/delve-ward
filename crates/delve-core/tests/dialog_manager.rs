@@ -33,9 +33,14 @@ use delve_core::save_system::QuestSaveState;
 use std::collections::HashMap;
 
 const TREE_JSON: &str = include_str!("fixtures/dialog-manager-tree.json");
+const HILDA_DIALOG_JSON: &str = include_str!("../../../assets/data/dialogs/questgiver_hilda.json");
 
 fn tree() -> DialogTree {
     DialogTree::from_json(TREE_JSON).expect("fixture dialog tree parses")
+}
+
+fn hilda_tree() -> DialogTree {
+    DialogTree::from_json(HILDA_DIALOG_JSON).expect("shipped questgiver_hilda.json parses")
 }
 
 fn game() -> GameState {
@@ -734,6 +739,40 @@ fn select_choice_collects_events_from_both_the_choice_and_the_entered_nodes_effe
     let (next, events) = select_choice(&mut session, 0, &mut state, None);
     assert_eq!(next, Some("gave_token".to_string()));
     assert!(events.is_empty());
+}
+
+/// The exact real-content path that motivated returning events from
+/// `select_choice` at all: without a `QuestManager`, `kill_spider_queen`
+/// reads as "undiscovered" by default (the `None` fallback in
+/// `evaluate_condition`), so "Need something killed?" is available from the
+/// greeting node; picking it, then "Consider it done." on the follow-up
+/// node, must surface the bounty's `startQuest` effect as a `DialogEvent`
+/// rather than silently dropping it.
+#[test]
+fn select_choice_surfaces_hildas_start_quest_event_for_the_spider_queen_bounty() {
+    let mut session = start_dialog("questgiver_hilda", hilda_tree());
+    let mut state = game();
+
+    let choices = get_available_choices(&session, &state, None);
+    let need_something_killed = choices
+        .iter()
+        .position(|choice| choice.text == "Need something killed?")
+        .expect("bounty choice is offered before the quest is discovered");
+    let (next, events) = select_choice(&mut session, need_something_killed, &mut state, None);
+    assert_eq!(next, Some("bounty_intro".to_string()));
+    assert!(events.is_empty());
+
+    let choices = get_available_choices(&session, &state, None);
+    let consider_it_done = choices
+        .iter()
+        .position(|choice| choice.text == "Consider it done.")
+        .expect("bounty_intro offers the accept choice");
+    let (next, events) = select_choice(&mut session, consider_it_done, &mut state, None);
+    assert_eq!(next, None); // "Consider it done." ends the dialog (next: null)
+    assert_eq!(
+        events,
+        vec![DialogEvent::StartQuest("kill_spider_queen".to_string())]
+    );
 }
 
 // ---------------------------------------------------------------------------
