@@ -34,23 +34,40 @@ Agent/sandbox processes cannot acquire focus themselves and synthetic
 keystrokes are TCC-blocked, so interactive confirmation must come from the
 user's terminal.
 
-## Next steps, in order
+## Ready-to-run tests (need the user's interactive terminal)
 
-1. Baseline: does a stock winit/Bevy example have the same problem on this
-   machine? `cargo new` + winit window example, or any Bevy example. If YES →
-   upstream Tahoe issue; search/file at rust-windowing/winit and
-   bevyengine/bevy ("Tahoe activation", "cannot focus window macOS 26").
-2. Check the user's environment for known Tahoe focus-bug triggers reported
-   in Apple Community threads: Logitech G Hub, window managers (Rectangle,
+Both are prepared in the repo; run them in a normal terminal, not through
+an agent sandbox.
+
+1. Bundle test (most likely durable fix):
+
+   ```sh
+   scripts/bundle-macos.sh
+   open target/DelveWard.app
+   ```
+
+   If the window activates and keys work → bundling is the fix; document
+   `open target/DelveWard.app` as the supported macOS launch path.
+
+2. Baseline test (isolates app code vs Bevy/winit/OS):
+
+   ```sh
+   cargo run -p delve-game --example window_baseline
+   ```
+
+   A stock Bevy window with no game code, logging key and focus events.
+   If it has the same cannot-foreground symptom → upstream Tahoe issue;
+   search/file at rust-windowing/winit and bevyengine/bevy ("Tahoe
+   activation", "cannot focus window macOS 26").
+
+## Next steps after the tests
+
+1. Check the environment for known Tahoe focus-bug triggers reported in
+   Apple Community threads: Logitech G Hub, window managers (Rectangle,
    AeroSpace, AltTab), MDM profiles. Toggling G Hub reportedly resolves the
    system-wide "phantom focus" bug on macOS 26.
-3. App bundle test: macOS treats bundled apps more reliably for activation.
-   Create a minimal `DelveWard.app/Contents/{Info.plist,MacOS/delve-game}`
-   wrapper around the built binary and launch via `open DelveWard.app`. If
-   bundling fixes activation, add a `make bundle` target / small script and
-   document `open` as the supported launch path on macOS.
-4. If unbundled activation is fundamentally broken on Tahoe, consider a
-   `bevy_winit` issue report with the minimal repro from step 1.
+2. If unbundled activation is fundamentally broken on Tahoe, file a
+   `bevy_winit` issue with the `window_baseline` repro.
 
 ## Related Apple Community / upstream references
 
