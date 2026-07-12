@@ -2254,6 +2254,7 @@ name = "delve-game"
 version = "0.0.1"
 dependencies = [
  "bevy",
+ "delve-core",
 ]
 
 [[package]]
