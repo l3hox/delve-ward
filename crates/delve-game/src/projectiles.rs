@@ -382,6 +382,7 @@ pub struct ProjectileTickEffects<'w, 's> {
     item_render: GroundItemRender<'w, 's>,
     images: ResMut<'w, Assets<Image>>,
     rng: ResMut<'w, GameRng>,
+    vitals: ResMut<'w, crate::status_effects::PlayerVitals>,
 }
 
 /// Applies one projectile hit's gameplay effects (damage, status effect,
@@ -397,6 +398,7 @@ fn apply_projectile_hit(
     match event.hit_type {
         HitType::Player => {
             game.player.hp = (game.player.hp - event.projectile.damage).max(0.0);
+            effects.vitals.flash();
             if let Some(effect_type) = event
                 .projectile
                 .status_effect

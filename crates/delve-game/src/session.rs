@@ -17,7 +17,7 @@ use delve_core::game_state::{DoorState, GameState, LeverState, MultiLayerSnapsho
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::random::Mulberry32;
-use delve_core::types::Dungeon;
+use delve_core::types::{Dungeon, Environment, TextureArea};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Resource)]
@@ -26,6 +26,10 @@ pub struct Session {
     pub grid: Vec<String>,
     pub walkable: HashSet<char>,
     pub current_level_id: String,
+    /// Level default environment plus per-area overrides, for cell-local
+    /// checks like torch drain.
+    pub environment: Environment,
+    pub areas: Vec<TextureArea>,
     pub(crate) last_player_pose: (i32, i32, Facing),
 }
 
@@ -35,6 +39,7 @@ impl Session {
         grid: Vec<String>,
         walkable: HashSet<char>,
         current_level_id: String,
+        level: &delve_core::types::DungeonLevel,
         start: (i32, i32, Facing),
     ) -> Self {
         Self {
@@ -42,6 +47,8 @@ impl Session {
             grid,
             walkable,
             current_level_id,
+            environment: level.environment.unwrap_or(Environment::Dungeon),
+            areas: level.areas.clone().unwrap_or_default(),
             last_player_pose: start,
         }
     }
@@ -162,7 +169,13 @@ pub fn on_player_moved(
     // needed here to avoid re-toggling on every turn-in-place.
     let moved = pose.0 != prev_col || pose.1 != prev_row;
 
-    let Session { game, grid, .. } = &mut *session;
+    let Session {
+        game,
+        grid,
+        environment,
+        areas,
+        ..
+    } = &mut *session;
     let (col, row) = (i64::from(pose.0), i64::from(pose.1));
 
     if moved {
@@ -217,6 +230,14 @@ pub fn on_player_moved(
                 .is_some_and(|plate| plate.activated);
         if pressed {
             plates::press_plate(&mut signal.plate, &key);
+        }
+
+        // Torch fuel drains one unit per step, except in environments with
+        // their own light (open sky, luminous mist).
+        let cell_environment =
+            crate::environment::resolve_environment_at_cell(col, row, *environment, areas);
+        if delve_core::player_controller::should_drain_torch(cell_environment) {
+            game.drain_torch_fuel(1.0);
         }
     }
 

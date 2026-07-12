@@ -198,6 +198,7 @@ fn setup(
         grid.clone(),
         walkable.clone(),
         level_id,
+        &level,
         (start.col, start.row, start.facing),
     ));
     commands.insert_resource(GameRng(rng));
@@ -329,6 +330,7 @@ fn main() {
         .init_resource::<sconces::SconceFlicker>()
         .init_resource::<char_creation::CharCreation>()
         .init_resource::<session::BlockedDoors>()
+        .init_resource::<status_effects::PlayerVitals>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
@@ -346,7 +348,7 @@ fn main() {
                     projectiles::tick_projectiles,
                     projectiles::position_projectile_meshes,
                     projectiles::update_fireball_explosions,
-                    status_effects::tick_player_status_effects,
+                    status_effects::tick_player_vitals,
                     status_effects::apply_slow_multiplier,
                     status_effects::tint_enemy_status_effects,
                     billboard::face_billboards,

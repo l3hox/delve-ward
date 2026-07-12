@@ -4,10 +4,33 @@
 //! re-tuned in the phase 6 side-by-side parity audit.
 
 use bevy::prelude::*;
-use delve_core::types::Environment;
+use delve_core::types::{Environment, TextureArea};
 
 /// Scales the TS ambient colors (used at Three.js intensity 1) into cd/m².
 pub const AMBIENT_BRIGHTNESS: f32 = 900.0;
+
+/// The environment at a cell: the level default, overridden by the last
+/// matching area that declares one.
+#[must_use]
+pub fn resolve_environment_at_cell(
+    col: i64,
+    row: i64,
+    level_environment: Environment,
+    areas: &[TextureArea],
+) -> Environment {
+    let mut environment = level_environment;
+    for area in areas {
+        if let Some(area_environment) = area.environment
+            && col >= i64::from(area.from_col)
+            && col <= i64::from(area.to_col)
+            && row >= i64::from(area.from_row)
+            && row <= i64::from(area.to_row)
+        {
+            environment = area_environment;
+        }
+    }
+    environment
+}
 
 pub struct EnvironmentConfig {
     pub fog_color: Color,

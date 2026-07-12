@@ -105,6 +105,7 @@ pub fn tick_enemies(
     gate: crate::char_creation::InputGate,
     players: Query<&Player>,
     mut render: EnemyRenderState,
+    mut vitals: ResMut<crate::status_effects::PlayerVitals>,
 ) {
     // TS freezes enemy AI during transitions as well as overlays.
     if gate.blocked() {
@@ -177,6 +178,7 @@ pub fn tick_enemies(
                 };
                 let mut random = || rng_ref.next_f64();
                 let result = enemy_attack_player(game, enemy_atk, &mut random);
+                vitals.flash();
                 info!(
                     "Enemy hits you for {} — HP {}/{}",
                     result.damage, game.player.hp, game.player.max_hp

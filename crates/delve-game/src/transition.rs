@@ -209,6 +209,8 @@ pub fn perform_level_swap(
     let spawn_row = stair.row as i32 + drow;
 
     session.current_level_id = target_level_id;
+    session.environment = target_level.environment.unwrap_or(Environment::Dungeon);
+    session.areas = target_level.areas.clone().unwrap_or_default();
     session.grid = target_level.layers[target_layer_index].grid.clone();
     session.walkable = build_walkable_set(
         target_level

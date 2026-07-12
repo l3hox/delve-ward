@@ -52,6 +52,8 @@ const MINIMAP_CELL_SIZE: i32 = 6;
 // Torch indicator — right of the health bar.
 const TORCH_BAR: (i32, i32, i32, i32) =
     (HEALTH_BAR.0 + HEALTH_BAR.2 + MARGIN, HEALTH_BAR.1, 100, 24);
+// Hunger bar — right of the torch indicator.
+const HUNGER_BAR: (i32, i32, i32, i32) = (TORCH_BAR.0 + TORCH_BAR.2 + MARGIN, TORCH_BAR.1, 80, 24);
 // Status effect icons — above the health bar.
 const STATUS_ICONS_X: i32 = HEALTH_BAR.0;
 const STATUS_ICONS_Y: i32 = HEALTH_BAR.1 - 20;
@@ -89,6 +91,12 @@ const MINIMAP_BOULDER: Rgba = Rgba::opaque(0x7a, 0x4a, 0x26);
 const TORCH_BG: Rgba = Rgba::opaque(0x1a, 0x12, 0x00);
 const TORCH_FILL: Rgba = Rgba::opaque(0xcc, 0x88, 0x33);
 const TORCH_LOW: Rgba = Rgba::opaque(0xff, 0x66, 0x00);
+const LOW_HUNGER_THRESHOLD: f64 = 0.2;
+const HUNGER_BG: Rgba = Rgba::opaque(0x1a, 0x14, 0x08);
+const HUNGER_FILL: Rgba = Rgba::opaque(0x8a, 0x9a, 0x5a);
+const HUNGER_LOW: Rgba = Rgba::opaque(0xcc, 0x44, 0x00);
+const DAMAGE_FLASH_RGB: (u8, u8, u8) = (180, 0, 0);
+const STARVATION_TINT: Rgba = Rgba::translucent(100, 60, 0, 0.06);
 
 // Status effect screen tints (full-screen overlays).
 const BURNING_TINT_RGB: (u8, u8, u8) = (255, 100, 0);
@@ -254,38 +262,63 @@ pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     });
 }
 
+/// Read-only game state the HUD draws from, bundled to stay under the
+/// argument-count lint.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct HudSources<'w, 's> {
+    session: Res<'w, Session>,
+    items: Res<'w, ItemDb>,
+    creation: Res<'w, CharCreation>,
+    vitals: Res<'w, crate::status_effects::PlayerVitals>,
+    players: Query<'w, 's, &'static Player>,
+}
+
 pub fn draw_hud(
     time: Res<Time>,
     mut hud: ResMut<HudState>,
     mut images: ResMut<Assets<Image>>,
-    session: Res<Session>,
-    items: Res<ItemDb>,
-    creation: Res<CharCreation>,
-    player_query: Query<&Player>,
+    sources: HudSources,
 ) {
     let hud = &mut *hud;
     let delta = time.delta_secs();
     hud.time += delta;
     let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
 
-    if creation.active {
-        draw_char_creation(&mut canvas, &creation);
+    if sources.creation.active {
+        draw_char_creation(&mut canvas, &sources.creation);
     } else {
-        let game = &session.game;
+        let game = &sources.session.game;
+
+        // Player damage flash — red overlay, drawn under everything else.
+        let flash_alpha = sources.vitals.damage_flash_alpha();
+        if flash_alpha > 0.0 {
+            let (red, green, blue) = DAMAGE_FLASH_RGB;
+            canvas.fill_rect(
+                0,
+                0,
+                HUD_WIDTH as i32,
+                HUD_HEIGHT as i32,
+                Rgba::translucent(red, green, blue, flash_alpha * 0.4),
+            );
+        }
         draw_status_screen_tints(&mut canvas, &game.status_fx.player_status_effects, hud.time);
+        if game.status_fx.hunger <= 0.0 {
+            canvas.fill_rect(0, 0, HUD_WIDTH as i32, HUD_HEIGHT as i32, STARVATION_TINT);
+        }
+
         draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
         draw_status_icons(&mut canvas, &game.status_fx.player_status_effects, hud.time);
-        draw_inventory_panel(&mut canvas, game, &items.0, &mut hud.icons);
+        draw_inventory_panel(&mut canvas, game, &sources.items.0, &mut hud.icons);
         draw_xp_bar(&mut canvas, game);
         draw_level_up_hint(&mut canvas, game);
         draw_message(&mut canvas, hud, delta);
 
-        if let Ok(player) = player_query.single() {
+        if let Ok(player) = sources.players.single() {
             let player_state = player.grid_state();
             draw_compass(&mut canvas, player_state.facing);
             draw_minimap(
                 &mut canvas,
-                &session.grid,
+                &sources.session.grid,
                 game.active_layer(),
                 player_state.col,
                 player_state.row,
@@ -298,11 +331,71 @@ pub fn draw_hud(
             game.status_fx.max_torch_fuel,
             hud.time,
         );
+        draw_hunger_bar(
+            &mut canvas,
+            game.status_fx.hunger,
+            game.status_fx.max_hunger,
+            hud.time,
+        );
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
         image.data = Some(canvas.into_rgba_bytes());
     }
+}
+
+fn draw_hunger_bar(canvas: &mut PixelCanvas, hunger: f64, max_hunger: f64, time: f32) {
+    let (x, y, width, height) = HUNGER_BAR;
+    let ratio = (hunger / max_hunger).clamp(0.0, 1.0);
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+
+    let bar_x = x + 20;
+    let bar_y = y + 4;
+    let bar_w = width - 24;
+    let bar_h = height - 8;
+    canvas.fill_rect(bar_x, bar_y, bar_w, bar_h, HUNGER_BG);
+
+    let mut fill_color = HUNGER_FILL;
+    if ratio <= LOW_HUNGER_THRESHOLD {
+        // Slow pulse when low.
+        if (time * 6.0).sin() > 0.0 {
+            fill_color = HUNGER_LOW;
+        }
+    }
+    canvas.fill_rect(
+        bar_x,
+        bar_y,
+        (f64::from(bar_w) * ratio) as i32,
+        bar_h,
+        fill_color,
+    );
+
+    draw_bread(canvas, x + 5, y + 4, HUNGER_FILL);
+
+    let percent = (ratio * 100.0).round() as i64;
+    draw_pixel_text(
+        canvas,
+        &percent.to_string(),
+        bar_x + 2,
+        bar_y + 2,
+        TEXT_PRIMARY,
+        1,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+}
+
+/// 5x7 pixel bread loaf.
+fn draw_bread(canvas: &mut PixelCanvas, x: i32, y: i32, color: Rgba) {
+    canvas.fill_rect(x + 1, y, 3, 1, color);
+    canvas.fill_rect(x, y + 1, 5, 2, color);
+    canvas.fill_rect(x, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 2, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 4, y + 3, 1, 1, color);
+    canvas.fill_rect(x, y + 4, 5, 1, color);
+    canvas.fill_rect(x + 1, y + 5, 3, 1, color);
+    canvas.fill_rect(x + 2, y + 6, 1, 1, color);
 }
 
 fn draw_compass(canvas: &mut PixelCanvas, facing: Facing) {
