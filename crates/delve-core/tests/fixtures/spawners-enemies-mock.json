@@ -1,0 +1,16 @@
+{
+    "version": "1.0",
+    "note": "Test fixture: enemy defs for spawners tests, one grounded and one flying, mirroring the real enemies.json shape.",
+    "enemies": [
+        {
+            "id": "rat_test", "name": "Test Rat", "maxHp": 8, "atk": 2, "def": 0,
+            "aggroRange": 3, "moveInterval": 0.6, "blocksMovement": true, "xp": 10,
+            "sprite": { "path": "/sprites/rat.png", "size": 1.0 }, "behaviors": []
+        },
+        {
+            "id": "bat_test", "name": "Test Bat", "maxHp": 6, "atk": 1, "def": 0,
+            "aggroRange": 3, "moveInterval": 0.5, "blocksMovement": false, "fly": true, "xp": 8,
+            "sprite": { "path": "/sprites/bat.png", "size": 0.8 }, "behaviors": []
+        }
+    ]
+}

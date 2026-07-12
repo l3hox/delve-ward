@@ -22,8 +22,9 @@ const FLICKER_SPEED: f32 = 0.25;
 const FLICKER_LERP: f32 = 0.15;
 
 /// Wall direction: outward offset from the cell center plus the rotation
-/// that faces the sconce into the room.
-fn wall_direction(wall: Facing) -> (f32, f32, f32) {
+/// that faces the sconce into the room. Shared with levers, which mount on
+/// walls the same way.
+pub(crate) fn wall_direction(wall: Facing) -> (f32, f32, f32) {
     match wall {
         Facing::N => (0.0, -1.0, 0.0),
         Facing::S => (0.0, 1.0, std::f32::consts::PI),
@@ -226,7 +227,13 @@ pub fn sconce_flicker(
     mut flicker: ResMut<SconceFlicker>,
     parts: Res<SconceParts>,
     mut lights: Query<&mut PointLight, With<SconceLight>>,
+    gate: crate::char_creation::InputGate,
 ) {
+    // TS ticks sconce flicker inside the same overlay-paused block as the
+    // other per-frame systems.
+    if gate.paused() {
+        return;
+    }
     let SconceFlicker { rng, targets } = &mut *flicker;
     for (key, &entity) in &parts.lights {
         let Ok(mut light) = lights.get_mut(entity) else {

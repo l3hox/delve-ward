@@ -7,6 +7,7 @@
 use crate::hud::{HUD_HEIGHT, HUD_WIDTH};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::pixel_canvas::{PixelCanvas, Rgba};
+use crate::save_load_overlay::SaveLoadOverlay;
 use crate::session::Session;
 use crate::transition::Transition;
 use bevy::ecs::system::SystemParam;
@@ -134,17 +135,29 @@ impl CharCreation {
 }
 
 /// Gameplay systems check `blocked()` the same way they already check
-/// `Transition::is_active` — character creation is just another reason
-/// input should not reach the dungeon yet.
+/// `Transition::is_active` — character creation and the save/load overlay
+/// are just other reasons input should not reach the dungeon yet, matching
+/// TS's `anyOverlayOpen`. Systems that need `ResMut` access to
+/// `SaveLoadOverlay`/`Transition` themselves (the overlay's own input
+/// handler, the death check) can't use this — it would conflict with their
+/// own `ResMut` borrow — and inline the same three-condition check instead.
 #[derive(SystemParam)]
 pub struct InputGate<'w> {
     transition: Res<'w, Transition>,
     creation: Res<'w, CharCreation>,
+    save_load: Res<'w, SaveLoadOverlay>,
 }
 
 impl InputGate<'_> {
     pub fn blocked(&self) -> bool {
-        self.transition.is_active() || self.creation.active
+        self.transition.is_active() || self.creation.active || self.save_load.active
+    }
+
+    /// Overlay-only pause for per-frame tick systems: TS gates those on
+    /// `anyOverlayOpen` alone and keeps them running through transition
+    /// fades — only the enemy AI adds the transition condition (`blocked`).
+    pub fn paused(&self) -> bool {
+        self.creation.active || self.save_load.active
     }
 }
 

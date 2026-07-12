@@ -1,25 +1,37 @@
 #![forbid(unsafe_code)]
 
 mod billboard;
+mod blocks;
 mod char_creation;
+mod chests;
 mod damage_numbers;
 mod doors;
 mod dungeon;
 mod enemies;
+mod enemy_feedback;
 mod environment;
 mod ground_items;
 mod hud;
 mod hud_font;
 mod keys;
 mod level_scene;
+mod levers;
 mod pixel_canvas;
+mod plates;
 mod player;
+mod projectiles;
+mod save_load_overlay;
+mod save_store;
 mod sconces;
 mod session;
+mod signs;
 mod stairs;
+mod status_effects;
 mod textures;
 mod torch;
 mod transition;
+mod tripwires;
+mod wall_entities;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::pbr::{DistanceFog, FogFalloff};
@@ -38,7 +50,9 @@ use environment::{AMBIENT_BRIGHTNESS, environment_config};
 use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use player::Player;
-use session::{DungeonRes, GameRng, LevelSnapshots, Session};
+use projectiles::{ProjectileBillboards, ProjectileManagerRes};
+use save_store::FileSaveStore;
+use session::{DungeonRes, GameRng, LevelSnapshots, OriginalGrids, Session};
 use std::path::PathBuf;
 use std::sync::Arc;
 use textures::DungeonMaterials;
@@ -95,6 +109,21 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     let loaded = load_dungeon(&dungeon_path());
+    // Captured before any gameplay mutation (breakable walls, secret walls,
+    // save/load grid restores) so restart and load can reset a level back
+    // to exactly what shipped on disk.
+    commands.insert_resource(OriginalGrids(
+        loaded
+            .levels
+            .iter()
+            .map(|level| {
+                (
+                    level.id.clone().unwrap_or_else(|| level.name.clone()),
+                    level.grid.clone(),
+                )
+            })
+            .collect(),
+    ));
     let start = loaded.player_start.clone();
     let level = loaded
         .levels
@@ -169,6 +198,13 @@ fn setup(
     commands.insert_resource(handles.ground_items);
     commands.insert_resource(handles.key_billboards);
     commands.insert_resource(handles.sconce_parts);
+    commands.insert_resource(handles.lever_handles);
+    commands.insert_resource(handles.plate_handles);
+    commands.insert_resource(handles.tripwire_handles);
+    commands.insert_resource(handles.chest_handles);
+    commands.insert_resource(handles.block_handles);
+    commands.insert_resource(handles.wall_entity_handles);
+    commands.insert_resource(handles.health_bars);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
@@ -189,9 +225,12 @@ fn setup(
         grid.clone(),
         walkable.clone(),
         level_id,
+        &level,
         (start.col, start.row, start.facing),
     ));
     commands.insert_resource(GameRng(rng));
+    commands.insert_resource(ProjectileManagerRes::default());
+    commands.insert_resource(ProjectileBillboards::default());
 
     let config = environment_config(level.environment.unwrap_or(Environment::Dungeon));
     commands.insert_resource(ClearColor(config.fog_color));
@@ -317,29 +356,59 @@ fn main() {
         .init_resource::<LevelSnapshots>()
         .init_resource::<sconces::SconceFlicker>()
         .init_resource::<char_creation::CharCreation>()
+        .init_resource::<session::BlockedDoors>()
+        .init_resource::<status_effects::PlayerVitals>()
+        .init_resource::<save_load_overlay::SaveLoadOverlay>()
+        .insert_resource(FileSaveStore::new(save_store::saves_dir()))
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
             (
-                char_creation::char_creation_input,
-                session::player_input,
-                session::interact_input,
-                enemies::attack_input,
-                session::player_update,
-                session::on_player_moved,
-                enemies::tick_enemies,
-                enemies::tick_attack_cooldown,
-                session::tick_game,
-                billboard::face_billboards,
-                doors::animate_door_panels,
-                torch::torch_update,
-                sconces::sconce_flicker,
-                damage_numbers::update_damage_numbers,
-                hud::draw_hud,
-                transition::tick_transition,
-                transition::perform_level_swap,
-                input_diagnostics,
-                claim_initial_focus,
+                // Split across two tuples (Bevy's `.chain()` tuple impl tops
+                // out at 20 elements) but chained together at the outer
+                // level below, so ordering is identical to one long chain.
+                (
+                    char_creation::char_creation_input,
+                    save_load_overlay::save_load_input,
+                    session::player_input,
+                    session::interact_input,
+                    enemies::attack_input,
+                    session::player_update,
+                    session::on_player_moved,
+                    enemies::tick_enemies,
+                    enemies::tick_attack_cooldown,
+                    session::tick_game,
+                    projectiles::tick_projectiles,
+                )
+                    .chain(),
+                (
+                    projectiles::position_projectile_meshes,
+                    projectiles::update_fireball_explosions,
+                    status_effects::tick_player_vitals,
+                    save_load_overlay::check_player_death,
+                    status_effects::apply_slow_multiplier,
+                    status_effects::tint_enemy_status_effects,
+                    billboard::face_billboards,
+                    doors::animate_door_panels,
+                    levers::animate_levers,
+                    torch::torch_update,
+                    sconces::sconce_flicker,
+                )
+                    .chain(),
+                (
+                    chests::animate_chest_lids,
+                    blocks::animate_blocks,
+                    enemy_feedback::tick_enemy_hit_shake,
+                    damage_numbers::update_damage_numbers,
+                    hud::draw_hud,
+                    transition::tick_transition,
+                    transition::perform_level_swap,
+                    transition::perform_restart,
+                    transition::perform_load,
+                    input_diagnostics,
+                    claim_initial_focus,
+                )
+                    .chain(),
             )
                 .chain(),
         )

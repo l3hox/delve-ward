@@ -2,18 +2,27 @@
 //! resources, plus the input/update systems that connect the player
 //! controller, interaction, and world events to rendering.
 
+use crate::blocks::{self, BlockRender};
+use crate::chests::{self, ChestHandles, ChestLid};
 use crate::doors::{DoorPanel, DoorPanels};
-use crate::ground_items::{self, GroundItemRender};
+use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::keys::{self, KeyBillboards};
+use crate::levers::{self, LeverRender};
+use crate::plates::{self, PlateRender};
 use crate::player::Player;
 use crate::sconces::{self, SconceRender};
 use crate::transition::Transition;
+use crate::tripwires::{self, TripwireHandles};
+use crate::wall_entities::{self, WallEntityHandles};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, MultiLayerSnapshot, WorldEvent};
+use delve_core::game_state::{
+    DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent, door_key,
+};
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::random::Mulberry32;
-use delve_core::types::Dungeon;
+use delve_core::types::{Dungeon, Environment, TextureArea};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Resource)]
@@ -22,6 +31,10 @@ pub struct Session {
     pub grid: Vec<String>,
     pub walkable: HashSet<char>,
     pub current_level_id: String,
+    /// Level default environment plus per-area overrides, for cell-local
+    /// checks like torch drain.
+    pub environment: Environment,
+    pub areas: Vec<TextureArea>,
     pub(crate) last_player_pose: (i32, i32, Facing),
 }
 
@@ -31,6 +44,7 @@ impl Session {
         grid: Vec<String>,
         walkable: HashSet<char>,
         current_level_id: String,
+        level: &delve_core::types::DungeonLevel,
         start: (i32, i32, Facing),
     ) -> Self {
         Self {
@@ -38,6 +52,8 @@ impl Session {
             grid,
             walkable,
             current_level_id,
+            environment: level.environment.unwrap_or(Environment::Dungeon),
+            areas: level.areas.clone().unwrap_or_default(),
             last_player_pose: start,
         }
     }
@@ -54,6 +70,13 @@ pub struct DungeonRes(pub Dungeon);
 /// Departed levels' state, restored when the player returns.
 #[derive(Resource, Default)]
 pub struct LevelSnapshots(pub HashMap<String, MultiLayerSnapshot>);
+
+/// Each level's grid as loaded from disk, captured once in `main.rs::setup`
+/// before any runtime mutation (breakable walls, secret walls). Restart and
+/// load both use this to reset a level's grid to its pristine state, ported
+/// from TS's `originalGrids` map.
+#[derive(Resource, Default)]
+pub struct OriginalGrids(pub HashMap<String, Vec<String>>);
 
 /// Build the TS movement callbacks from the game state and hand them to `f`.
 fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
@@ -82,11 +105,74 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
     })
 }
 
+/// Rendering-side handles for revealing a secret wall's floor/ceiling/inward
+/// walls once it's opened.
+#[derive(SystemParam)]
+pub struct WallEntityRender<'w, 's> {
+    pub handles: Res<'w, WallEntityHandles>,
+    pub visibility: Query<'w, 's, &'static mut Visibility>,
+}
+
+/// Walking straight into an unopened secret wall reveals it — the only way
+/// TS triggers a reveal (there is no facing-and-interact path for secret
+/// walls). Detected by comparing the player's cell before and after the
+/// move: if forward movement was blocked and a secret wall sits in the
+/// facing cell, open it and retry the move once, matching the TS
+/// `setOnMoveBlocked` → `openSecretWall` → `retry()` flow. Multi-layer
+/// neighbor rebuilds are skipped — see `wall_entities`'s module doc comment.
+fn move_forward_with_secret_wall_reveal(
+    session: &mut Session,
+    player: &mut Player,
+    wall_entities: &mut WallEntityRender,
+    hud: &mut crate::hud::HudState,
+) {
+    let before = player.grid_state();
+    let (before_col, before_row, before_facing) = (before.col, before.row, before.facing);
+
+    with_move_rules(&session.game, |rules| player.move_forward(rules));
+
+    let after = player.grid_state();
+    if (after.col, after.row) != (before_col, before_row) {
+        return; // moved normally, nothing was blocking
+    }
+
+    let (delta_col, delta_row) = before_facing.delta();
+    let (col, row) = (
+        i64::from(before_col + delta_col),
+        i64::from(before_row + delta_row),
+    );
+    let should_open = session
+        .game
+        .get_secret_wall(col, row)
+        .is_some_and(|wall| !wall.opened);
+    if !should_open {
+        return;
+    }
+    let (opened, persistent) = session.game.open_secret_wall(col, row, &mut session.grid);
+    if !opened {
+        return;
+    }
+    wall_entities::reveal_wall_entity(
+        &wall_entities.handles,
+        &mut wall_entities.visibility,
+        &door_key(col, row),
+        persistent,
+    );
+    hud.show_message(if persistent {
+        "An illusionary wall!"
+    } else {
+        "A secret passage!"
+    });
+    with_move_rules(&session.game, |rules| player.move_forward(rules));
+}
+
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
-    session: Res<Session>,
+    mut session: ResMut<Session>,
     gate: crate::char_creation::InputGate,
     mut players: Query<&mut Player>,
+    mut wall_entities: WallEntityRender,
+    mut hud: ResMut<crate::hud::HudState>,
 ) {
     if gate.blocked() {
         return;
@@ -94,10 +180,15 @@ pub fn player_input(
     let Ok(mut player) = players.single_mut() else {
         return;
     };
+    if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
+        move_forward_with_secret_wall_reveal(
+            &mut session,
+            &mut player,
+            &mut wall_entities,
+            &mut hud,
+        );
+    }
     with_move_rules(&session.game, |rules| {
-        if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
-            player.move_forward(rules);
-        }
         if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
             player.move_back(rules);
         }
@@ -129,8 +220,9 @@ pub fn player_update(
     });
 }
 
-/// Reveal explored cells, pick up keys and items, and start stair
-/// transitions whenever the player's logical cell or facing changes.
+/// Reveal explored cells, pick up keys and items, activate signal entities,
+/// and start stair transitions whenever the player's logical cell or facing
+/// changes.
 pub fn on_player_moved(
     mut session: ResMut<Session>,
     players: Query<&Player>,
@@ -138,6 +230,7 @@ pub fn on_player_moved(
     mut item_render: GroundItemRender,
     mut key_billboards: ResMut<KeyBillboards>,
     mut hud: ResMut<crate::hud::HudState>,
+    mut signal: SignalRenderState,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -147,45 +240,215 @@ pub fn on_player_moved(
     if pose == session.last_player_pose {
         return;
     }
+    let (prev_col, prev_row, _) = session.last_player_pose;
     session.last_player_pose = pose;
+    // TS gates its momentary-source deactivate/activate calls on an actual
+    // cell change (`col !== prevCol || row !== prevRow`) because its onMove
+    // callback only fires on real moves; this port's on_player_moved also
+    // runs for pure turns (its pose includes facing), so the same guard is
+    // needed here to avoid re-toggling on every turn-in-place.
+    let moved = pose.0 != prev_col || pose.1 != prev_row;
 
-    let Session { game, grid, .. } = &mut *session;
+    let Session {
+        game,
+        grid,
+        environment,
+        areas,
+        ..
+    } = &mut *session;
     let (col, row) = (i64::from(pose.0), i64::from(pose.1));
-    game.reveal_around(col, row, pose.2, grid);
-    if let Some(key_id) = game.pickup_key_at(col, row) {
-        info!("Picked up key: {key_id}");
-        keys::hide_key_mesh(
-            &mut key_billboards,
-            &mut item_render.commands,
-            &delve_core::game_state::door_key(col, row),
-        );
+
+    if moved {
+        game.deactivate_pressure_plate(i64::from(prev_col), i64::from(prev_row));
+        game.deactivate_trigger(i64::from(prev_col), i64::from(prev_row));
+
+        // Safety: if the player ended up on a closed door cell, force it
+        // open and hand it to the blocked-door retry cycle.
+        let key = delve_core::game_state::door_key(col, row);
+        let closed_underfoot = game
+            .active_layer()
+            .doors
+            .get(&key)
+            .is_some_and(|door| door.state == DoorState::Closed);
+        if closed_underfoot {
+            set_door_state(game, &key, DoorState::Open);
+            set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+            signal.blocked_doors.by_key.insert(
+                key,
+                BlockedDoor {
+                    col,
+                    row,
+                    timer: DOOR_RETRY_INTERVAL,
+                },
+            );
+        }
     }
-    ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
-    if let Some(stair) = game.get_stair(col, row)
+
+    // Reveal fires on turns too (the TS onTurn callback also reveals);
+    // pickups and activations are move-only.
+    game.reveal_around(col, row, pose.2, grid);
+
+    if moved {
+        if let Some(key_id) = game.pickup_key_at(col, row) {
+            info!("Picked up key: {key_id}");
+            keys::hide_key_mesh(
+                &mut key_billboards,
+                &mut item_render.commands,
+                &delve_core::game_state::door_key(col, row),
+            );
+        }
+        ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
+
+        let key = delve_core::game_state::door_key(col, row);
+        game.activate_trigger(col, row);
+        if game.activate_tripwire(col, row) {
+            tripwires::hide_tripwire_mesh(&signal.tripwires, &mut item_render.commands, &key);
+            hud.show_message("Oops! A tripwire!");
+        }
+        let pressed = game.activate_pressure_plate(col, row).is_some()
+            && game
+                .active_layer()
+                .plates
+                .get(&key)
+                .is_some_and(|plate| plate.activated);
+        if pressed {
+            plates::press_plate(&mut signal.plate, &key);
+        }
+
+        // Torch fuel drains one unit per step, except in environments with
+        // their own light (open sky, luminous mist).
+        let cell_environment =
+            crate::environment::resolve_environment_at_cell(col, row, *environment, areas);
+        if delve_core::player_controller::should_drain_torch(cell_environment) {
+            game.drain_torch_fuel(1.0);
+        }
+    }
+
+    let events = game.take_events();
+    apply_world_events(events, game, (col, row), &mut signal);
+
+    if moved
+        && let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
     {
-        transition.begin(stair_id.clone());
+        transition.begin_stair(stair_id.clone());
+    }
+}
+
+/// Bundled rendering handles for door, lever, plate, and tripwire visuals,
+/// grouped into one `SystemParam` so systems that touch signal-entity
+/// rendering stay under the argument-count lint.
+#[derive(SystemParam)]
+pub struct SignalRenderState<'w, 's> {
+    pub door_panels: Res<'w, DoorPanels>,
+    pub panel_query: Query<'w, 's, &'static mut DoorPanel>,
+    pub lever: LeverRender<'w, 's>,
+    pub plate: PlateRender<'w, 's>,
+    pub tripwires: Res<'w, TripwireHandles>,
+    pub blocked_doors: ResMut<'w, BlockedDoors>,
+    pub chest_handles: Res<'w, ChestHandles>,
+    pub chest_lids: Query<'w, 's, &'static mut ChestLid>,
+    pub projectiles: ResMut<'w, crate::projectiles::ProjectileManagerRes>,
+}
+
+const DOOR_RETRY_INTERVAL: f32 = 1.5;
+
+/// Doors a signal tried to close while the cell was occupied. The close is
+/// held off and retried on a timer (with a panel bounce) until the cell
+/// clears — a signal-driven close can never land on a standing player or
+/// enemy, ported from the TS `blockedDoors` map.
+#[derive(Resource, Default)]
+pub struct BlockedDoors {
+    by_key: HashMap<String, BlockedDoor>,
+}
+
+impl BlockedDoors {
+    pub fn clear(&mut self) {
+        self.by_key.clear();
+    }
+}
+
+struct BlockedDoor {
+    col: i64,
+    row: i64,
+    timer: f32,
+}
+
+fn is_door_cell_occupied(game: &GameState, player_cell: (i64, i64), col: i64, row: i64) -> bool {
+    player_cell == (col, row) || game.get_enemy(col, row).is_some()
+}
+
+fn bounce_panel(panels: &DoorPanels, panel_query: &mut Query<&mut DoorPanel>, key: &str) {
+    if let Some(&entity) = panels.by_key.get(key)
+        && let Ok(mut panel) = panel_query.get_mut(entity)
+    {
+        panel.bounce();
+    }
+}
+
+fn set_door_state(game: &mut GameState, key: &str, state: DoorState) {
+    if let Some(door) = game.active_layer_mut().doors.get_mut(key) {
+        door.state = state;
+    }
+}
+
+/// Retry pending blocked-door closes: once the cell clears, the door
+/// actually closes; while it stays occupied, the panel bounces and the
+/// timer re-arms.
+fn tick_blocked_doors(
+    game: &mut GameState,
+    player_cell: (i64, i64),
+    signal: &mut SignalRenderState,
+    delta: f32,
+) {
+    let mut close_now = Vec::new();
+    let mut bounce_now = Vec::new();
+    for (key, entry) in &mut signal.blocked_doors.by_key {
+        entry.timer -= delta;
+        if entry.timer > 0.0 {
+            continue;
+        }
+        if is_door_cell_occupied(game, player_cell, entry.col, entry.row) {
+            entry.timer = DOOR_RETRY_INTERVAL;
+            bounce_now.push(key.clone());
+        } else {
+            close_now.push(key.clone());
+        }
+    }
+    for key in close_now {
+        signal.blocked_doors.by_key.remove(&key);
+        set_door_state(game, &key, DoorState::Closed);
+        set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+    }
+    for key in bounce_now {
+        bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
     }
 }
 
 /// Advance the game state's timed signals each frame and apply the
-/// resulting world events (timed doors and gates). Paused while character
-/// creation or a level transition is active — the TS loop pauses its tick
-/// while overlays are open, and pausing across the swap keeps timed state
-/// out of the mid-transition window.
+/// resulting world events (timed doors, levers, and plates). Paused while
+/// character creation or a level transition is active — the TS loop pauses
+/// its tick while overlays are open, and pausing across the swap keeps
+/// timed state out of the mid-transition window.
 pub fn tick_game(
     time: Res<Time>,
     mut session: ResMut<Session>,
     gate: crate::char_creation::InputGate,
-    panels: Res<DoorPanels>,
-    mut panel_query: Query<&mut DoorPanel>,
+    mut signal: SignalRenderState,
 ) {
-    if gate.blocked() {
+    if gate.paused() {
         return;
     }
-    session.game.tick_signals(f64::from(time.delta_secs()));
+    let delta = time.delta_secs();
+    let player_cell = (
+        i64::from(session.last_player_pose.0),
+        i64::from(session.last_player_pose.1),
+    );
+    session.game.tick_signals(f64::from(delta));
     let events = session.game.take_events();
-    apply_world_events(events, &panels, &mut panel_query);
+    let Session { game, .. } = &mut *session;
+    apply_world_events(events, game, player_cell, &mut signal);
+    tick_blocked_doors(game, player_cell, &mut signal, delta);
 }
 
 fn set_panel_open(
@@ -201,21 +464,70 @@ fn set_panel_open(
     }
 }
 
-/// Apply drained world events to rendering (door panels for now; pit traps,
-/// spawners, and launchers land with their phases).
+/// Apply drained world events to rendering: door panels, lever resets, and
+/// plate resets. Pit traps and spawners land with their phases. Signal
+/// closes on occupied door cells are held open and retried via
+/// [`BlockedDoors`].
 pub fn apply_world_events(
     events: Vec<WorldEvent>,
-    panels: &DoorPanels,
-    panel_query: &mut Query<&mut DoorPanel>,
+    game: &mut GameState,
+    player_cell: (i64, i64),
+    signal: &mut SignalRenderState,
 ) {
     for event in events {
         match event {
             WorldEvent::DoorSignalChanged { col, row, open } => {
-                set_panel_open(
-                    panels,
-                    panel_query,
+                let key = delve_core::game_state::door_key(col, row);
+                if open {
+                    signal.blocked_doors.by_key.remove(&key);
+                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+                } else if is_door_cell_occupied(game, player_cell, col, row) {
+                    set_door_state(game, &key, DoorState::Open);
+                    signal.blocked_doors.by_key.insert(
+                        key.clone(),
+                        BlockedDoor {
+                            col,
+                            row,
+                            timer: DOOR_RETRY_INTERVAL,
+                        },
+                    );
+                    bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
+                } else {
+                    signal.blocked_doors.by_key.remove(&key);
+                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+                }
+            }
+            WorldEvent::LeverReset { col, row } => {
+                levers::set_lever_target(
+                    &mut signal.lever,
                     &delve_core::game_state::door_key(col, row),
-                    open,
+                    LeverState::Up,
+                );
+            }
+            WorldEvent::PlateReset { col, row } => {
+                plates::release_plate(
+                    &mut signal.plate,
+                    &delve_core::game_state::door_key(col, row),
+                );
+            }
+            WorldEvent::ChestSignalChanged { col, row, open } => {
+                let key = door_key(col, row);
+                if open {
+                    chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                } else {
+                    chests::close_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                }
+            }
+            // Active-layer launcher fires surface through whichever session
+            // drain runs first; consuming them here is the only reliable
+            // path (the projectile tick's own loop covers non-active layers).
+            WorldEvent::LauncherFire { col, row } => {
+                crate::projectiles::fire_launcher_at(
+                    game,
+                    &mut signal.projectiles.0,
+                    game.active_layer_index,
+                    col,
+                    row,
                 );
             }
             other => debug!("unhandled world event: {other:?}"),
@@ -223,14 +535,27 @@ pub fn apply_world_events(
     }
 }
 
+/// Rendering and reward handles `interact_input` needs beyond signal-entity
+/// visuals: loot spawning for opened chests, block-push animation, and the
+/// HUD toast that stands in for TS's dedicated sign/message overlays until
+/// those land (see the module doc comment on this file's `hud` usage).
+#[derive(SystemParam)]
+pub struct InteractEffects<'w, 's> {
+    pub item_render: GroundItemRender<'w, 's>,
+    pub loot_tables: Res<'w, LootTablesRes>,
+    pub rng: ResMut<'w, GameRng>,
+    pub blocks: BlockRender<'w, 's>,
+    pub hud: ResMut<'w, crate::hud::HudState>,
+}
+
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
     gate: crate::char_creation::InputGate,
     players: Query<&Player>,
-    panels: Res<DoorPanels>,
-    mut panel_query: Query<&mut DoorPanel>,
+    mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
+    mut effects: InteractEffects,
 ) {
     if gate.blocked() || !keys.just_pressed(KeyCode::Space) {
         return;
@@ -250,14 +575,24 @@ pub fn interact_input(
 
     match result.result_type {
         InteractionType::DoorOpened => {
-            set_panel_open(&panels, &mut panel_query, &facing_key, true);
+            set_panel_open(
+                &signal.door_panels,
+                &mut signal.panel_query,
+                &facing_key,
+                true,
+            );
         }
         InteractionType::DoorClosed => {
-            set_panel_open(&panels, &mut panel_query, &facing_key, false);
+            set_panel_open(
+                &signal.door_panels,
+                &mut signal.panel_query,
+                &facing_key,
+                false,
+            );
         }
         InteractionType::DoorBlocked => {
-            if let Some(&entity) = panels.by_key.get(&facing_key)
-                && let Ok(mut panel) = panel_query.get_mut(entity)
+            if let Some(&entity) = signal.door_panels.by_key.get(&facing_key)
+                && let Ok(mut panel) = signal.panel_query.get_mut(entity)
             {
                 panel.bounce();
             }
@@ -279,19 +614,67 @@ pub fn interact_input(
                 let (col, row) = (position.col, position.row);
                 let open = session.game.is_door_open(col, row);
                 set_panel_open(
-                    &panels,
-                    &mut panel_query,
+                    &signal.door_panels,
+                    &mut signal.panel_query,
                     &delve_core::game_state::door_key(col, row),
                     open,
+                );
+            }
+            let (lever_col, lever_row) = (i64::from(player_state.col), i64::from(player_state.row));
+            if let Some(state) = session
+                .game
+                .get_lever(lever_col, lever_row)
+                .map(|lever| lever.state)
+            {
+                levers::set_lever_target(
+                    &mut signal.lever,
+                    &delve_core::game_state::door_key(lever_col, lever_row),
+                    state,
+                );
+            }
+        }
+        InteractionType::BlockPushed => {
+            if let (Some(to_col), Some(to_row)) = (result.target_col, result.target_row) {
+                blocks::animate_block_push(
+                    &mut effects.blocks,
+                    &facing_key,
+                    door_key(to_col, to_row),
+                    to_col,
+                    to_row,
+                );
+            }
+        }
+        InteractionType::ChestOpened => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &facing_key);
+                let drops = session
+                    .game
+                    .get_chest(col, row)
+                    .and_then(|chest| chest.drops.clone());
+                let rng = &mut effects.rng.0;
+                let mut random = || rng.next_f64();
+                ground_items::spawn_loot(
+                    &mut session.game,
+                    &mut effects.item_render,
+                    &effects.loot_tables.0,
+                    "",
+                    drops.as_ref(),
+                    (col, row),
+                    &mut random,
                 );
             }
         }
         _ => {}
     }
+    // Substitutes for TS's dedicated overlays (sign text, chest-locked
+    // notices, etc.) until this port grows them — every interaction message
+    // gets a HUD toast in addition to the log line.
     if let Some(message) = &result.message {
         info!("{message}");
+        effects.hud.show_message(message);
     }
 
+    let player_cell = (i64::from(player_state.col), i64::from(player_state.row));
     let events = session.game.take_events();
-    apply_world_events(events, &panels, &mut panel_query);
+    apply_world_events(events, &mut session.game, player_cell, &mut signal);
 }

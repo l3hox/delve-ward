@@ -1,0 +1,18 @@
+{
+    "version": "1.0",
+    "note": "Test fixture: item set for player_controller tests, mirroring the TS vi.mock('./itemDatabase') stub from playerController.test.ts.",
+    "items": [
+        {
+            "id": "sword_iron", "name": "Iron Sword", "type": "weapon", "subtype": "sword",
+            "quality": "common", "icon": "", "weight": 1, "value": 1,
+            "description": "Test iron sword with no equip requirement.",
+            "stats": { "atk": 4 }, "modifiers": [], "requirements": {}
+        },
+        {
+            "id": "health_potion", "name": "Health Potion", "type": "consumable", "subtype": "health_potion",
+            "quality": "common", "icon": "", "weight": 1, "value": 1,
+            "description": "Test health potion restoring HP.",
+            "stats": { "hp": 20 }, "modifiers": [], "requirements": {}
+        }
+    ]
+}

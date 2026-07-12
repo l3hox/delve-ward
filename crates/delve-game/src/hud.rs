@@ -9,6 +9,9 @@ use crate::char_creation::{CharCreation, draw_char_creation};
 use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
+use crate::player::Player;
+use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
+use crate::save_store::FileSaveStore;
 use crate::session::Session;
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -17,8 +20,11 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::ui::widget::NodeImageMode;
 use delve_core::combat::PLAYER_ATTACK_COOLDOWN;
 use delve_core::entities::EquipSlot;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{GameState, LayerState, door_key};
+use delve_core::grid::Facing;
 use delve_core::items::{ItemDatabase, ItemSubtype, ItemType};
+use delve_core::save_system::get_all_slot_metadata;
+use delve_core::status_effects::{StatusEffect, StatusEffectType, has_effect};
 use std::collections::HashMap;
 
 pub const HUD_WIDTH: usize = 640;
@@ -41,11 +47,39 @@ const INVENTORY: (i32, i32, i32, i32) = (
     144,
     176,
 );
+// Compass — top-left.
+const COMPASS: (i32, i32, i32, i32) = (MARGIN, MARGIN, 48, 48);
+// Minimap — top-right.
+const MINIMAP: (i32, i32, i32, i32) = (HUD_WIDTH as i32 - MARGIN - 128, MARGIN, 128, 128);
+const MINIMAP_CELL_SIZE: i32 = 6;
+// Torch indicator — right of the health bar.
+const TORCH_BAR: (i32, i32, i32, i32) =
+    (HEALTH_BAR.0 + HEALTH_BAR.2 + MARGIN, HEALTH_BAR.1, 100, 24);
+// Hunger bar — right of the torch indicator.
+const HUNGER_BAR: (i32, i32, i32, i32) = (TORCH_BAR.0 + TORCH_BAR.2 + MARGIN, TORCH_BAR.1, 80, 24);
+// Status effect icons — above the health bar.
+const STATUS_ICONS_X: i32 = HEALTH_BAR.0;
+const STATUS_ICONS_Y: i32 = HEALTH_BAR.1 - 20;
+const STATUS_ICON_SIZE: i32 = 14;
+const STATUS_ICON_GAP: i32 = 4;
 
 const SLOT_SIZE: i32 = 24;
 const SLOT_GAP: i32 = 4;
 const LOW_HP_THRESHOLD: f64 = 0.25;
+const LOW_FUEL_THRESHOLD: f64 = 0.2;
 const MESSAGE_DURATION: f32 = 2.5;
+
+// Sword swing overlay, ported from `rendering/swordSwing.ts`.
+const SWORD_SWING_DURATION: f32 = 0.25;
+const SWORD_SWING_START_ANGLE: f32 = 0.6;
+const SWORD_SWING_END_ANGLE: f32 = -1.2;
+const SWORD_SWING_SCALE: f32 = 4.0;
+const SWORD_SPRITE_SIZE: usize = 32;
+
+// Level-up toast, ported from `hud/levelUpNotification.ts`. Distinct from
+// `draw_level_up_hint`'s persistent "press L" prompt below.
+const LEVEL_UP_DISPLAY_DURATION: f32 = 3.0;
+const LEVEL_UP_FADE_START: f32 = 2.0;
 
 const PANEL_BG: Rgba = Rgba::translucent(10, 8, 12, 0.75);
 const PANEL_BORDER: Rgba = Rgba::opaque(0x2a, 0x22, 0x30);
@@ -61,6 +95,46 @@ const GOLD_COIN: Rgba = Rgba::opaque(0xda, 0xa5, 0x20);
 const XP_FILL: Rgba = Rgba::opaque(0x4a, 0x9e, 0xff);
 const XP_BG: Rgba = Rgba::opaque(0x22, 0x22, 0x22);
 const MESSAGE_COLOR: (u8, u8, u8) = (0xff, 0x66, 0x44);
+const COMPASS_INACTIVE: Rgba = Rgba::opaque(0x44, 0x44, 0x44);
+const MINIMAP_BG: Rgba = Rgba::translucent(10, 8, 12, 0.8);
+const MINIMAP_WALL: Rgba = Rgba::opaque(0x5a, 0x50, 0x60);
+const MINIMAP_FLOOR: Rgba = Rgba::opaque(0x2a, 0x25, 0x30);
+const MINIMAP_DOOR: Rgba = Rgba::opaque(0x88, 0x66, 0x44);
+const MINIMAP_STAIRS: Rgba = Rgba::opaque(0x44, 0xaa, 0xcc);
+const MINIMAP_ENEMY: Rgba = Rgba::opaque(0xcc, 0x33, 0x33);
+const MINIMAP_BOULDER: Rgba = Rgba::opaque(0x7a, 0x4a, 0x26);
+const TORCH_BG: Rgba = Rgba::opaque(0x1a, 0x12, 0x00);
+const TORCH_FILL: Rgba = Rgba::opaque(0xcc, 0x88, 0x33);
+const TORCH_LOW: Rgba = Rgba::opaque(0xff, 0x66, 0x00);
+const LOW_HUNGER_THRESHOLD: f64 = 0.2;
+const HUNGER_BG: Rgba = Rgba::opaque(0x1a, 0x14, 0x08);
+const HUNGER_FILL: Rgba = Rgba::opaque(0x8a, 0x9a, 0x5a);
+const HUNGER_LOW: Rgba = Rgba::opaque(0xcc, 0x44, 0x00);
+const DAMAGE_FLASH_RGB: (u8, u8, u8) = (180, 0, 0);
+const STARVATION_TINT: Rgba = Rgba::translucent(100, 60, 0, 0.06);
+
+// Status effect screen tints (full-screen overlays).
+const BURNING_TINT_RGB: (u8, u8, u8) = (255, 100, 0);
+const POISON_TINT_RGB: (u8, u8, u8) = (0, 180, 0);
+const SLOW_TINT_RGB: (u8, u8, u8) = (80, 120, 255);
+const SLOW_TINT_ALPHA: f32 = 0.06;
+
+// Status effect icons — pixel-art droplet/snowflake/flame, 3-tone each.
+const POISON_ICON_BASE: (u8, u8, u8) = (0x22, 0xaa, 0x22);
+const POISON_ICON_HIGHLIGHT: (u8, u8, u8) = (0x66, 0xff, 0x66);
+const SLOW_ICON_BASE: (u8, u8, u8) = (0x55, 0x88, 0xff);
+const SLOW_ICON_CENTER: (u8, u8, u8) = (0xaa, 0xcc, 0xff);
+const BURNING_ICON_OUTER: (u8, u8, u8) = (0xff, 0x88, 0x44);
+const BURNING_ICON_INNER: (u8, u8, u8) = (0xff, 0xcc, 0x44);
+const BURNING_ICON_CORE: (u8, u8, u8) = (0xff, 0xee, 0xaa);
+
+/// Compass letter, matching facing, and the direction it sits from center.
+const COMPASS_DIRECTIONS: [(&str, Facing, i32, i32); 4] = [
+    ("N", Facing::N, 0, -1),
+    ("E", Facing::E, 1, 0),
+    ("S", Facing::S, 0, 1),
+    ("W", Facing::W, -1, 0),
+];
 
 /// Two rows of five equipment slots, matching the TS panel layout.
 const EQUIP_SLOTS: [EquipSlot; 10] = [
@@ -160,6 +234,10 @@ pub struct HudState {
     message_timer: f32,
     image: Handle<Image>,
     icons: IconCache,
+    sword_swing_timer: f32,
+    sword_sprite: RgbaImage,
+    level_up_message: String,
+    level_up_timer: f32,
 }
 
 impl HudState {
@@ -168,6 +246,105 @@ impl HudState {
         self.message = text.to_uppercase();
         self.message_timer = MESSAGE_DURATION;
     }
+
+    /// Start the sword swing overlay, ported from `SwordSwingAnimator.trigger`.
+    pub fn trigger_sword_swing(&mut self) {
+        self.sword_swing_timer = SWORD_SWING_DURATION;
+    }
+
+    /// Start the "LEVEL UP! N" toast, ported from `LevelUpNotification.trigger`.
+    pub fn trigger_level_up(&mut self, level: i64) {
+        self.level_up_message = format!("LEVEL {level}");
+        self.level_up_timer = LEVEL_UP_DISPLAY_DURATION;
+    }
+}
+
+/// Pixel-art sword: blade, edge highlight, tip, guard, grip, pommel — a 1:1
+/// port of the TS `drawSword`'s `fillRect` calls onto a 32x32 canvas.
+fn generate_sword_sprite() -> RgbaImage {
+    let mut canvas = PixelCanvas::new(SWORD_SPRITE_SIZE);
+    canvas.fill_rect(12, 2, 6, 20, Rgba::opaque(0xc0, 0xc8, 0xd0)); // blade
+    canvas.fill_rect(14, 2, 2, 20, Rgba::opaque(0xe0, 0xe8, 0xf0)); // edge highlight
+    canvas.fill_rect(14, 0, 2, 2, Rgba::opaque(0xd0, 0xd8, 0xe0)); // tip
+    canvas.fill_rect(8, 22, 14, 3, Rgba::opaque(0xaa, 0x88, 0x33)); // guard
+    canvas.fill_rect(13, 25, 4, 6, Rgba::opaque(0x5a, 0x3a, 0x1a)); // grip
+    canvas.fill_rect(13, 31, 4, 1, Rgba::opaque(0xaa, 0x88, 0x33)); // pommel
+    let width = canvas.width();
+    let height = canvas.height();
+    RgbaImage {
+        width,
+        height,
+        pixels: canvas.into_rgba_bytes(),
+    }
+}
+
+/// `t * (2 - t)`, matching TS's `easeOutQuad`.
+fn ease_out_quad(t: f32) -> f32 {
+    t * (2.0 - t)
+}
+
+/// Sweeps the sword sprite from lower-right to upper-left, ported from
+/// `SwordSwingAnimator.draw`. Decrements `hud.sword_swing_timer` itself
+/// (like `draw_message` does for its own timer) rather than needing a
+/// separate ungated update system.
+fn draw_sword_swing(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
+    if hud.sword_swing_timer <= 0.0 {
+        return;
+    }
+    hud.sword_swing_timer = (hud.sword_swing_timer - delta).max(0.0);
+    if hud.sword_swing_timer <= 0.0 {
+        return;
+    }
+    let t = 1.0 - hud.sword_swing_timer / SWORD_SWING_DURATION;
+    let angle = SWORD_SWING_START_ANGLE
+        + (SWORD_SWING_END_ANGLE - SWORD_SWING_START_ANGLE) * ease_out_quad(t);
+    let pivot = (HUD_WIDTH as f32 * 0.65, HUD_HEIGHT as f32 * 0.95);
+    let draw_edge = SWORD_SPRITE_SIZE as f32 * SWORD_SWING_SCALE;
+    let alpha = if t < 0.7 { 1.0 } else { 1.0 - (t - 0.7) / 0.3 };
+    canvas.blit_rotated(
+        &hud.sword_sprite,
+        pivot,
+        angle,
+        (-draw_edge / 2.0, -draw_edge),
+        (draw_edge, draw_edge),
+        alpha,
+    );
+}
+
+/// "LEVEL UP" + the level number, faded in from `LEVEL_UP_FADE_START`
+/// remaining seconds to zero — ported from `LevelUpNotification.draw`.
+/// Drawn last (see `draw_hud`) so it appears on top of the rest of the HUD,
+/// matching TS's own comment on the equivalent call site.
+fn draw_level_up_toast(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
+    if hud.level_up_timer <= 0.0 {
+        return;
+    }
+    hud.level_up_timer = (hud.level_up_timer - delta).max(0.0);
+    if hud.level_up_timer <= 0.0 {
+        return;
+    }
+    let alpha = if hud.level_up_timer <= LEVEL_UP_FADE_START {
+        hud.level_up_timer / LEVEL_UP_FADE_START
+    } else {
+        1.0
+    };
+    let scale = 3;
+    let line_spacing = 12;
+    let label = "LEVEL UP";
+    let label_y = 52;
+    let label_x = (HUD_WIDTH as i32 - measure_pixel_text(label, scale)) / 2;
+    let level_y = label_y + 5 * scale + line_spacing;
+    let level_x = (HUD_WIDTH as i32 - measure_pixel_text(&hud.level_up_message, scale)) / 2;
+    let color = Rgba::translucent(0xe8, 0xc8, 0x4a, alpha);
+    draw_pixel_text(canvas, label, label_x, label_y, color, scale);
+    draw_pixel_text(
+        canvas,
+        &hud.level_up_message,
+        level_x,
+        level_y,
+        color,
+        scale,
+    );
 }
 
 pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -200,36 +377,369 @@ pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         message_timer: 0.0,
         image: handle,
         icons: IconCache::default(),
+        sword_swing_timer: 0.0,
+        sword_sprite: generate_sword_sprite(),
+        level_up_message: String::new(),
+        level_up_timer: 0.0,
     });
+}
+
+/// Read-only game state the HUD draws from, bundled to stay under the
+/// argument-count lint.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct HudSources<'w, 's> {
+    session: Res<'w, Session>,
+    items: Res<'w, ItemDb>,
+    creation: Res<'w, CharCreation>,
+    vitals: Res<'w, crate::status_effects::PlayerVitals>,
+    players: Query<'w, 's, &'static Player>,
+    save_load: Res<'w, SaveLoadOverlay>,
+    save_store: Res<'w, FileSaveStore>,
 }
 
 pub fn draw_hud(
     time: Res<Time>,
     mut hud: ResMut<HudState>,
     mut images: ResMut<Assets<Image>>,
-    session: Res<Session>,
-    items: Res<ItemDb>,
-    creation: Res<CharCreation>,
+    sources: HudSources,
 ) {
     let hud = &mut *hud;
     let delta = time.delta_secs();
     hud.time += delta;
     let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
 
-    if creation.active {
-        draw_char_creation(&mut canvas, &creation);
+    if sources.creation.active {
+        draw_char_creation(&mut canvas, &sources.creation);
     } else {
-        let game = &session.game;
+        let game = &sources.session.game;
+
+        // Player damage flash — red overlay, drawn under everything else.
+        let flash_alpha = sources.vitals.damage_flash_alpha();
+        if flash_alpha > 0.0 {
+            let (red, green, blue) = DAMAGE_FLASH_RGB;
+            canvas.fill_rect(
+                0,
+                0,
+                HUD_WIDTH as i32,
+                HUD_HEIGHT as i32,
+                Rgba::translucent(red, green, blue, flash_alpha * 0.4),
+            );
+        }
+        draw_status_screen_tints(&mut canvas, &game.status_fx.player_status_effects, hud.time);
+        if game.status_fx.hunger <= 0.0 {
+            canvas.fill_rect(0, 0, HUD_WIDTH as i32, HUD_HEIGHT as i32, STARVATION_TINT);
+        }
+
+        draw_sword_swing(&mut canvas, hud, delta);
+
         draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
-        draw_inventory_panel(&mut canvas, game, &items.0, &mut hud.icons);
+        draw_status_icons(&mut canvas, &game.status_fx.player_status_effects, hud.time);
+        draw_inventory_panel(&mut canvas, game, &sources.items.0, &mut hud.icons);
         draw_xp_bar(&mut canvas, game);
         draw_level_up_hint(&mut canvas, game);
         draw_message(&mut canvas, hud, delta);
+
+        if let Ok(player) = sources.players.single() {
+            let player_state = player.grid_state();
+            draw_compass(&mut canvas, player_state.facing);
+            draw_minimap(
+                &mut canvas,
+                &sources.session.grid,
+                game.active_layer(),
+                player_state.col,
+                player_state.row,
+                player_state.facing,
+            );
+        }
+        draw_torch_indicator(
+            &mut canvas,
+            game.status_fx.torch_fuel,
+            game.status_fx.max_torch_fuel,
+            hud.time,
+        );
+        draw_hunger_bar(
+            &mut canvas,
+            game.status_fx.hunger,
+            game.status_fx.max_hunger,
+            hud.time,
+        );
+
+        draw_level_up_toast(&mut canvas, hud, delta);
+    }
+
+    // Drawn on top of, not instead of, whichever screen rendered above —
+    // matches TS's DOM layering, where the overlay sits above the dimmed
+    // (but still-rendered) game/HUD rather than replacing it.
+    if sources.save_load.active {
+        let metadata = get_all_slot_metadata(&*sources.save_store);
+        draw_save_load_overlay(&mut canvas, &sources.save_load, &metadata);
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
         image.data = Some(canvas.into_rgba_bytes());
     }
+}
+
+fn draw_hunger_bar(canvas: &mut PixelCanvas, hunger: f64, max_hunger: f64, time: f32) {
+    let (x, y, width, height) = HUNGER_BAR;
+    let ratio = (hunger / max_hunger).clamp(0.0, 1.0);
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+
+    let bar_x = x + 20;
+    let bar_y = y + 4;
+    let bar_w = width - 24;
+    let bar_h = height - 8;
+    canvas.fill_rect(bar_x, bar_y, bar_w, bar_h, HUNGER_BG);
+
+    let mut fill_color = HUNGER_FILL;
+    if ratio <= LOW_HUNGER_THRESHOLD {
+        // Slow pulse when low.
+        if (time * 6.0).sin() > 0.0 {
+            fill_color = HUNGER_LOW;
+        }
+    }
+    canvas.fill_rect(
+        bar_x,
+        bar_y,
+        (f64::from(bar_w) * ratio) as i32,
+        bar_h,
+        fill_color,
+    );
+
+    draw_bread(canvas, x + 5, y + 4, HUNGER_FILL);
+
+    let percent = (ratio * 100.0).round() as i64;
+    draw_pixel_text(
+        canvas,
+        &percent.to_string(),
+        bar_x + 2,
+        bar_y + 2,
+        TEXT_PRIMARY,
+        1,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+}
+
+/// 5x7 pixel bread loaf.
+fn draw_bread(canvas: &mut PixelCanvas, x: i32, y: i32, color: Rgba) {
+    canvas.fill_rect(x + 1, y, 3, 1, color);
+    canvas.fill_rect(x, y + 1, 5, 2, color);
+    canvas.fill_rect(x, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 2, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 4, y + 3, 1, 1, color);
+    canvas.fill_rect(x, y + 4, 5, 1, color);
+    canvas.fill_rect(x + 1, y + 5, 3, 1, color);
+    canvas.fill_rect(x + 2, y + 6, 1, 1, color);
+}
+
+fn draw_compass(canvas: &mut PixelCanvas, facing: Facing) {
+    let (x, y, width, height) = COMPASS;
+    let center_x = x + width / 2;
+    let center_y = y + height / 2;
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+
+    let scale = 2;
+    let letter_offset = 14;
+    for (label, direction, dx, dy) in COMPASS_DIRECTIONS {
+        let color = if direction == facing {
+            ACCENT_GOLD
+        } else {
+            COMPASS_INACTIVE
+        };
+        // Centers the 3px-wide, 5px-tall glyph on the offset point.
+        let letter_x = center_x + dx * letter_offset - 3;
+        let letter_y = center_y + dy * letter_offset - 5;
+        draw_pixel_text(canvas, label, letter_x, letter_y, color, scale);
+    }
+
+    canvas.fill_rect(center_x - 1, center_y - 1, 3, 3, ACCENT_GOLD);
+}
+
+/// Minimap pixel origin and the grid cell shown at that origin, shared by
+/// every dot drawn on top of the terrain grid.
+struct MinimapView {
+    origin_x: i32,
+    origin_y: i32,
+    start_col: i32,
+    start_row: i32,
+}
+
+/// Draws a 3x3 dot centered on `(entity_col, entity_row)`, skipping entities
+/// outside explored cells.
+fn draw_minimap_dot(
+    canvas: &mut PixelCanvas,
+    layer: &LayerState,
+    view: &MinimapView,
+    entity_col: i64,
+    entity_row: i64,
+    color: Rgba,
+) {
+    if !layer
+        .explored_cells
+        .contains(&door_key(entity_col, entity_row))
+    {
+        return;
+    }
+    let dot_x = view.origin_x
+        + (entity_col as i32 - view.start_col) * MINIMAP_CELL_SIZE
+        + MINIMAP_CELL_SIZE / 2;
+    let dot_y = view.origin_y
+        + (entity_row as i32 - view.start_row) * MINIMAP_CELL_SIZE
+        + MINIMAP_CELL_SIZE / 2;
+    canvas.fill_rect(dot_x - 1, dot_y - 1, 3, 3, color);
+}
+
+fn draw_minimap(
+    canvas: &mut PixelCanvas,
+    grid: &[String],
+    layer: &LayerState,
+    player_col: i32,
+    player_row: i32,
+    facing: Facing,
+) {
+    let (x, y, width, height) = MINIMAP;
+
+    canvas.fill_rect(x, y, width, height, MINIMAP_BG);
+
+    let visible_cols = width / MINIMAP_CELL_SIZE;
+    let visible_rows = height / MINIMAP_CELL_SIZE;
+    let start_col = player_col - visible_cols / 2;
+    let start_row = player_row - visible_rows / 2;
+    let grid_rows = grid.len() as i32;
+    let grid_cols = grid.first().map_or(0, |row| row.chars().count() as i32);
+
+    for view_row in 0..visible_rows {
+        for view_col in 0..visible_cols {
+            let cell_col = start_col + view_col;
+            let cell_row = start_row + view_row;
+            let key = door_key(i64::from(cell_col), i64::from(cell_row));
+
+            if !layer.explored_cells.contains(&key) {
+                continue;
+            }
+            if cell_row < 0 || cell_row >= grid_rows || cell_col < 0 || cell_col >= grid_cols {
+                continue;
+            }
+
+            // Persistent (illusory) secret walls still appear as walls on the minimap.
+            let cell = grid[cell_row as usize].chars().nth(cell_col as usize);
+            let is_wall = cell == Some('#')
+                || layer
+                    .secret_walls
+                    .get(&key)
+                    .is_some_and(|wall| wall.persistent);
+
+            let color = if is_wall {
+                MINIMAP_WALL
+            } else if layer.doors.contains_key(&key) {
+                MINIMAP_DOOR
+            } else if layer.stairs.contains_key(&key) {
+                MINIMAP_STAIRS
+            } else {
+                MINIMAP_FLOOR
+            };
+
+            canvas.fill_rect(
+                x + view_col * MINIMAP_CELL_SIZE,
+                y + view_row * MINIMAP_CELL_SIZE,
+                MINIMAP_CELL_SIZE,
+                MINIMAP_CELL_SIZE,
+                color,
+            );
+        }
+    }
+
+    let view = MinimapView {
+        origin_x: x,
+        origin_y: y,
+        start_col,
+        start_row,
+    };
+    for enemy in layer.enemies.values() {
+        draw_minimap_dot(canvas, layer, &view, enemy.col, enemy.row, MINIMAP_ENEMY);
+    }
+    for boulder in layer.boulders.values() {
+        draw_minimap_dot(
+            canvas,
+            layer,
+            &view,
+            boulder.col,
+            boulder.row,
+            MINIMAP_BOULDER,
+        );
+    }
+
+    let player_x = x + (player_col - start_col) * MINIMAP_CELL_SIZE + MINIMAP_CELL_SIZE / 2;
+    let player_y = y + (player_row - start_row) * MINIMAP_CELL_SIZE + MINIMAP_CELL_SIZE / 2;
+    canvas.fill_rect(player_x - 1, player_y - 1, 3, 3, ACCENT_GOLD);
+
+    let (delta_col, delta_row) = facing.delta();
+    canvas.stroke_line(
+        player_x,
+        player_y,
+        player_x + delta_col * MINIMAP_CELL_SIZE,
+        player_y + delta_row * MINIMAP_CELL_SIZE,
+        ACCENT_GOLD,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+}
+
+/// 5x7 pixel flame icon.
+fn draw_flame(canvas: &mut PixelCanvas, x: i32, y: i32, color: Rgba) {
+    canvas.fill_rect(x + 2, y, 1, 1, color);
+    canvas.fill_rect(x + 1, y + 1, 3, 1, color);
+    canvas.fill_rect(x + 1, y + 2, 3, 1, color);
+    canvas.fill_rect(x, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 2, y + 3, 1, 1, color);
+    canvas.fill_rect(x + 4, y + 3, 1, 1, color);
+    canvas.fill_rect(x, y + 4, 5, 1, color);
+    canvas.fill_rect(x + 1, y + 5, 3, 1, color);
+    canvas.fill_rect(x + 2, y + 6, 1, 1, color);
+}
+
+fn draw_torch_indicator(canvas: &mut PixelCanvas, fuel: f64, max_fuel: f64, time: f32) {
+    let (x, y, width, height) = TORCH_BAR;
+    let ratio = (fuel / max_fuel).clamp(0.0, 1.0);
+
+    canvas.fill_rect(x, y, width, height, PANEL_BG);
+
+    let bar_x = x + 20;
+    let bar_y = y + 4;
+    let bar_w = width - 24;
+    let bar_h = height - 8;
+    canvas.fill_rect(bar_x, bar_y, bar_w, bar_h, TORCH_BG);
+
+    let mut fill_color = TORCH_FILL;
+    if ratio <= LOW_FUEL_THRESHOLD {
+        let flicker = (time * 10.0).sin() * (time * 7.0).sin();
+        fill_color = if flicker > 0.0 { TORCH_LOW } else { TORCH_FILL };
+    }
+    canvas.fill_rect(
+        bar_x,
+        bar_y,
+        (f64::from(bar_w) * ratio) as i32,
+        bar_h,
+        fill_color,
+    );
+
+    draw_flame(canvas, x + 5, y + 4, TORCH_FILL);
+
+    let percent = (ratio * 100.0).round() as i32;
+    draw_pixel_text(
+        canvas,
+        &percent.to_string(),
+        bar_x + 2,
+        bar_y + 2,
+        TEXT_PRIMARY,
+        1,
+    );
+
+    canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
 }
 
 fn draw_health_bar(canvas: &mut PixelCanvas, hp: f64, max_hp: f64, time: f32) {
@@ -549,4 +1059,150 @@ fn draw_message(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {
         Rgba::translucent(red, green, blue, alpha),
         2,
     );
+}
+
+fn rgba((red, green, blue): (u8, u8, u8), alpha: f32) -> Rgba {
+    Rgba::translucent(red, green, blue, alpha)
+}
+
+/// Full-screen color washes for active status effects: burning and poison
+/// pulse via a sine wave, slow is a constant tint.
+fn draw_status_screen_tints(canvas: &mut PixelCanvas, effects: &[StatusEffect], time: f32) {
+    let (width, height) = (HUD_WIDTH as i32, HUD_HEIGHT as i32);
+    if has_effect(effects, StatusEffectType::Burning) {
+        let alpha = 0.08 + 0.04 * (time * 12.0).sin();
+        canvas.fill_rect(0, 0, width, height, rgba(BURNING_TINT_RGB, alpha));
+    }
+    if has_effect(effects, StatusEffectType::Poison) {
+        let alpha = 0.06 + 0.02 * (time * 4.0).sin();
+        canvas.fill_rect(0, 0, width, height, rgba(POISON_TINT_RGB, alpha));
+    }
+    if has_effect(effects, StatusEffectType::Slow) {
+        canvas.fill_rect(0, 0, width, height, rgba(SLOW_TINT_RGB, SLOW_TINT_ALPHA));
+    }
+}
+
+/// Green droplet icon for poison.
+fn draw_poison_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let pixel = size / 7;
+    let base = rgba(POISON_ICON_BASE, alpha);
+    canvas.fill_rect(center_x - pixel, y + pixel, pixel * 2, pixel, base); // top narrow
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 2, pixel * 4, pixel, base); // middle
+    canvas.fill_rect(
+        center_x - pixel * 3,
+        y + pixel * 3,
+        pixel * 6,
+        pixel * 2,
+        base,
+    ); // wide
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 5, pixel * 4, pixel, base); // bottom narrow
+    canvas.fill_rect(
+        center_x - pixel,
+        y + pixel * 3,
+        pixel,
+        pixel,
+        rgba(POISON_ICON_HIGHLIGHT, alpha),
+    );
+}
+
+/// Blue snowflake icon for slow.
+fn draw_slow_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let center_y = y + size / 2;
+    let pixel = size / 7;
+    let base = rgba(SLOW_ICON_BASE, alpha);
+    canvas.fill_rect(
+        center_x - pixel,
+        center_y - pixel * 3,
+        pixel * 2,
+        pixel * 6,
+        base,
+    ); // vertical
+    canvas.fill_rect(
+        center_x - pixel * 3,
+        center_y - pixel,
+        pixel * 6,
+        pixel * 2,
+        base,
+    ); // horizontal
+    canvas.fill_rect(
+        center_x - pixel * 2,
+        center_y - pixel * 2,
+        pixel,
+        pixel,
+        base,
+    );
+    canvas.fill_rect(center_x + pixel, center_y - pixel * 2, pixel, pixel, base);
+    canvas.fill_rect(center_x - pixel * 2, center_y + pixel, pixel, pixel, base);
+    canvas.fill_rect(center_x + pixel, center_y + pixel, pixel, pixel, base);
+    canvas.fill_rect(
+        center_x - pixel / 2,
+        center_y - pixel / 2,
+        pixel,
+        pixel,
+        rgba(SLOW_ICON_CENTER, alpha),
+    );
+}
+
+/// Orange flame icon for burning.
+fn draw_burning_icon(canvas: &mut PixelCanvas, x: i32, y: i32, size: i32, alpha: f32) {
+    let center_x = x + size / 2;
+    let pixel = size / 7;
+    let outer = rgba(BURNING_ICON_OUTER, alpha);
+    canvas.fill_rect(center_x - pixel, y + pixel, pixel * 2, pixel, outer); // tip
+    canvas.fill_rect(center_x - pixel * 2, y + pixel * 2, pixel * 4, pixel, outer); // upper
+    canvas.fill_rect(
+        center_x - pixel * 2,
+        y + pixel * 3,
+        pixel * 4,
+        pixel * 2,
+        outer,
+    ); // middle
+    canvas.fill_rect(center_x - pixel * 3, y + pixel * 5, pixel * 6, pixel, outer); // base
+    canvas.fill_rect(
+        center_x - pixel,
+        y + pixel * 3,
+        pixel * 2,
+        pixel * 2,
+        rgba(BURNING_ICON_INNER, alpha),
+    );
+    canvas.fill_rect(
+        center_x - pixel / 2,
+        y + pixel * 4,
+        pixel,
+        pixel,
+        rgba(BURNING_ICON_CORE, alpha),
+    );
+}
+
+/// Active status effect icons above the health bar, deduplicated by type.
+fn draw_status_icons(canvas: &mut PixelCanvas, effects: &[StatusEffect], time: f32) {
+    if effects.is_empty() {
+        return;
+    }
+    // Gentle pulse: alpha scales between 0.7 and 1.0.
+    let pulse = 0.85 + 0.15 * (time * 3.0).sin();
+    let mut shown = Vec::new();
+    let mut offset_x = 0;
+    for effect in effects {
+        if shown.contains(&effect.effect_type) {
+            continue;
+        }
+        shown.push(effect.effect_type);
+
+        let x = STATUS_ICONS_X + offset_x;
+        match effect.effect_type {
+            StatusEffectType::Poison => {
+                draw_poison_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse)
+            }
+            StatusEffectType::Slow => {
+                draw_slow_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse)
+            }
+            StatusEffectType::Burning => {
+                draw_burning_icon(canvas, x, STATUS_ICONS_Y, STATUS_ICON_SIZE, pulse);
+            }
+        }
+        offset_x += STATUS_ICON_SIZE + STATUS_ICON_GAP;
+    }
 }
