@@ -8,6 +8,7 @@ use crate::assets_dir;
 use crate::char_creation::{CharCreation, draw_char_creation};
 use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
+use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
 use crate::player::Player;
 use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
@@ -30,6 +31,18 @@ use std::collections::HashMap;
 pub const HUD_WIDTH: usize = 640;
 pub const HUD_HEIGHT: usize = 360;
 const MARGIN: i32 = 8;
+
+/// Window-pixel cursor position to HUD-canvas (`HUD_WIDTH`x`HUD_HEIGHT`)
+/// coordinates. The HUD image renders as an `ImageNode` with
+/// `NodeImageMode::Stretch` filling the whole window (`setup_hud`), so this
+/// is a straight per-axis scale — no aspect-ratio preservation, no
+/// letterbox offset, matching TS's `_screenToHud` (`hudCanvas.ts`).
+pub fn screen_to_hud(cursor: Vec2, window: &Window) -> Vec2 {
+    Vec2::new(
+        cursor.x / window.width() * HUD_WIDTH as f32,
+        cursor.y / window.height() * HUD_HEIGHT as f32,
+    )
+}
 
 // Health bar — bottom-left.
 const HEALTH_BAR: (i32, i32, i32, i32) = (MARGIN, HUD_HEIGHT as i32 - MARGIN - 24, 140, 24);
@@ -395,6 +408,7 @@ pub struct HudSources<'w, 's> {
     players: Query<'w, 's, &'static Player>,
     save_load: Res<'w, SaveLoadOverlay>,
     save_store: Res<'w, FileSaveStore>,
+    overlay: Res<'w, ActiveOverlay>,
 }
 
 pub fn draw_hud(
@@ -408,7 +422,7 @@ pub fn draw_hud(
     hud.time += delta;
     let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
 
-    if sources.creation.active {
+    if *sources.overlay == ActiveOverlay::CharCreation {
         draw_char_creation(&mut canvas, &sources.creation);
     } else {
         let game = &sources.session.game;
@@ -470,7 +484,7 @@ pub fn draw_hud(
     // Drawn on top of, not instead of, whichever screen rendered above —
     // matches TS's DOM layering, where the overlay sits above the dimmed
     // (but still-rendered) game/HUD rather than replacing it.
-    if sources.save_load.active {
+    if *sources.overlay == ActiveOverlay::SaveLoad {
         let metadata = get_all_slot_metadata(&*sources.save_store);
         draw_save_load_overlay(&mut canvas, &sources.save_load, &metadata);
     }

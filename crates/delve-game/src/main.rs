@@ -16,6 +16,8 @@ mod hud_font;
 mod keys;
 mod level_scene;
 mod levers;
+mod mouse;
+mod overlay;
 mod pixel_canvas;
 mod plates;
 mod player;
@@ -49,6 +51,7 @@ use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
 use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
+use overlay::ActiveOverlay;
 use player::Player;
 use projectiles::{ProjectileBillboards, ProjectileManagerRes};
 use save_store::FileSaveStore;
@@ -360,6 +363,11 @@ fn main() {
         .init_resource::<status_effects::PlayerVitals>()
         .init_resource::<save_load_overlay::SaveLoadOverlay>()
         .insert_resource(FileSaveStore::new(save_store::saves_dir()))
+        // The game boots straight into character creation, matching TS
+        // showing that screen before the level loads — never re-entered
+        // afterward, so this is an explicit initial value, not a `Default`.
+        .insert_resource(ActiveOverlay::CharCreation)
+        .init_resource::<mouse::MouseState>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
@@ -368,6 +376,7 @@ fn main() {
                 // out at 20 elements) but chained together at the outer
                 // level below, so ordering is identical to one long chain.
                 (
+                    mouse::track_mouse,
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
                     session::player_input,

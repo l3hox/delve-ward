@@ -23,24 +23,21 @@ The existing precedent is `char_creation.rs`: a `Resource` with an `active: bool
 That pattern doesn't scale cleanly to seven more overlays (dialog, trading, quest log, inventory, attribute, stats, tooltip-is-not-modal) — N booleans across N resources can't express "at most one is open" and requires an N-way `if`/`else if` chain in both the input dispatcher and `draw_hud`. Recommendation: **one `ActiveOverlay` enum resource** replacing the boolean-per-resource approach for every *modal* overlay (tooltip is not modal — see 2.6):
 
 ```rust
-#[derive(Resource, Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveOverlay {
-    #[default]
+    CharCreation,
+    SaveLoad,
     None,
-    Dialog,
-    Trading,
-    QuestLog,
-    Inventory,
-    Attribute,
-    Stats,
 }
 ```
 
-Each overlay's *data* (dialog session, trading NPC id, cursor position, drag state, pending attribute allocations) stays in its own resource, `Option`-wrapped or defaulted when not relevant — mirroring how TS's `visible: boolean` + injected references live per-overlay-instance while `anyOverlayOpen` is a derived OR across all of them. `ActiveOverlay::None` ⇔ TS's `!anyOverlayOpen`. `InputGate::blocked()` extends to `transition.is_active() || creation.active || overlay.0 != ActiveOverlay::None`.
+Landed so far: `CharCreation`, `SaveLoad`, `None`. Each later overlay slice (dialog, trading, quest log, inventory, attribute, stats) adds its own variant to this enum plus a match arm in `draw_hud` and its own input system checking that variant — no other changes to the enum's shape or `InputGate` are needed per addition.
 
-One dispatcher system (`overlay_input`, replacing per-overlay input systems where they'd otherwise duplicate the same Escape-handling boilerplate) matches on `ActiveOverlay` and routes to the right handler; `draw_hud` matches on the same enum instead of chaining booleans. Opening overlay X when overlay Y is already open should replace, not stack (TS never shows two overlays at once either — every `show()` call is paired with hiding whatever's currently up, e.g. the dialog→trading handoff in 2.3).
+Each overlay's *data* (dialog session, trading NPC id, cursor position, drag state, pending attribute allocations) stays in its own resource, `Option`-wrapped or defaulted when not relevant — mirroring how TS's `visible: boolean` + injected references live per-overlay-instance while `anyOverlayOpen` is a derived OR across all of them. `ActiveOverlay::None` ⇔ TS's `!anyOverlayOpen`. `InputGate::blocked()` extends to `transition.is_active() || overlay.is_open()`.
 
-Character creation is intentionally left out of this enum (it's pre-game setup, not an in-dungeon overlay, and already has its own working gate) — don't fold it in.
+`ActiveOverlay` folds character creation in as its own variant (`ActiveOverlay::CharCreation`) alongside the in-dungeon overlays, rather than keeping it on a separate gate — `CharCreation` the resource keeps its own data (name, stats, points, selected row), same as every other overlay's resource; only the "am I the one blocking input" flag centralizes. The enum has no `Default` impl — the game boots straight into `ActiveOverlay::CharCreation` via an explicit `insert_resource` call in `main.rs`, not a derived default, since there's no overlay that's naturally "the resting state" the way `None` is once the game is actually running.
+
+Escape-handling stays distributed rather than a single dispatcher system: each overlay's own input system remains the sole owner of what Escape does while it's the active variant. A shared dispatcher that also reacted to `just_pressed(Escape)` would risk a close-then-reopen double-fire within one frame (`just_pressed` stays true for every system that runs before the next frame clears it) unless carefully sequenced against the per-overlay systems — with only one Escape-consuming overlay (save/load) landed so far, `ActiveOverlay`'s mutual exclusivity already *is* the full routing mechanism needed; there's no real dispatch ambiguity to resolve yet. Revisit a real dispatcher once a second overlay (dialog, trading, quest log) also wants "Escape closes me."
 
 ### 2.2 Mouse input in Bevy 0.19
 
@@ -208,7 +205,7 @@ Ordered by dependency; slices in the same row have no file overlap and can run i
 
 | # | Slice | Files (new unless noted) | Depends on | Parallel-safe with |
 |---|---|---|---|---|
-| 1 | `ActiveOverlay` enum + `InputGate` extension | `session.rs` (edit), new `overlay.rs` or fold into `session.rs` | — | 2, 3 |
+| 1 | `ActiveOverlay` enum + `InputGate` extension + mouse-input foundation (done) | new `overlay.rs`, new `mouse.rs`, `char_creation.rs`/`save_load_overlay.rs`/`hud.rs`/`session.rs`/`enemies.rs`/`projectiles.rs`/`status_effects.rs`/`sconces.rs`/`main.rs` (edit) | — | 2, 3 |
 | 2 | NPC billboards + spawn/despawn wiring | `npcs.rs`, `level_scene.rs` (edit), `main.rs`/`transition.rs` (edit for resource insert/swap) | — | 1, 3 |
 | 3 | `questStage` evaluator signature change | `delve-core/dialog_manager.rs` (edit) | — | 1, 2 |
 | 4 | Dialog overlay render + input + `DialogEvent` routing | `dialog_overlay.rs` | 1, 2, 3 | 5, 6 |

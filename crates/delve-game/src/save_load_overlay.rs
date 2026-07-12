@@ -14,6 +14,7 @@
 
 use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
+use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
 use crate::player::Player;
 use crate::save_store::FileSaveStore;
@@ -45,11 +46,12 @@ fn slot_label(index: usize) -> String {
     }
 }
 
-/// Save/load modal state. `is_death` mirrors TS's `isDeath` flag: it hides
-/// the Save/Delete actions and shows the Restart action instead.
+/// Save/load modal data. Whether it's open is centralized in
+/// `ActiveOverlay::SaveLoad`, not a field here. `is_death` mirrors TS's
+/// `isDeath` flag: it hides the Save/Delete actions and shows the Restart
+/// action instead.
 #[derive(Resource, Default)]
 pub struct SaveLoadOverlay {
-    pub active: bool,
     pub is_death: bool,
     pub selected: usize,
 }
@@ -117,18 +119,18 @@ pub fn save_game_to_slot(
 /// on the next frame, which stops this system from running again until the
 /// overlay closes with HP restored.
 ///
-/// Takes `Transition`/`CharCreation` directly rather than the shared
+/// Takes `Transition`/`ActiveOverlay` directly rather than the shared
 /// `InputGate` `SystemParam`, since this system also needs `ResMut` access
-/// to `SaveLoadOverlay`/`Transition` themselves — `InputGate` borrowing
-/// those immutably at the same time would conflict.
+/// to `ActiveOverlay`/`Transition` themselves — `InputGate` borrowing those
+/// immutably at the same time would conflict.
 pub fn check_player_death(
     session: Res<Session>,
-    creation: Res<crate::char_creation::CharCreation>,
+    mut overlay: ResMut<ActiveOverlay>,
     mut save_load: ResMut<SaveLoadOverlay>,
     save_store: Res<FileSaveStore>,
     mut transition: ResMut<Transition>,
 ) {
-    if transition.is_active() || creation.active || save_load.active {
+    if transition.is_active() || overlay.is_open() {
         return;
     }
     if session.game.player.hp > 0.0 {
@@ -139,7 +141,7 @@ pub fn check_player_death(
         .values()
         .any(Option::is_some);
     if has_saves {
-        save_load.active = true;
+        *overlay = ActiveOverlay::SaveLoad;
         save_load.is_death = true;
         save_load.selected = 0;
     } else {
@@ -154,8 +156,8 @@ pub fn check_player_death(
 #[allow(clippy::too_many_arguments)]
 pub fn save_load_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mut overlay: ResMut<ActiveOverlay>,
     mut save_load: ResMut<SaveLoadOverlay>,
-    creation: Res<crate::char_creation::CharCreation>,
     mut transition: ResMut<Transition>,
     mut save_store: ResMut<FileSaveStore>,
     session: Res<Session>,
@@ -164,15 +166,17 @@ pub fn save_load_input(
     players: Query<&Player>,
     mut hud: ResMut<HudState>,
 ) {
-    if !save_load.active {
-        // Same three conditions `InputGate::blocked()` checks; inlined here
+    if *overlay != ActiveOverlay::SaveLoad {
+        // Same two conditions `InputGate::blocked()` checks; inlined here
         // because this system also needs `ResMut<Transition>` below, which
-        // would conflict with `InputGate`'s own `Res<Transition>`.
-        if transition.is_active() || creation.active {
+        // would conflict with `InputGate`'s own `Res<Transition>`. Checking
+        // `!= None` (not just "is it CharCreation") also blocks Escape from
+        // stealing whatever other overlay a later slice adds.
+        if transition.is_active() || *overlay != ActiveOverlay::None {
             return;
         }
         if keys.just_pressed(KeyCode::Escape) {
-            save_load.active = true;
+            *overlay = ActiveOverlay::SaveLoad;
             save_load.is_death = false;
             save_load.selected = 0;
         }
@@ -185,7 +189,7 @@ pub fn save_load_input(
         // this same frame's-worth-later if the player is still dead and
         // saves exist (or restarts if not), the same one-frame "flicker"
         // TS produces.
-        save_load.active = false;
+        *overlay = ActiveOverlay::None;
         return;
     }
     if keys.just_pressed(KeyCode::ArrowUp) {
@@ -225,7 +229,7 @@ pub fn save_load_input(
         if !ok {
             hud.show_message("Save failed — storage full!");
         }
-        save_load.active = false;
+        *overlay = ActiveOverlay::None;
         hud.show_message("Game saved.");
     }
 
@@ -240,22 +244,22 @@ pub fn save_load_input(
     // Load button.
     if keys.just_pressed(KeyCode::Enter) {
         let Some(data) = load_from_slot(&*save_store, slot_key) else {
-            save_load.active = false;
+            *overlay = ActiveOverlay::None;
             hud.show_message("Failed to load save.");
             return;
         };
         if data.dungeon_name != dungeon.0.name {
-            save_load.active = false;
+            *overlay = ActiveOverlay::None;
             hud.show_message("Save is from a different dungeon.");
             return;
         }
-        save_load.active = false;
+        *overlay = ActiveOverlay::None;
         transition.begin_load(data);
     }
 
     // Restart — death mode only, matching TS's Restart button visibility.
     if save_load.is_death && keys.just_pressed(KeyCode::KeyR) {
-        save_load.active = false;
+        *overlay = ActiveOverlay::None;
         transition.begin_restart();
     }
 }

@@ -130,7 +130,7 @@ pub fn tick_enemies(
     time: Res<Time>,
     mut session: ResMut<Session>,
     mut rng: ResMut<GameRng>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     players: Query<&Player>,
     mut render: EnemyRenderState,
     mut vitals: ResMut<crate::status_effects::PlayerVitals>,
@@ -281,7 +281,7 @@ pub fn tick_enemies(
 pub fn attack_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     mut rng: ResMut<GameRng>,
     mut billboards: ResMut<EnemyBillboards>,
     players: Query<&Player>,
@@ -504,7 +504,7 @@ pub(crate) fn handle_kill(
 pub fn tick_attack_cooldown(
     time: Res<Time>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
 ) {
     if gate.paused() {
         return;

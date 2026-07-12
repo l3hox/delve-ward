@@ -6,8 +6,8 @@
 //! handled by `enemies::tick_enemies`; this module only adds the ambient
 //! tint that reads the result.
 
-use crate::char_creation::InputGate;
 use crate::enemies::{EnemyBillboard, EnemyBillboards};
+use crate::overlay::InputGate;
 use crate::player::Player;
 use crate::session::Session;
 use bevy::prelude::*;

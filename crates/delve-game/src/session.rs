@@ -169,7 +169,7 @@ fn move_forward_with_secret_wall_reveal(
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     mut players: Query<&mut Player>,
     mut wall_entities: WallEntityRender,
     mut hud: ResMut<crate::hud::HudState>,
@@ -433,7 +433,7 @@ fn tick_blocked_doors(
 pub fn tick_game(
     time: Res<Time>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     mut signal: SignalRenderState,
 ) {
     if gate.paused() {
@@ -551,7 +551,7 @@ pub struct InteractEffects<'w, 's> {
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     players: Query<&Player>,
     mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
