@@ -92,6 +92,7 @@ pub fn save_game_to_slot(
     player_facing: Facing,
     dungeon: &DungeonRes,
     snapshots: &LevelSnapshots,
+    quests: &delve_core::quest_manager::QuestManager,
 ) -> bool {
     let data = build_save_data(BuildSaveDataParams {
         game_state: &session.game,
@@ -102,7 +103,7 @@ pub fn save_game_to_slot(
         level_snapshots: &snapshots.0,
         dungeon: &dungeon.0,
         timestamp: current_timestamp_millis(),
-        quests: None,
+        quests: Some(quests.get_serializable_state()),
     });
     save_to_slot(store, slot_key, &data)
 }
@@ -165,6 +166,7 @@ pub fn save_load_input(
     snapshots: Res<LevelSnapshots>,
     players: Query<&Player>,
     mut hud: ResMut<HudState>,
+    quests: Res<crate::dialog_overlay::QuestManagerRes>,
 ) {
     if *overlay != ActiveOverlay::SaveLoad {
         // Same two conditions `InputGate::blocked()` checks; inlined here
@@ -225,6 +227,7 @@ pub fn save_load_input(
             player_state.facing,
             &dungeon,
             &snapshots,
+            &quests.0,
         );
         if !ok {
             hud.show_message("Save failed — storage full!");

@@ -24,7 +24,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 /// Which modal overlay currently owns input, if any. `CharCreation` is
-/// folded in alongside the in-dungeon overlays (save/load now; dialog,
+/// folded in alongside the in-dungeon overlays (save/load, dialog now;
 /// trading, quest log, inventory, attribute, stats in later phase-4 slices)
 /// rather than kept on its own separate gate — one shared "what's blocking
 /// gameplay" state for all of them.
@@ -37,6 +37,10 @@ pub enum ActiveOverlay {
     /// The save/load modal — opened via Escape, or by
     /// `save_load_overlay::check_player_death` on death.
     SaveLoad,
+    /// The NPC dialog panel — opened by interacting with an NPC, closed by
+    /// Escape, reaching a dialog-ending node, or `DialogEvent::OpenShop`
+    /// handing off to the (not yet landed) trading overlay.
+    Dialog,
     /// No overlay open; gameplay input reaches the dungeon.
     None,
 }

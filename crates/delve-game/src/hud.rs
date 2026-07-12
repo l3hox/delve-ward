@@ -6,6 +6,7 @@
 
 use crate::assets_dir;
 use crate::char_creation::{CharCreation, draw_char_creation};
+use crate::dialog_overlay::{DialogOverlayState, QuestManagerRes, draw_dialog_overlay};
 use crate::ground_items::ItemDb;
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::overlay::ActiveOverlay;
@@ -409,6 +410,8 @@ pub struct HudSources<'w, 's> {
     save_load: Res<'w, SaveLoadOverlay>,
     save_store: Res<'w, FileSaveStore>,
     overlay: Res<'w, ActiveOverlay>,
+    dialog_state: Res<'w, DialogOverlayState>,
+    quests: Res<'w, QuestManagerRes>,
 }
 
 pub fn draw_hud(
@@ -487,6 +490,14 @@ pub fn draw_hud(
     if *sources.overlay == ActiveOverlay::SaveLoad {
         let metadata = get_all_slot_metadata(&*sources.save_store);
         draw_save_load_overlay(&mut canvas, &sources.save_load, &metadata);
+    }
+    if *sources.overlay == ActiveOverlay::Dialog {
+        draw_dialog_overlay(
+            &mut canvas,
+            &sources.dialog_state,
+            &sources.session.game,
+            &sources.quests.0,
+        );
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {

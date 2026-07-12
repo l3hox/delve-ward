@@ -81,6 +81,15 @@
             "text": "Linear node B, the end.",
             "next": null,
             "effects": [{ "type": "setFlag", "flag": "reached_linear_b" }]
+        },
+        "linear_to_quest": {
+            "text": "One step from a quest trigger.",
+            "next": "linear_quest_node"
+        },
+        "linear_quest_node": {
+            "text": "This node's own arrival starts a quest.",
+            "next": null,
+            "effects": [{ "type": "startQuest", "questId": "fixture_quest" }]
         }
     }
 }

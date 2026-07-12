@@ -230,40 +230,59 @@ pub fn get_available_choices<'session>(
 }
 
 /// Apply the chosen option's effects, move the session to its `next` node,
-/// and run that node's entry effects. Returns the new node id, or `None`
-/// when the choice ends the dialog (`next` is `null`/absent) or the index
-/// is out of range for the currently available choices.
+/// and run that node's entry effects. Returns the new node id (`None` when
+/// the choice ends the dialog — `next` is `null`/absent, or the index is out
+/// of range for the currently available choices) alongside every
+/// [`DialogEvent`] produced by either effects run, in order — the choice's
+/// own effects first, then the entered node's entry effects.
 pub fn select_choice(
     session: &mut DialogSession,
     choice_index: usize,
     game: &mut GameState,
     quests: Option<&QuestManager>,
-) -> Option<String> {
-    let (next, effects) = {
+) -> (Option<String>, Vec<DialogEvent>) {
+    let Some((next, effects)) = ({
         let choices = get_available_choices(session, game, quests);
-        let choice = choices.get(choice_index)?;
-        (choice.next.clone(), choice.effects.clone())
+        choices
+            .get(choice_index)
+            .map(|choice| (choice.next.clone(), choice.effects.clone()))
+    }) else {
+        return (None, Vec::new());
     };
 
-    execute_effects(effects.as_deref(), game, &session.npc_id);
+    let mut events = execute_effects(effects.as_deref(), game, &session.npc_id);
 
-    let next = next?;
+    let Some(next) = next else {
+        return (None, events);
+    };
     session.current_node_id = next.clone();
     if let Some(node) = get_current_node(session) {
-        execute_effects(node.effects.as_deref(), game, &session.npc_id);
+        events.extend(execute_effects(
+            node.effects.as_deref(),
+            game,
+            &session.npc_id,
+        ));
     }
-    Some(next)
+    (Some(next), events)
 }
 
 /// Linear advance along the current node's `next` field, running the new
-/// node's entry effects. Returns `None` when the current node is missing
-/// from the tree, or `next` is `null`/absent (end of dialog).
-pub fn advance_dialog(session: &mut DialogSession, game: &mut GameState) -> Option<String> {
-    let next = get_current_node(session)?.next.clone()?;
+/// node's entry effects. Returns the new node id (`None` when the current
+/// node is missing from the tree, or `next` is `null`/absent — end of
+/// dialog) alongside every [`DialogEvent`] the entered node's entry effects
+/// produced.
+pub fn advance_dialog(
+    session: &mut DialogSession,
+    game: &mut GameState,
+) -> (Option<String>, Vec<DialogEvent>) {
+    let Some(next) = get_current_node(session).and_then(|node| node.next.clone()) else {
+        return (None, Vec::new());
+    };
 
     session.current_node_id = next.clone();
-    if let Some(node) = get_current_node(session) {
-        execute_effects(node.effects.as_deref(), game, &session.npc_id);
-    }
-    Some(next)
+    let events = match get_current_node(session) {
+        Some(node) => execute_effects(node.effects.as_deref(), game, &session.npc_id),
+        None => Vec::new(),
+    };
+    (Some(next), events)
 }

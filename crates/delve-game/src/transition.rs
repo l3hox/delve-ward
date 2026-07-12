@@ -12,6 +12,7 @@ use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::keys::KeyBillboards;
 use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_scene};
 use crate::levers::LeverHandles;
+use crate::npcs::{NpcBillboards, NpcDb};
 use crate::plates::PlateHandles;
 use crate::player::Player;
 use crate::projectiles::{self, ProjectileBillboards, ProjectileManagerRes};
@@ -175,6 +176,9 @@ pub struct SwapWorld<'w, 's> {
     wall_entity_handles: ResMut<'w, WallEntityHandles>,
     vitals: ResMut<'w, crate::status_effects::PlayerVitals>,
     health_bars: ResMut<'w, EnemyHealthBars>,
+    npc_db: Res<'w, NpcDb>,
+    npc_billboards: ResMut<'w, NpcBillboards>,
+    quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -331,6 +335,7 @@ pub fn perform_level_swap(
         dungeon_materials: &world.dungeon_materials,
         enemy_db: &world.enemy_db.0,
         items: &world.items.0,
+        npc_db: &world.npc_db.0,
         game: &session.game,
         level: target_level,
         grid: &session.grid,
@@ -349,6 +354,7 @@ pub fn perform_level_swap(
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
+    *world.npc_billboards = handles.npc_billboards;
 
     let Session { game, grid, .. } = session;
     // TS reveals with the target stair's facing; only the player's
@@ -375,6 +381,7 @@ pub fn perform_level_swap(
         facing_before,
         &world.dungeon,
         &world.snapshots,
+        &world.quests.0,
     ) {
         warn!("autosave failed");
     }
@@ -513,6 +520,7 @@ pub fn perform_restart(
         dungeon_materials: &world.dungeon_materials,
         enemy_db: &world.enemy_db.0,
         items: &world.items.0,
+        npc_db: &world.npc_db.0,
         game: &session.game,
         level: &start_level,
         grid: &session.grid,
@@ -531,6 +539,7 @@ pub fn perform_restart(
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
+    *world.npc_billboards = handles.npc_billboards;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(
@@ -588,6 +597,11 @@ pub fn perform_load(
 
     let session = &mut *world.session;
     let result = apply_save_data(&data, &mut session.game, &mut world.dungeon.0);
+    if let Some(quest_data) = data.quests.clone()
+        && let Err(error) = world.quests.0.restore_state(quest_data)
+    {
+        warn!("save has invalid quest state, quests not restored: {error}");
+    }
 
     world.snapshots.0.clear();
     for (id, snapshot) in result.level_snapshots {
@@ -671,6 +685,7 @@ pub fn perform_load(
         dungeon_materials: &world.dungeon_materials,
         enemy_db: &world.enemy_db.0,
         items: &world.items.0,
+        npc_db: &world.npc_db.0,
         game: &session.game,
         level: &target_level,
         grid: &session.grid,
@@ -689,6 +704,7 @@ pub fn perform_load(
     *world.block_handles = handles.block_handles;
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
+    *world.npc_billboards = handles.npc_billboards;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(

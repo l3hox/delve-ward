@@ -546,18 +546,28 @@ pub struct InteractEffects<'w, 's> {
     pub rng: ResMut<'w, GameRng>,
     pub blocks: BlockRender<'w, 's>,
     pub hud: ResMut<'w, crate::hud::HudState>,
+    // `ActiveOverlay` lives here (not in a shared `InputGate`) because the
+    // `NpcInteracted` arm below needs `ResMut` access to open the dialog
+    // overlay — `InputGate` only offers `Res`, and borrowing both in the
+    // same system would conflict, the same reason `save_load_overlay.rs`'s
+    // `check_player_death` takes `ActiveOverlay` directly.
+    pub overlay: ResMut<'w, crate::overlay::ActiveOverlay>,
+    pub npc_db: Res<'w, crate::npcs::NpcDb>,
+    pub dialog_cache: ResMut<'w, crate::dialog_overlay::DialogTreeCache>,
+    pub dialog_state: ResMut<'w, crate::dialog_overlay::DialogOverlayState>,
+    pub quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
 }
 
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::overlay::InputGate,
+    transition: Res<Transition>,
     players: Query<&Player>,
     mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
     mut effects: InteractEffects,
 ) {
-    if gate.blocked() || !keys.just_pressed(KeyCode::Space) {
+    if transition.is_active() || effects.overlay.is_open() || !keys.just_pressed(KeyCode::Space) {
         return;
     }
     let Ok(player) = players.single() else {
@@ -664,12 +674,38 @@ pub fn interact_input(
                 );
             }
         }
+        InteractionType::NpcInteracted => {
+            // `result.message` carries the NPC *definition* id (see
+            // `interaction.rs::interact`'s NPC branch) — matches TS's
+            // `inputSystem.ts:218-237`, which only proceeds `if (npcDef)`
+            // and otherwise silently does nothing.
+            if let Some(npc_id) = &result.message
+                && let Some(npc_def) = effects.npc_db.0.get_npc(npc_id).cloned()
+            {
+                crate::dialog_overlay::open_dialog_for_npc(
+                    npc_id,
+                    &npc_def,
+                    &mut effects.dialog_cache,
+                    &mut session.game,
+                    &mut effects.dialog_state,
+                    &mut effects.overlay,
+                    &mut effects.quests.0,
+                    &mut effects.hud,
+                );
+            }
+        }
         _ => {}
     }
     // Substitutes for TS's dedicated overlays (sign text, chest-locked
     // notices, etc.) until this port grows them — every interaction message
-    // gets a HUD toast in addition to the log line.
-    if let Some(message) = &result.message {
+    // gets a HUD toast in addition to the log line. `NpcInteracted` is
+    // excluded: its `message` carries the NPC definition id (an internal
+    // lookup key, not user-facing text — see the match arm above), and TS's
+    // own dispatcher has no `npc_interacted` case in this generic-toast
+    // position either.
+    if result.result_type != InteractionType::NpcInteracted
+        && let Some(message) = &result.message
+    {
         info!("{message}");
         effects.hud.show_message(message);
     }

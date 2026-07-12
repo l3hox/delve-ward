@@ -10,6 +10,7 @@ use crate::enemy_feedback::{self, EnemyHealthBars};
 use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
+use crate::npcs::{self, NpcBillboards};
 use crate::plates::{self, PlateHandles};
 use crate::sconces::{self, SconceParts};
 use crate::signs;
@@ -21,6 +22,7 @@ use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::{GameState, door_key};
 use delve_core::items::ItemDatabase;
+use delve_core::npcs::NpcDatabase;
 use delve_core::types::DungeonLevel;
 use std::collections::{HashMap, HashSet};
 
@@ -51,6 +53,7 @@ pub struct LevelSceneHandles {
     pub block_handles: BlockHandles,
     pub wall_entity_handles: WallEntityHandles,
     pub health_bars: EnemyHealthBars,
+    pub npc_billboards: NpcBillboards,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -58,6 +61,7 @@ pub struct SceneContext<'a> {
     pub dungeon_materials: &'a DungeonMaterials,
     pub enemy_db: &'a EnemyDatabase,
     pub items: &'a ItemDatabase,
+    pub npc_db: &'a NpcDatabase,
     pub game: &'a GameState,
     pub level: &'a DungeonLevel,
     pub grid: &'a [String],
@@ -190,6 +194,14 @@ pub fn spawn_level_scene(
         assets.materials,
         scene.game,
     );
+    let npc_billboards = npcs::spawn_npc_billboards(
+        commands,
+        assets.meshes,
+        assets.materials,
+        assets.asset_server,
+        scene.game,
+        scene.npc_db,
+    );
     LevelSceneHandles {
         door_panels,
         enemy_billboards: billboards,
@@ -203,5 +215,6 @@ pub fn spawn_level_scene(
         block_handles,
         wall_entity_handles,
         health_bars,
+        npc_billboards,
     }
 }

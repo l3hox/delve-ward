@@ -5,6 +5,7 @@ mod blocks;
 mod char_creation;
 mod chests;
 mod damage_numbers;
+mod dialog_overlay;
 mod doors;
 mod dungeon;
 mod enemies;
@@ -17,6 +18,7 @@ mod keys;
 mod level_scene;
 mod levers;
 mod mouse;
+mod npcs;
 mod overlay;
 mod pixel_canvas;
 mod plates;
@@ -46,6 +48,8 @@ use delve_core::items::ItemDatabase;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
 use delve_core::loot::LootTables;
 use delve_core::npcs::NpcDatabase;
+use delve_core::quest_manager::QuestManager;
+use delve_core::quests::QuestDef;
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
@@ -83,6 +87,23 @@ fn read_asset(relative: &str) -> String {
     let path = assets_dir().join(relative);
     std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+/// The quest defs the shipped dungeons can reference, matching TS's
+/// hardcoded `questManager.loadQuest(...)` calls in `main.ts` — a
+/// register-at-startup stand-in for TS's upfront `Promise.all` fetch, per
+/// `PHASE4-PLAN.md` section 2.3.
+const QUEST_IDS: [&str; 3] = ["fetch_amulet", "kill_spider_queen", "collect_lore"];
+
+fn load_quest_manager() -> QuestManager {
+    let mut quests = QuestManager::new();
+    for quest_id in QUEST_IDS {
+        let json = read_asset(&format!("data/quests/{quest_id}.json"));
+        let def = QuestDef::from_json(&json)
+            .unwrap_or_else(|error| panic!("failed to parse quest {quest_id}: {error}"));
+        quests.register_quest_def(def);
+    }
+    quests
 }
 
 fn load_dungeon(relative: &str) -> Dungeon {
@@ -180,6 +201,8 @@ fn setup(
     let enemy_db = Arc::new(
         EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
     );
+    let npc_db =
+        Arc::new(NpcDatabase::from_json(&read_asset("data/npcs.json")).expect("npcs.json loads"));
     let mut scene_assets = SceneAssets {
         meshes: &mut meshes,
         images: &mut images,
@@ -190,6 +213,7 @@ fn setup(
         dungeon_materials: &materials,
         enemy_db: &enemy_db,
         items: &items,
+        npc_db: &npc_db,
         game: &game,
         level: &level,
         grid: &grid,
@@ -208,13 +232,18 @@ fn setup(
     commands.insert_resource(handles.block_handles);
     commands.insert_resource(handles.wall_entity_handles);
     commands.insert_resource(handles.health_bars);
+    commands.insert_resource(handles.npc_billboards);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
+    commands.insert_resource(npcs::NpcDb(npc_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
         LootTables::from_json(&read_asset("data/loot-tables.json"))
             .expect("loot-tables.json loads"),
     ));
     commands.insert_resource(materials);
+    commands.insert_resource(dialog_overlay::QuestManagerRes(load_quest_manager()));
+    commands.insert_resource(dialog_overlay::DialogTreeCache::default());
+    commands.insert_resource(dialog_overlay::DialogOverlayState::default());
 
     let stairs_map = game
         .active_layer()
@@ -379,6 +408,7 @@ fn main() {
                     mouse::track_mouse,
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
+                    dialog_overlay::dialog_input,
                     session::player_input,
                     session::interact_input,
                     enemies::attack_input,
