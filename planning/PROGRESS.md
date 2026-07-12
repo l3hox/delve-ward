@@ -17,9 +17,10 @@ Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMP
 - [x] Game: stairs render (stepped slabs + depth-fade vertex colors, `stairs.rs`); cross-level transitions with fade overlay (`transition.rs` + `level_scene.rs` spawn/despawn via `LevelEntity` marker); player camera dips/pitches on stair cells; level state snapshots restore on return (D15: default dungeon is now ruins.json, CLI-arg override)
 - [x] Game: ground item billboards with seeded cell spread (`ground_items.rs` ← groundItemRenderer/itemSprites); walk-over equipment/consumable pickups with billboard collapse-to-one-remaining (TS parity); kills grant XP (`add_xp`, level-up log) and roll loot onto the ground (lootSpawner port, gold + created item entities)
 - [x] Game: key billboards (procedural gold-key sprite, hidden on pickup) and wall sconces (bracket/arm/torch meshes, flickering point lights, torch taken via Space extinguishes); shared `FacesCamera` billboard system replaces the per-type copies
-- [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
-- [ ] Game: character creation screen
-- [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main
+- [x] Game: HUD — 640x360 software pixel canvas stretched as a UI image (`hud.rs`, `hud_font.rs`): health bar with low-HP pulse, XP bar + level-up hint, mini inventory panel (keys, gold, equipment paperdoll, backpack with quick-slot numbers, weapon cooldown overlay), HUD messages (pixel font substitutes the TS browser monospace — uppercase only); floating damage numbers as world billboards (`damage_numbers.rs`)
+- [x] Game: character creation screen (`char_creation.rs`; `InputGate` bundles transition + creation input blocking); timed signals tick each frame via `session::tick_game`
+- [x] Core (subagent ports): `projectiles.rs` (projectileManager, 23 parity tests; hits returned as `ProjectileHitEvent`s) and `save_system.rs` (saveSystem, 39 parity tests; `SaveStore` trait abstracts localStorage — file-backed impl lands with the phase 3 shell; quest restore deferred to the phase 4 quest manager)
+- [x] Phase 2 gate: fmt/clippy/test green (449 tests, 11 suites) plus `cargo run` smoke test, merged to main
 
 Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts).
 

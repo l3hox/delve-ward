@@ -5,6 +5,7 @@
 //! or windowing crate.
 
 pub mod combat;
+pub mod dialog_manager;
 pub mod dialogs;
 pub mod enemies;
 pub mod enemy_ai;
@@ -18,8 +19,10 @@ pub mod level_loader;
 pub mod loot;
 pub mod npcs;
 pub mod pathfinding;
+pub mod projectiles;
 pub mod quests;
 pub mod random;
+pub mod save_system;
 pub mod signal_manager;
 pub mod status_effect_state;
 pub mod status_effects;
