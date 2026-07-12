@@ -317,6 +317,75 @@ fn canvas_to_image(canvas: PixelCanvas) -> Image {
     image
 }
 
+fn generate_door(rng: &mut CanvasRng) -> PixelCanvas {
+    let mut canvas = PixelCanvas::new(SIZE);
+    base_noise(&mut canvas, rng, 100, 65, 35, (10, 8, 6));
+    let line = Rgba::translucent(40, 25, 12, 0.7);
+    canvas.fill_rect(0, 0, 2, SIZE as i32, line);
+    canvas.fill_rect(SIZE as i32 - 2, 0, 2, SIZE as i32, line);
+    canvas.fill_rect(21, 0, 1, SIZE as i32, line);
+    canvas.fill_rect(42, 0, 1, SIZE as i32, line);
+    canvas.fill_rect(0, 0, SIZE as i32, 2, line);
+    canvas.fill_rect(0, SIZE as i32 - 2, SIZE as i32, 2, line);
+    canvas.fill_rect(0, 20, SIZE as i32, 2, line);
+    canvas.fill_rect(0, 42, SIZE as i32, 2, line);
+    canvas
+}
+
+fn generate_locked_door(rng: &mut CanvasRng) -> PixelCanvas {
+    let mut canvas = PixelCanvas::new(SIZE);
+    base_noise(&mut canvas, rng, 70, 45, 25, (8, 6, 5));
+    let line = Rgba::translucent(30, 18, 8, 0.8);
+    canvas.fill_rect(0, 0, 2, SIZE as i32, line);
+    canvas.fill_rect(SIZE as i32 - 2, 0, 2, SIZE as i32, line);
+    canvas.fill_rect(21, 0, 1, SIZE as i32, line);
+    canvas.fill_rect(42, 0, 1, SIZE as i32, line);
+    canvas.fill_rect(0, 0, SIZE as i32, 2, line);
+    canvas.fill_rect(0, SIZE as i32 - 2, SIZE as i32, 2, line);
+    canvas.fill_rect(0, 20, SIZE as i32, 2, line);
+    canvas.fill_rect(0, 42, SIZE as i32, 2, line);
+
+    let band = Rgba::translucent(120, 120, 130, 0.6);
+    canvas.fill_rect(0, 10, SIZE as i32, 3, band);
+    canvas.fill_rect(0, 50, SIZE as i32, 3, band);
+
+    let stud = Rgba::translucent(160, 155, 150, 0.8);
+    for stud_x in [6, 30, 54] {
+        for stud_y in [10, 50] {
+            canvas.fill_rect(stud_x, stud_y, 3, 3, stud);
+        }
+    }
+
+    let keyhole = Rgba::translucent(20, 15, 10, 0.9);
+    canvas.fill_ellipse(32.0, 32.0, 4.0, 4.0, keyhole);
+    canvas.fill_rect(31, 32, 3, 8, keyhole);
+    canvas
+}
+
+fn generate_door_frame(rng: &mut CanvasRng) -> PixelCanvas {
+    let mut canvas = PixelCanvas::new(SIZE);
+    base_noise(&mut canvas, rng, 110, 105, 100, (12, 10, 10));
+    let chisel = Rgba::translucent(60, 55, 50, 0.5);
+    for _ in 0..15 {
+        let scratch_x = rng.below(SIZE as i32);
+        let scratch_y = rng.below(SIZE as i32);
+        let length = 2 + rng.below(4);
+        let end_x = scratch_x + i32::from(rng.vary(0, 2));
+        canvas.stroke_line(scratch_x, scratch_y, end_x, scratch_y + length, chisel);
+    }
+    canvas
+}
+
+fn image_with_repeat(canvas: PixelCanvas) -> Image {
+    let mut image = canvas_to_image(canvas);
+    image.sampler = ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+        address_mode_u: bevy::image::ImageAddressMode::Repeat,
+        address_mode_v: bevy::image::ImageAddressMode::Repeat,
+        ..bevy::image::ImageSamplerDescriptor::nearest()
+    });
+    image
+}
+
 type Generator = fn(&mut CanvasRng) -> PixelCanvas;
 
 const WALL_GENERATORS: [(&str, Generator); 5] = [
@@ -340,17 +409,22 @@ const CEILING_GENERATORS: [(&str, Generator); 3] = [
     ("canopy", generate_canopy_ceiling),
 ];
 
-/// Cached dungeon surface materials, keyed by texture name.
+/// Cached dungeon surface materials, keyed by texture name, plus the door
+/// material set.
 #[derive(Resource)]
 pub struct DungeonMaterials {
     walls: HashMap<String, Handle<StandardMaterial>>,
     floors: HashMap<String, Handle<StandardMaterial>>,
     ceilings: HashMap<String, Handle<StandardMaterial>>,
+    pub door: Handle<StandardMaterial>,
+    pub locked_door: Handle<StandardMaterial>,
+    pub door_frame: Handle<StandardMaterial>,
+    pub door_button: Handle<StandardMaterial>,
 }
 
 impl DungeonMaterials {
     pub fn generate(images: &mut Assets<Image>, materials: &mut Assets<StandardMaterial>) -> Self {
-        let mut build = |generators: &[(&str, Generator)]| {
+        let build = |generators: &[(&str, Generator)]| {
             let mut map = HashMap::new();
             for (name, generator) in generators {
                 let mut rng = CanvasRng::new(seed_for(name));
@@ -366,10 +440,48 @@ impl DungeonMaterials {
             }
             map
         };
+        let (walls, floors, ceilings) = {
+            let mut build_set = build;
+            let walls = build_set(&WALL_GENERATORS);
+            let floors = build_set(&FLOOR_GENERATORS);
+            let ceilings = build_set(&CEILING_GENERATORS);
+            (walls, floors, ceilings)
+        };
+
+        let lambert = |image: Handle<Image>| StandardMaterial {
+            base_color_texture: Some(image),
+            perceptual_roughness: 1.0,
+            metallic: 0.0,
+            reflectance: 0.0,
+            ..default()
+        };
+        let mut door_rng = CanvasRng::new(seed_for("door"));
+        let door_image = images.add(canvas_to_image(generate_door(&mut door_rng)));
+        let mut locked_rng = CanvasRng::new(seed_for("locked_door"));
+        let locked_image = images.add(canvas_to_image(generate_locked_door(&mut locked_rng)));
+        let mut frame_rng = CanvasRng::new(seed_for("door_frame"));
+        let frame_image = images.add(image_with_repeat(generate_door_frame(&mut frame_rng)));
+
         Self {
-            walls: build(&WALL_GENERATORS),
-            floors: build(&FLOOR_GENERATORS),
-            ceilings: build(&CEILING_GENERATORS),
+            walls,
+            floors,
+            ceilings,
+            door: materials.add(StandardMaterial {
+                cull_mode: None,
+                ..lambert(door_image)
+            }),
+            locked_door: materials.add(StandardMaterial {
+                cull_mode: None,
+                ..lambert(locked_image)
+            }),
+            door_frame: materials.add(lambert(frame_image)),
+            door_button: materials.add(StandardMaterial {
+                base_color: Color::srgb_u8(0xcc, 0x88, 0x33),
+                perceptual_roughness: 1.0,
+                metallic: 0.0,
+                reflectance: 0.0,
+                ..default()
+            }),
         }
     }
 

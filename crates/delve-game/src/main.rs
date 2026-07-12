@@ -1,9 +1,12 @@
 #![forbid(unsafe_code)]
 
+mod doors;
 mod dungeon;
+mod enemies;
 mod environment;
 mod pixel_canvas;
 mod player;
+mod session;
 mod textures;
 mod torch;
 
@@ -12,13 +15,18 @@ use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::window::WindowFocused;
 use delve_core::enemies::EnemyDatabase;
+use delve_core::game_state::{GameState, GameStateDeps};
 use delve_core::grid::build_walkable_set;
+use delve_core::items::ItemDatabase;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
 use delve_core::npcs::NpcDatabase;
+use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
 use player::Player;
+use session::{GameRng, Session};
 use std::path::PathBuf;
+use std::sync::Arc;
 use textures::DungeonMaterials;
 
 const SMOKE_DUNGEON: &str = "levels/dungeon1.json";
@@ -61,6 +69,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut standard_materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     let loaded = load_dungeon(SMOKE_DUNGEON);
     let start = &loaded.player_start;
@@ -74,7 +83,6 @@ fn setup(
 
     let materials = DungeonMaterials::generate(&mut images, &mut standard_materials);
     dungeon::spawn_dungeon(&mut commands, &mut meshes, &materials, level);
-    commands.insert_resource(materials);
 
     let walkable = build_walkable_set(
         level
@@ -83,6 +91,67 @@ fn setup(
             .flatten()
             .map(|def| (def.character, def.solid)),
     );
+
+    // Game state with the shipped databases as dependencies.
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.subsec_nanos())
+        .unwrap_or(0x5EED);
+    let mut rng = Mulberry32::new(seed);
+    let deps = GameStateDeps {
+        items: Some(Arc::new(
+            ItemDatabase::from_json(&read_asset("data/items.json")).expect("items.json loads"),
+        )),
+        enemy_registrar: Some(Box::new(
+            EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
+        )),
+        npc_registrar: Some(Box::new(
+            NpcDatabase::from_json(&read_asset("data/npcs.json")).expect("npcs.json loads"),
+        )),
+    };
+    let mut random = || rng.next_f64();
+    let mut game = GameState::new(
+        &[],
+        Some(&grid),
+        &start.level_id,
+        Some(&level.layers),
+        deps,
+        &mut random,
+    );
+    game.active_layer_index = layer_index;
+    game.take_events(); // discard construction-time signal events
+
+    let door_panels = doors::spawn_doors(
+        &mut commands,
+        &mut meshes,
+        &materials,
+        &game,
+        &grid,
+        &walkable,
+    );
+    commands.insert_resource(door_panels);
+
+    let enemy_db = std::sync::Arc::new(
+        EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
+    );
+    let enemy_billboards = enemies::spawn_enemy_billboards(
+        &mut commands,
+        &mut meshes,
+        &mut standard_materials,
+        &asset_server,
+        &game,
+        &enemy_db,
+    );
+    commands.insert_resource(enemy_billboards);
+    commands.insert_resource(enemies::EnemyDb(enemy_db));
+    commands.insert_resource(materials);
+    commands.insert_resource(Session::new(
+        game,
+        grid.clone(),
+        walkable.clone(),
+        (start.col, start.row, start.facing),
+    ));
+    commands.insert_resource(GameRng(rng));
 
     let config = environment_config(level.environment.unwrap_or(Environment::Dungeon));
     commands.insert_resource(ClearColor(config.fog_color));
@@ -176,19 +245,39 @@ fn claim_initial_focus(
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "DelveWard".to_string(),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "DelveWard".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .set(ImagePlugin::default_nearest())
+                .set(AssetPlugin {
+                    // Sprites live in the repo assets dir, not next to the
+                    // executable where Bevy looks by default.
+                    file_path: std::fs::canonicalize(assets_dir())
+                        .unwrap_or_else(|_| assets_dir())
+                        .to_string_lossy()
+                        .into_owned(),
+                    ..Default::default()
+                }),
+        )
         .add_systems(Startup, setup)
         .add_systems(
             Update,
             (
-                player::player_input,
-                player::player_update,
+                session::player_input,
+                session::interact_input,
+                enemies::attack_input,
+                session::player_update,
+                session::on_player_moved,
+                enemies::tick_enemies,
+                enemies::tick_attack_cooldown,
+                enemies::face_billboards_to_camera,
+                doors::animate_door_panels,
                 torch::torch_update,
                 input_diagnostics,
                 claim_initial_focus,

@@ -79,6 +79,12 @@ impl NpcDatabase {
     }
 }
 
+impl crate::game_state::NpcRegistrar for NpcDatabase {
+    fn has_npc(&self, npc_id: &str) -> bool {
+        self.get_npc(npc_id).is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

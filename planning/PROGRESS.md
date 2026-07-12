@@ -13,8 +13,9 @@ Session-to-session state. Read this at the start of every session.
 Work in progress on branch `port/phase-2-loot-game`. The core logic port is COMPLETE — everything phase 2 (and much of phases 3-5) needs from `delve-core` exists with ported TS test suites, all gates green. What remains is the `delve-game` shell:
 
 - [x] Core: status effects, entity registry, loot rolling (injected RNG), signal manager (event-based), full game state stack, combat, pathfinding, enemy AI + `create_enemy_instance` (`EnemyDatabase` implements `EnemyRegistrar`), player interaction module
-- [ ] Game: doors/keys/stairs rendering (`doorRenderer.ts`, `stairRenderer.ts`, `keyRenderer.ts`), cross-level transitions (`game/transitionSystem.ts`), wired through `GameState` + `WorldEvent`s
-- [ ] Game: ground item billboards (`groundItemRenderer.ts`, `itemSprites.ts`), enemy billboards (`enemyRenderer.ts`, `billboardMaterial.ts`), enemy AI ticking (`update_enemies` with `EnemyUpdateContext`), melee combat input (Space)
+- [x] Game: `Session` resource wires `GameState` into the app; movement blocked by doors/enemies/blocks/npcs/barrels/boulders; Space interacts (`interaction::interact`); doors render (frame + sliding panel with bounce, ported from doorRenderer/doorAnimator); enemy billboards + AI ticking + melee both ways (F attacks); keys picked up on walk-over; combat feedback via log lines until the HUD lands
+- [ ] Game: stairs rendering + cross-level transitions (`stairRenderer.ts`, `game/transitionSystem.ts`)
+- [ ] Game: ground item billboards (`groundItemRenderer.ts`, `itemSprites.ts`, key/sconce renderers), loot drops on kill (LootTables resource + XP), item pickups
 - [ ] Game: HUD — HP/XP bars, mini inventory panel, damage numbers (`src/hud/`)
 - [ ] Game: character creation screen
 - [ ] Phase 2 gate: fmt/clippy/test plus `cargo run` smoke test, merge to main

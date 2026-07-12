@@ -84,30 +84,29 @@ impl Player {
         }
     }
 
-    fn run(&mut self, command: Command) {
+    fn run(&mut self, command: Command, rules: &MoveRules) {
         if self.is_animating() {
             self.enqueue(command);
             return;
         }
-        let rules = MoveRules::default();
         match command {
             Command::Forward => {
-                if self.state.move_forward(&self.grid, &rules) {
+                if self.state.move_forward(&self.grid, rules) {
                     self.arrive();
                 }
             }
             Command::Back => {
-                if self.state.move_back(&self.grid, &rules) {
+                if self.state.move_back(&self.grid, rules) {
                     self.arrive();
                 }
             }
             Command::StrafeLeft => {
-                if self.state.strafe_left(&self.grid, &rules) {
+                if self.state.strafe_left(&self.grid, rules) {
                     self.arrive();
                 }
             }
             Command::StrafeRight => {
-                if self.state.strafe_right(&self.grid, &rules) {
+                if self.state.strafe_right(&self.grid, rules) {
                     self.arrive();
                 }
             }
@@ -126,31 +125,35 @@ impl Player {
         self.target_pos = grid_to_world(self.state.col, self.state.row);
     }
 
-    pub fn move_forward(&mut self) {
-        self.run(Command::Forward);
+    pub fn grid_state(&self) -> &PlayerState {
+        &self.state
     }
 
-    pub fn move_back(&mut self) {
-        self.run(Command::Back);
+    pub fn move_forward(&mut self, rules: &MoveRules) {
+        self.run(Command::Forward, rules);
     }
 
-    pub fn strafe_left(&mut self) {
-        self.run(Command::StrafeLeft);
+    pub fn move_back(&mut self, rules: &MoveRules) {
+        self.run(Command::Back, rules);
     }
 
-    pub fn strafe_right(&mut self) {
-        self.run(Command::StrafeRight);
+    pub fn strafe_left(&mut self, rules: &MoveRules) {
+        self.run(Command::StrafeLeft, rules);
     }
 
-    pub fn turn_left(&mut self) {
-        self.run(Command::TurnLeft);
+    pub fn strafe_right(&mut self, rules: &MoveRules) {
+        self.run(Command::StrafeRight, rules);
     }
 
-    pub fn turn_right(&mut self) {
-        self.run(Command::TurnRight);
+    pub fn turn_left(&mut self, rules: &MoveRules) {
+        self.run(Command::TurnLeft, rules);
     }
 
-    pub fn update(&mut self, delta: f32, transform: &mut Transform) {
+    pub fn turn_right(&mut self, rules: &MoveRules) {
+        self.run(Command::TurnRight, rules);
+    }
+
+    pub fn update(&mut self, delta: f32, transform: &mut Transform, rules: &MoveRules) {
         let alpha = ((TWEEN_SPEED / self.slow_multiplier) * delta).min(1.0);
 
         self.current_pos = self.current_pos.lerp(self.target_pos, alpha);
@@ -178,38 +181,7 @@ impl Player {
         if !self.is_animating()
             && let Some(next) = self.command_queue.pop_front()
         {
-            self.run(next);
+            self.run(next, rules);
         }
     }
-}
-
-pub fn player_input(keys: Res<ButtonInput<KeyCode>>, mut players: Query<&mut Player>) {
-    let Ok(mut player) = players.single_mut() else {
-        return;
-    };
-    if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
-        player.move_forward();
-    }
-    if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
-        player.move_back();
-    }
-    if keys.just_pressed(KeyCode::KeyA) {
-        player.strafe_left();
-    }
-    if keys.just_pressed(KeyCode::KeyD) {
-        player.strafe_right();
-    }
-    if keys.just_pressed(KeyCode::KeyQ) || keys.just_pressed(KeyCode::ArrowLeft) {
-        player.turn_left();
-    }
-    if keys.just_pressed(KeyCode::KeyE) || keys.just_pressed(KeyCode::ArrowRight) {
-        player.turn_right();
-    }
-}
-
-pub fn player_update(time: Res<Time>, mut players: Query<(&mut Player, &mut Transform)>) {
-    let Ok((mut player, mut transform)) = players.single_mut() else {
-        return;
-    };
-    player.update(time.delta_secs(), &mut transform);
 }
