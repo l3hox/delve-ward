@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 bevy = { workspace = true }
 delve-core = { path = "../delve-core" }
+image = { version = "0.25", default-features = false, features = ["png"] }

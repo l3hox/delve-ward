@@ -212,12 +212,14 @@ pub fn attack_input(
                     result.enemy_type.as_deref().unwrap_or("enemy"),
                     result.damage.unwrap_or(0.0)
                 );
+                spawn_hit_number(&mut kill_effects, &result);
             }
             CombatResultType::Kill => {
                 info!(
                     "You slay the {}!",
                     result.enemy_type.as_deref().unwrap_or("enemy")
                 );
+                spawn_hit_number(&mut kill_effects, &result);
                 handle_kill(
                     &mut session,
                     &mut rng,
@@ -233,12 +235,27 @@ pub fn attack_input(
     }
 }
 
-/// Loot tables and rendering handles the kill handler needs.
+fn spawn_hit_number(effects: &mut KillEffects, result: &delve_core::combat::CombatResult) {
+    let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
+        return;
+    };
+    crate::damage_numbers::spawn_damage_number(
+        &mut effects.item_render.commands,
+        &mut effects.item_render.meshes,
+        &mut effects.images,
+        &mut effects.item_render.materials,
+        result.damage.unwrap_or(0.0),
+        (col, row),
+    );
+}
+
+/// Loot tables and rendering handles the attack feedback needs.
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct KillEffects<'w, 's> {
     database: Res<'w, EnemyDb>,
     loot_tables: Res<'w, LootTablesRes>,
     item_render: GroundItemRender<'w, 's>,
+    images: ResMut<'w, Assets<Image>>,
 }
 
 /// XP gain and loot drop on an enemy kill, ported from the TS

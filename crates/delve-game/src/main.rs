@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 
 mod billboard;
+mod damage_numbers;
 mod doors;
 mod dungeon;
 mod enemies;
 mod environment;
 mod ground_items;
+mod hud;
+mod hud_font;
 mod keys;
 mod level_scene;
 mod pixel_canvas;
@@ -50,7 +53,7 @@ fn dungeon_path() -> String {
     }
 }
 
-fn assets_dir() -> PathBuf {
+pub(crate) fn assets_dir() -> PathBuf {
     let local = PathBuf::from("assets");
     if local.is_dir() {
         return local;
@@ -312,7 +315,7 @@ fn main() {
         .init_resource::<transition::Transition>()
         .init_resource::<LevelSnapshots>()
         .init_resource::<sconces::SconceFlicker>()
-        .add_systems(Startup, (setup, transition::spawn_overlay))
+        .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
             (
@@ -327,6 +330,8 @@ fn main() {
                 doors::animate_door_panels,
                 torch::torch_update,
                 sconces::sconce_flicker,
+                damage_numbers::update_damage_numbers,
+                hud::draw_hud,
                 transition::tick_transition,
                 transition::perform_level_swap,
                 input_diagnostics,

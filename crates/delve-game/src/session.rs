@@ -137,6 +137,7 @@ pub fn on_player_moved(
     mut transition: ResMut<Transition>,
     mut item_render: GroundItemRender,
     mut key_billboards: ResMut<KeyBillboards>,
+    mut hud: ResMut<crate::hud::HudState>,
 ) {
     let Ok(player) = players.single() else {
         return;
@@ -159,7 +160,7 @@ pub fn on_player_moved(
             &delve_core::game_state::door_key(col, row),
         );
     }
-    ground_items::handle_pickups(game, &mut item_render, col, row);
+    ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
     if let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
     {

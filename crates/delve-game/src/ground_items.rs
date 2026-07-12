@@ -292,15 +292,24 @@ fn first_remaining_of_kind(
 /// Equipment and consumable walk-over pickups for the cell the player just
 /// entered, with billboard bookkeeping (hide all at the cell, re-show one
 /// remaining), ported from the TS move handler.
-pub fn handle_pickups(game: &mut GameState, render: &mut GroundItemRender, col: i64, row: i64) {
+pub fn handle_pickups(
+    game: &mut GameState,
+    render: &mut GroundItemRender,
+    hud: &mut crate::hud::HudState,
+    col: i64,
+    row: i64,
+) {
     let key = door_key(col, row);
     let items = render.items.0.clone();
 
     let (equipped, denied) = game.pickup_equipment_at(col, row);
     if let Some(denied) = denied {
         info!("{denied}");
+        hud.show_message(&denied);
     } else if let Some(name) = equipped {
-        info!("Equipped: {name}");
+        let message = format!("Equipped: {name}");
+        info!("{message}");
+        hud.show_message(&message);
         hide_item_meshes(&mut render.billboards.equipment, &mut render.commands, &key);
         if let Some(remaining) =
             first_remaining_of_kind(game, &items, ItemKind::Equipment, col, row)
