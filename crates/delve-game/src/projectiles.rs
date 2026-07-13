@@ -123,6 +123,10 @@ fn spawn_projectile_visual(
             LinearRgba::NONE
         },
         unlit: !is_fireball,
+        // Only the lit fireball needs back-face normal flipping (TS's
+        // DoubleSide MeshStandardMaterial); darts/arrows are unlit, where
+        // the flag changes nothing.
+        double_sided: is_fireball,
         cull_mode: None,
         ..default()
     });

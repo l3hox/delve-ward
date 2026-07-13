@@ -51,6 +51,7 @@ pub fn spawn_npc_billboards(
             metallic: 0.0,
             reflectance: 0.0,
             alpha_mode: AlphaMode::Mask(0.5),
+            double_sided: true,
             cull_mode: None,
             ..default()
         });

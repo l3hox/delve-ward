@@ -79,7 +79,6 @@ pub fn spawn_signs(
         perceptual_roughness: 1.0,
         metallic: 0.0,
         reflectance: 0.0,
-        cull_mode: None,
         ..default()
     });
     let mesh = meshes.add(Rectangle::new(SIGN_WIDTH, SIGN_HEIGHT));

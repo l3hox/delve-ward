@@ -77,7 +77,6 @@ pub fn spawn_spawner_markers(
         metallic: 0.0,
         reflectance: 0.0,
         alpha_mode: AlphaMode::Blend,
-        cull_mode: None,
         ..default()
     });
     let mesh = meshes.add(Circle::new(MARKER_RADIUS));
