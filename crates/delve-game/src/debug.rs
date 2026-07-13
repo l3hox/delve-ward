@@ -23,14 +23,22 @@
 //!   `main.ts:976`'s `hitType === 'player' && !debugFullbright`; this port
 //!   had no gate here at all before this module.
 //!
-//! **Not implemented, report-first**: `main.ts:1443`'s multi-zone render
-//! loop skips recomputing each zone's fog/background/ambient every frame
-//! while `debugFullbright` is on (so the debug light/no-fog state isn't
-//! immediately overwritten by the next zone's environment). The Rust
-//! equivalent lives in `zones.rs`, owned by another agent for this slice —
-//! flagged in the completion report rather than touched. Until that lands,
-//! fullbright's lighting/fog changes may be visibly overridden on the next
-//! frame in a multi-zone level.
+//! **Multi-zone fog/ambient**: TS's `main.ts:1443` skips recomputing each
+//! zone's fog/background/ambient on every one of its N per-frame render
+//! passes while `debugFullbright` is on, so the one shared `scene.fog`/
+//! `ambient` the debug light set at toggle time survives every pass. This
+//! port has no per-frame reapply to skip in the first place — multi-zone
+//! levels use N *camera entities* (`zones::spawn_player_cameras`), each
+//! carrying its own `DistanceFog`/`AmbientLight` set once at scene-build
+//! time, not touched again after. So `toggle_fullbright` gets the
+//! equivalent observable result by writing every camera entity's fog/
+//! ambient directly when the flag flips, single-zone (the combined
+//! `Player`+`Camera3d` entity) and multi-zone (every `zones::ZoneCamera`
+//! child) alike, and restoring each one to *its own* environment — the
+//! zone's, not necessarily the session's — on toggle-off. `zones::ZoneCamera`
+//! carries its zone's `Environment` for exactly this: telling a per-zone
+//! camera apart from the single-zone fast path's entity, and which
+//! environment to restore it to, in one query.
 //!
 //! **Not reproduced**: TS also re-syncs `debugLayerIndex` to
 //! `activeLayerIndex` on every ramp crossing and fall landing
@@ -42,9 +50,10 @@
 //! threading a debug resource through the ramp/fall path for a no-op.
 
 use crate::dungeon::LAYER_HEIGHT;
-use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
+use crate::environment::AMBIENT_BRIGHTNESS;
 use crate::player::Player;
 use crate::session::{self, DungeonRes, Session};
+use crate::zones::{self, ZoneCamera};
 use bevy::prelude::*;
 use delve_core::level_loader::resolve_layer_coord;
 
@@ -62,41 +71,60 @@ pub struct DebugFlags {
     pub layer_index: usize,
 }
 
-/// `main.ts:340-358`'s `KeyM` case.
+/// `main.ts:340-358`'s `KeyM` case. `players`/`cameras` are separate
+/// queries (rather than one query on the combined single-zone entity) since
+/// a multi-zone level's `Player` carries neither `Camera3d` nor
+/// `AmbientLight` at all — both moved to its `ZoneCamera` children (see the
+/// module doc comment) — so a query requiring both on the same entity
+/// matches nothing there, silently no-opping the whole toggle.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct FullbrightTargets<'w, 's> {
+    players: Query<'w, 's, &'static mut Player>,
+    cameras: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static mut AmbientLight,
+            Option<&'static ZoneCamera>,
+        ),
+        With<Camera3d>,
+    >,
+    commands: Commands<'w, 's>,
+}
+
 pub fn toggle_fullbright(
     keys: Res<ButtonInput<KeyCode>>,
     gate: crate::overlay::InputGate,
     mut flags: ResMut<DebugFlags>,
     mut session: ResMut<Session>,
     dungeon: Res<DungeonRes>,
-    mut players: Query<(Entity, &mut Player, &mut AmbientLight), With<Camera3d>>,
-    mut commands: Commands,
+    mut targets: FullbrightTargets,
 ) {
     if gate.blocked() || !keys.just_pressed(KeyCode::KeyM) {
         return;
     }
-    let Ok((camera, mut player, mut ambient)) = players.single_mut() else {
+    let Ok(mut player) = targets.players.single_mut() else {
         return;
     };
 
     flags.fullbright = !flags.fullbright;
     if flags.fullbright {
-        ambient.color = Color::WHITE;
-        ambient.brightness = DEBUG_LIGHT_BRIGHTNESS;
-        commands.entity(camera).remove::<DistanceFog>();
+        for (camera, mut ambient, _zone) in &mut targets.cameras {
+            ambient.color = Color::WHITE;
+            ambient.brightness = DEBUG_LIGHT_BRIGHTNESS;
+            targets.commands.entity(camera).remove::<DistanceFog>();
+        }
         flags.layer_index = session.game.active_layer_index;
     } else {
-        let config = environment_config(session.environment);
-        ambient.color = config.ambient_color;
-        ambient.brightness = AMBIENT_BRIGHTNESS;
-        commands.entity(camera).insert(DistanceFog {
-            color: config.fog_color,
-            falloff: FogFalloff::Linear {
-                start: config.fog_near,
-                end: config.fog_far,
-            },
-            ..default()
-        });
+        for (camera, mut ambient, zone) in &mut targets.cameras {
+            let environment = zone.map_or(session.environment, |zone_camera| zone_camera.0);
+            *ambient = zones::ambient_for(environment);
+            targets
+                .commands
+                .entity(camera)
+                .insert(zones::fog_for(environment));
+        }
 
         let home_layer_id = dungeon.0.player_start.layer_index.unwrap_or(0);
         let home_layer = session::find_level_by_id(&dungeon, &session.current_level_id)
@@ -126,14 +154,15 @@ pub fn toggle_fullbright(
     );
 }
 
-/// `main.ts:359-381`'s `KeyY`/`KeyH` cases.
+/// `main.ts:359-381`'s `KeyY`/`KeyH` cases. `players` has no `With<Camera3d>`
+/// for the same reason `toggle_fullbright`'s doesn't — see its doc comment.
 pub fn layer_fly(
     keys: Res<ButtonInput<KeyCode>>,
     gate: crate::overlay::InputGate,
     mut flags: ResMut<DebugFlags>,
     mut session: ResMut<Session>,
     dungeon: Res<DungeonRes>,
-    mut players: Query<&mut Player, With<Camera3d>>,
+    mut players: Query<&mut Player>,
 ) {
     if gate.blocked() || !flags.fullbright {
         return;

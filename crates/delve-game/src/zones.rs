@@ -201,9 +201,14 @@ pub fn tag_by_key<'a>(
 
 /// Marks a camera entity spawned as one of a multi-zone level's per-zone
 /// passes, so the next level swap can find and despawn every one of them
-/// before respawning for the new level's own zone count.
+/// before respawning for the new level's own zone count. Carries the zone's
+/// own environment so a caller iterating every camera entity (`debug.rs`'s
+/// fullbright toggle, restoring each one's fog/ambient) can tell a per-zone
+/// camera from the single-zone fast path's combined entity, and which
+/// environment to restore a per-zone one to, without re-deriving it from
+/// `RenderLayers` or threading `LevelZones` through every call site.
 #[derive(Component)]
-pub struct ZoneCamera;
+pub struct ZoneCamera(pub Environment);
 
 fn default_projection() -> Projection {
     Projection::Perspective(PerspectiveProjection {
@@ -214,7 +219,7 @@ fn default_projection() -> Projection {
     })
 }
 
-fn fog_for(environment: Environment) -> DistanceFog {
+pub(crate) fn fog_for(environment: Environment) -> DistanceFog {
     let config = environment_config(environment);
     DistanceFog {
         color: config.fog_color,
@@ -226,7 +231,7 @@ fn fog_for(environment: Environment) -> DistanceFog {
     }
 }
 
-fn ambient_for(environment: Environment) -> AmbientLight {
+pub(crate) fn ambient_for(environment: Environment) -> AmbientLight {
     let config = environment_config(environment);
     AmbientLight {
         color: config.ambient_color,
@@ -288,7 +293,7 @@ pub fn spawn_player_cameras(
         for (index, &environment) in zones.zones.iter().enumerate() {
             let zone = index + 1;
             parent.spawn((
-                ZoneCamera,
+                ZoneCamera(environment),
                 Camera3d {
                     // TS disables autoClear and clears once up front, so all
                     // N passes share one persistent depth buffer — cameras
