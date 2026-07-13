@@ -93,6 +93,11 @@ pub fn spawn_forest(
                     metallic: 0.0,
                     reflectance: 0.0,
                     alpha_mode: AlphaMode::Mask(0.5),
+                    // TS's DoubleSide; in Bevy `double_sided` (normal
+                    // flipping for back faces) is separate from disabling
+                    // culling, and both are needed or a back-facing quad
+                    // lights with the un-flipped front normal.
+                    double_sided: true,
                     cull_mode: None,
                     ..default()
                 })
