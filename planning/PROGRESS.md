@@ -6,7 +6,7 @@ Session-to-session state. Read this at the start of every session.
 
 ## Current Phase
 
-**Phase 4: M3 parity, the living world.** Phases 0-3 are merged to main. Work happens on branch `port/phase-4-living-world` following `planning/PHASE4-PLAN.md`'s slice breakdown. See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, `planning/PARITY-GAPS.md` for the audited TS-vs-Rust gap inventory, and `planning/PHASE5-PLAN.md` for the next phase's plan.
+**Phase 5: M4 parity, the vertical world.** Phases 0-4 are merged to main. Work happens on branch `port/phase-5-vertical-world` following `planning/PHASE5-PLAN.md`'s slice breakdown (spawner/boulder/env-zone core logic already ported and tested). See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, and `planning/PARITY-GAPS.md` for the audited gap inventory.
 
 ## Next Steps
 
