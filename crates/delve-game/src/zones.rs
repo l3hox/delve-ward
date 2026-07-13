@@ -33,7 +33,11 @@
 //! `!multiZone` fast path exactly, and every `tag_cell`/`tag_by_key`/
 //! `tag_forest` call is a no-op when the level isn't multi-zone.
 
-use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
+use crate::environment::{
+    AMBIENT_BRIGHTNESS, EnvironmentConfig, environment_config, resolve_environment_at_cell,
+};
+use crate::player::Player;
+use crate::session::Session;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera3dDepthLoadOp, SubCameraView};
 use bevy::pbr::{DistanceFog, FogFalloff};
@@ -406,6 +410,90 @@ pub fn apply_camera_view_crop(
     }
 }
 
+/// TS's `delta * 2` rate in `lerpEnvironment(ctx.scene, ctx.ambient,
+/// targetCfg, delta * 2)` (`game/statusEffectSystem.ts:27`).
+const ENVIRONMENT_LERP_RATE: f32 = 2.0;
+
+/// Component-wise channel lerp matching THREE.Color's own `Color.lerp` —
+/// both colors read as sRGB (the space `environment_config`'s presets are
+/// declared in via `Color::srgb_u8`) and eased directly with no
+/// color-space conversion, the same non-color-managed math THREE performs.
+fn lerp_color(from: Color, to: Color, t: f32) -> Color {
+    let from = from.to_srgba();
+    let to = to.to_srgba();
+    Color::srgba(
+        from.red + (to.red - from.red) * t,
+        from.green + (to.green - from.green) * t,
+        from.blue + (to.blue - from.blue) * t,
+        from.alpha + (to.alpha - from.alpha) * t,
+    )
+}
+
+/// Ported from `lerpEnvironment` (`rendering/environment.ts:62-79`): eases
+/// fog near/far/color, the clear color (TS's `scene.background`), and
+/// ambient color toward `target` at rate `t` — TS's own
+/// `value += (target - value) * t` on every channel, unclamped (a huge
+/// frame hitch can overshoot past `target`; TS never clamps `t` either).
+fn lerp_environment(
+    fog: &mut DistanceFog,
+    ambient: &mut AmbientLight,
+    clear_color: &mut ClearColor,
+    target: &EnvironmentConfig,
+    t: f32,
+) {
+    if let FogFalloff::Linear { start, end } = &mut fog.falloff {
+        *start += (target.fog_near - *start) * t;
+        *end += (target.fog_far - *end) * t;
+    }
+    fog.color = lerp_color(fog.color, target.fog_color, t);
+    clear_color.0 = lerp_color(clear_color.0, target.fog_color, t);
+    ambient.color = lerp_color(ambient.color, target.ambient_color, t);
+}
+
+/// Ported from `tickStatusEffects`'s `!ctx.ls.multiZone` branch
+/// (`game/statusEffectSystem.ts:20-29`), itself only reached while
+/// `!anyOverlayOpen` (`main.ts:1299-1302`): every unpaused frame, re-resolve
+/// the player's current cell against the level's area overrides and ease
+/// the shared single-zone camera toward whatever environment that resolves
+/// to. Deliberately uses `session.areas` (the level-wide list, matching
+/// TS's own `ctx.ls.level.areas` argument) rather than the active layer's
+/// own override list — TS's call site never consults the per-layer list
+/// here even though scene-building does elsewhere, and this port matches
+/// that exactly rather than "fixing" it.
+///
+/// Gated implicitly on the combined `Player`+`Camera3d` entity actually
+/// carrying `DistanceFog`/`AmbientLight`: true only under the single-zone
+/// fast path (`spawn_player_cameras`), and false whenever
+/// `debug::toggle_fullbright` has stripped `DistanceFog` for the fullbright
+/// light — so this system silently no-ops under fullbright with no explicit
+/// check needed, matching TS's own `!debugFullbright`-gated fog reapply
+/// (`main.ts:1443`) by construction. Never fights a multi-zone level's
+/// per-`ZoneCamera` fog either, since those live on child entities and
+/// `Player` itself carries neither component while multi-zone.
+pub fn lerp_zone_environment(
+    time: Res<Time>,
+    session: Res<Session>,
+    gate: crate::overlay::InputGate,
+    mut clear_color: ResMut<ClearColor>,
+    mut cameras: Query<(&Player, &mut DistanceFog, &mut AmbientLight)>,
+) {
+    if gate.paused() {
+        return;
+    }
+    let Ok((player, mut fog, mut ambient)) = cameras.single_mut() else {
+        return;
+    };
+    let state = player.grid_state();
+    let target = environment_config(resolve_environment_at_cell(
+        i64::from(state.col),
+        i64::from(state.row),
+        session.environment,
+        &session.areas,
+    ));
+    let t = time.delta_secs() * ENVIRONMENT_LERP_RATE;
+    lerp_environment(&mut fog, &mut ambient, &mut clear_color, &target, t);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,5 +597,59 @@ mod tests {
         assert_eq!(crop.full_size, UVec2::new(777, 333));
         assert_eq!(crop.offset, Vec2::new(-20.0, 49.0));
         assert_eq!(crop.size, UVec2::new(817, 351));
+    }
+
+    #[test]
+    fn lerp_color_eases_halfway_between_black_and_white() {
+        let mixed = lerp_color(Color::BLACK, Color::WHITE, 0.5).to_srgba();
+        assert!((mixed.red - 0.5).abs() < 1e-6);
+        assert!((mixed.green - 0.5).abs() < 1e-6);
+        assert!((mixed.blue - 0.5).abs() < 1e-6);
+        assert!((mixed.alpha - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lerp_color_at_t_zero_stays_at_the_start_color() {
+        let start = Color::srgb_u8(10, 20, 30);
+        let mixed = lerp_color(start, Color::srgb_u8(200, 200, 200), 0.0).to_srgba();
+        let expected = start.to_srgba();
+        assert!((mixed.red - expected.red).abs() < 1e-6);
+        assert!((mixed.green - expected.green).abs() < 1e-6);
+        assert!((mixed.blue - expected.blue).abs() < 1e-6);
+    }
+
+    /// Hand-computed from `environment_config`'s dungeon and outdoor
+    /// presets: fog_near 6.0 → 20.0 and fog_far 26.0 → 80.0 land at 13.0 and
+    /// 53.0 halfway; fog_color 0x000000 → 0x88aacc lands at (0.266667,
+    /// 0.333333, 0.4) and ambient_color 0x1a1a22 → 0xbbccee at (0.417647,
+    /// 0.450980, 0.533333), both channel-wise sRGB midpoints.
+    #[test]
+    fn lerp_environment_moves_fog_distances_and_colors_toward_the_target_by_t() {
+        let mut fog = fog_for(Environment::Dungeon);
+        let mut ambient = ambient_for(Environment::Dungeon);
+        let mut clear_color = ClearColor(environment_config(Environment::Dungeon).fog_color);
+        let target = environment_config(Environment::Outdoor);
+
+        lerp_environment(&mut fog, &mut ambient, &mut clear_color, &target, 0.5);
+
+        let FogFalloff::Linear { start, end } = fog.falloff else {
+            panic!("fog_for always builds FogFalloff::Linear");
+        };
+        assert!((start - 13.0).abs() < 1e-4);
+        assert!((end - 53.0).abs() < 1e-4);
+
+        let fog_srgba = fog.color.to_srgba();
+        assert!((fog_srgba.red - 0.266_667).abs() < 1e-3);
+        assert!((fog_srgba.green - 0.333_333).abs() < 1e-3);
+        assert!((fog_srgba.blue - 0.4).abs() < 1e-3);
+
+        let ambient_srgba = ambient.color.to_srgba();
+        assert!((ambient_srgba.red - 0.417_647).abs() < 1e-3);
+        assert!((ambient_srgba.green - 0.450_980).abs() < 1e-3);
+        assert!((ambient_srgba.blue - 0.533_333).abs() < 1e-3);
+
+        // Clear color follows the same `target.fog_color`/`t` as the fog
+        // color itself — same formula, same inputs.
+        assert_eq!(clear_color.0.to_srgba(), fog_srgba);
     }
 }

@@ -504,7 +504,9 @@ fn main() {
         )
         // Particle updates gate themselves (InputGate::paused, matching
         // TS's anyOverlayOpen block); cull_distant_lights runs unmuted like
-        // TS's own culling loop. Order among these is free — none reads
+        // TS's own culling loop. lerp_zone_environment self-gates the same
+        // way (TS's own tickStatusEffects call is behind the same
+        // !anyOverlayOpen check). Order among these is free — none reads
         // another's output.
         .add_systems(
             Update,
@@ -515,6 +517,7 @@ fn main() {
                 particles::update_water_drips,
                 particles::update_splash_rings,
                 particles::cull_distant_lights,
+                zones::lerp_zone_environment,
             ),
         )
         // After propagation so the first run after a scene spawn sees the
