@@ -63,3 +63,7 @@ The TS enemy/npc database singletons consulted during validation become a `Valid
 ## D15: Default dungeon is ruins.json, overridable by CLI argument
 
 The TS shell's production fallback is `/levels/ruins.json` with a `?level=` URL override. The Rust shell mirrors both: `delve-game` loads `levels/ruins.json`, `delve-game <name>` loads `levels/<name>.json`. Ruins exercises stairs, transitions, and environment presets that the earlier `dungeon1.json` smoke level lacked.
+
+## D16: All runtime visual randomness is seeded
+
+D10's seeding convention extends past startup textures to every runtime visual RNG in `delve-game` — light flicker, particle spawn and drift — even where TS uses unseeded `Math.random()`. Each system seeds its own `Mulberry32` with a fixed per-system constant (first instances: `sconces.rs`'s `SconceFlicker` and `torch.rs`'s `TorchFlicker`), so behavior is reproducible across runs while only the visual character must match TS.
