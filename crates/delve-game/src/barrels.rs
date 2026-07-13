@@ -5,7 +5,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
 
 /// TS's cylinder tapers slightly (top radius 0.38, bottom 0.34); Bevy's
@@ -26,14 +26,21 @@ pub struct BarrelHandles {
     by_key: HashMap<String, Entity>,
 }
 
+impl BarrelHandles {
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.by_key.extend(other.by_key);
+    }
+}
+
 pub fn spawn_barrels(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) -> BarrelHandles {
     let mut handles = BarrelHandles::default();
-    if game.active_layer().barrels.is_empty() {
+    if layer_state.barrels.is_empty() {
         return handles;
     }
 
@@ -50,14 +57,14 @@ pub fn spawn_barrels(
     let band_mesh = meshes.add(Cylinder::new(BAND_RADIUS, BAND_HEIGHT));
     let band_material = materials.add(lambert(Color::srgb_u8(0x33, 0x33, 0x33)));
 
-    for (key, barrel) in &game.active_layer().barrels {
+    for (key, barrel) in &layer_state.barrels {
         let center_x = barrel.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = barrel.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
 
         let group = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, BARREL_Y, center_z),
+                Transform::from_xyz(center_x, BARREL_Y + layer_spawn.y_offset, center_z),
                 Visibility::default(),
             ))
             .id();
@@ -82,7 +89,9 @@ pub fn spawn_barrels(
             commands.entity(group).add_child(band);
         }
 
-        handles.by_key.insert(key.clone(), group);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_spawn.index, key), group);
     }
 
     handles

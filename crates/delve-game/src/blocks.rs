@@ -7,7 +7,7 @@ use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::textures::{canvas_to_image, seed_for};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
 
 const BLOCK_SIZE: f32 = CELL_SIZE * 0.85;
@@ -58,10 +58,11 @@ pub fn spawn_blocks(
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) -> BlockHandles {
     let mut handles = BlockHandles::default();
-    if game.active_layer().blocks.is_empty() {
+    if layer_state.blocks.is_empty() {
         return handles;
     }
 
@@ -76,7 +77,7 @@ pub fn spawn_blocks(
     });
     let mesh = meshes.add(Cuboid::new(BLOCK_SIZE, BLOCK_HEIGHT, BLOCK_SIZE));
 
-    for (key, block) in &game.active_layer().blocks {
+    for (key, block) in &layer_state.blocks {
         let center_x = block.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = block.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let entity = commands
@@ -84,14 +85,20 @@ pub fn spawn_blocks(
                 LevelEntity,
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material.clone()),
-                Transform::from_xyz(center_x, BLOCK_HEIGHT / 2.0, center_z),
+                Transform::from_xyz(
+                    center_x,
+                    BLOCK_HEIGHT / 2.0 + layer_spawn.y_offset,
+                    center_z,
+                ),
                 PushableBlock {
                     target_x: center_x,
                     target_z: center_z,
                 },
             ))
             .id();
-        handles.by_key.insert(key.clone(), entity);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_spawn.index, key), entity);
     }
 
     handles

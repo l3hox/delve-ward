@@ -80,7 +80,6 @@ pub struct SceneContext<'a> {
     pub npc_db: &'a NpcDatabase,
     pub game: &'a GameState,
     pub level: &'a DungeonLevel,
-    pub grid: &'a [String],
     pub walkable: &'a HashSet<char>,
 }
 
@@ -98,6 +97,14 @@ pub fn spawn_level_scene(
     let mut plate_handles = PlateHandles::default();
     let mut tripwire_handles = TripwireHandles::default();
     let mut pit_floor_handles = dungeon::PitFloorHandles::default();
+    let mut health_bars = EnemyHealthBars::default();
+    let mut chest_handles = ChestHandles::default();
+    let mut block_handles = BlockHandles::default();
+    let mut wall_entity_handles = WallEntityHandles::default();
+    let mut npc_billboards = NpcBillboards::default();
+    let mut fountain_handles = FountainHandles::default();
+    let mut altar_handles = AltarHandles::default();
+    let mut barrel_handles = BarrelHandles::default();
 
     // TS builds every layer's geometry and entity meshes simultaneously at
     // load time, each Y-offset by `layer_index * LAYER_HEIGHT` (or an
@@ -121,28 +128,22 @@ pub fn spawn_level_scene(
             .values()
             .map(|stair| door_key(stair.col, stair.row))
             .collect();
-        // Breakable/secret walls only get their specialized geometry
-        // (`wall_entities::spawn_wall_entities`, below) on the active
-        // layer — that renderer is out of this slice's scope and still
-        // single-active-layer only. Excluding their cells from
-        // `spawn_dungeon`'s normal floor/wall pass on every OTHER layer
-        // would leave a hole nothing else fills, so the exclusion set is
-        // only populated for the active layer.
-        let wall_entity_cells: HashSet<String> = if layer_index == scene.game.active_layer_index {
-            layer
-                .breakable_walls
-                .values()
-                .map(|wall| door_key(wall.col, wall.row))
-                .chain(
-                    layer
-                        .secret_walls
-                        .values()
-                        .map(|wall| door_key(wall.col, wall.row)),
-                )
-                .collect()
-        } else {
-            HashSet::new()
-        };
+        // Breakable/secret walls own their floor/ceiling/walls via
+        // `wall_entities::spawn_wall_entities` below, on every layer —
+        // excluded here so `spawn_dungeon`'s normal per-cell pass doesn't
+        // double-spawn geometry underneath them.
+        let wall_entity_cells: HashMap<String, (i64, i64)> = layer
+            .breakable_walls
+            .values()
+            .map(|wall| (door_key(wall.col, wall.row), (wall.col, wall.row)))
+            .chain(
+                layer
+                    .secret_walls
+                    .values()
+                    .map(|wall| (door_key(wall.col, wall.row), (wall.col, wall.row))),
+            )
+            .collect();
+        let wall_entity_keys: HashSet<String> = wall_entity_cells.keys().cloned().collect();
 
         let pit_trap_cells: HashSet<String> = layer
             .pit_traps
@@ -156,7 +157,7 @@ pub fn spawn_level_scene(
             scene.dungeon_materials,
             &layer_spawn,
             &stair_cells,
-            &wall_entity_cells,
+            &wall_entity_keys,
             &pit_trap_cells,
         );
         let layer_pit_floors = dungeon::spawn_pit_floors(
@@ -196,6 +197,19 @@ pub fn spawn_level_scene(
             &layer_spawn,
             scene.enemy_db,
         );
+        // Needs `layer_billboards` before it's merged into the accumulator —
+        // each health bar looks up its parent billboard by the same
+        // layer-prefixed key this layer's spawn just produced.
+        let layer_health_bars = enemy_feedback::spawn_health_bars(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+            &layer_billboards,
+            scene.enemy_db,
+        );
+        health_bars.extend(layer_health_bars);
         enemy_billboards.by_key.extend(layer_billboards.by_key);
 
         let layer_ground_items = ground_items::spawn_ground_items(
@@ -271,79 +285,93 @@ pub fn spawn_level_scene(
             y_offset,
         );
         tripwire_handles.by_key.extend(layer_tripwires.by_key);
+
+        let layer_wall_entities = wall_entities::spawn_wall_entities(
+            commands,
+            assets.meshes,
+            scene.dungeon_materials,
+            &layer_spawn,
+            &layer_def.grid,
+            &wall_entity_cells,
+        );
+        wall_entity_handles.extend(layer_wall_entities);
+
+        let layer_chests = chests::spawn_chests(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        chest_handles.by_key.extend(layer_chests.by_key);
+
+        let layer_blocks = blocks::spawn_blocks(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        block_handles.by_key.extend(layer_blocks.by_key);
+
+        signs::spawn_signs(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+
+        let layer_npcs = npcs::spawn_npc_billboards(
+            commands,
+            assets.meshes,
+            assets.materials,
+            assets.asset_server,
+            layer,
+            &layer_spawn,
+            scene.npc_db,
+        );
+        npc_billboards.by_key.extend(layer_npcs.by_key);
+
+        let layer_fountains = fountains::spawn_fountains(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        fountain_handles.extend(layer_fountains);
+
+        let layer_altars = altars::spawn_altars(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        altar_handles.extend(layer_altars);
+
+        let layer_barrels = barrels::spawn_barrels(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        barrel_handles.extend(layer_barrels);
+
+        bookshelves::spawn_bookshelves(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
     }
 
-    let health_bars = enemy_feedback::spawn_health_bars(
-        commands,
-        assets.meshes,
-        assets.materials,
-        scene.game,
-        &enemy_billboards,
-        scene.enemy_db,
-    );
-
-    // Chests, blocks, breakable/secret walls, signs, npcs, fountains,
-    // altars, barrels, and bookshelves are out of this slice's scope (see
-    // `PHASE5-PLAN.md`'s slice-1 file table) and stay single-active-layer,
-    // exactly as before.
-    let wall_entity_cells: HashMap<String, (i64, i64)> = scene
-        .game
-        .active_layer()
-        .breakable_walls
-        .values()
-        .map(|wall| (door_key(wall.col, wall.row), (wall.col, wall.row)))
-        .chain(
-            scene
-                .game
-                .active_layer()
-                .secret_walls
-                .values()
-                .map(|wall| (door_key(wall.col, wall.row), (wall.col, wall.row))),
-        )
-        .collect();
-    let wall_entity_handles = wall_entities::spawn_wall_entities(
-        commands,
-        assets.meshes,
-        scene.dungeon_materials,
-        scene.level,
-        scene.grid,
-        &wall_entity_cells,
-    );
-    let chest_handles = chests::spawn_chests(
-        commands,
-        assets.meshes,
-        assets.images,
-        assets.materials,
-        scene.game,
-    );
-    let block_handles = blocks::spawn_blocks(
-        commands,
-        assets.meshes,
-        assets.images,
-        assets.materials,
-        scene.game,
-    );
-    signs::spawn_signs(
-        commands,
-        assets.meshes,
-        assets.images,
-        assets.materials,
-        scene.game,
-    );
-    let npc_billboards = npcs::spawn_npc_billboards(
-        commands,
-        assets.meshes,
-        assets.materials,
-        assets.asset_server,
-        scene.game,
-        scene.npc_db,
-    );
-    let fountain_handles =
-        fountains::spawn_fountains(commands, assets.meshes, assets.materials, scene.game);
-    let altar_handles = altars::spawn_altars(commands, assets.meshes, assets.materials, scene.game);
-    let barrel_handles =
-        barrels::spawn_barrels(commands, assets.meshes, assets.materials, scene.game);
-    bookshelves::spawn_bookshelves(commands, assets.meshes, assets.materials, scene.game);
     LevelSceneHandles {
         door_panels,
         enemy_billboards,

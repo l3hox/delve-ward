@@ -908,6 +908,15 @@ impl GameState {
         self.layers.get(index)
     }
 
+    /// Mutably peek a layer by index without disturbing `active_layer_index`
+    /// — the `layer` companion for callers that must write through a
+    /// specific, possibly-non-active layer (e.g. a blocked-door retry that
+    /// recorded the layer it was created on, since `active_layer_index` may
+    /// have since changed via same-level falling).
+    pub fn layer_mut(&mut self, index: usize) -> Option<&mut LayerState> {
+        self.layers.get_mut(index)
+    }
+
     /// Drain outward world events produced since the last call.
     pub fn take_events(&mut self) -> Vec<WorldEvent> {
         std::mem::take(&mut self.pending_events)

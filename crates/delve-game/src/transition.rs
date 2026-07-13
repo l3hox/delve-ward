@@ -346,7 +346,6 @@ pub fn perform_level_swap(
         npc_db: &world.npc_db.0,
         game: &session.game,
         level: target_level,
-        grid: &session.grid,
         walkable: &session.walkable,
     };
     let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);
@@ -535,7 +534,6 @@ pub fn perform_restart(
         npc_db: &world.npc_db.0,
         game: &session.game,
         level: &start_level,
-        grid: &session.grid,
         walkable: &session.walkable,
     };
     let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);
@@ -704,7 +702,6 @@ pub fn perform_load(
         npc_db: &world.npc_db.0,
         game: &session.game,
         level: &target_level,
-        grid: &session.grid,
         walkable: &session.walkable,
     };
     let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);

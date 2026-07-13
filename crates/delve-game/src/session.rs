@@ -250,7 +250,7 @@ fn move_forward_with_secret_wall_reveal(
     wall_entities::reveal_wall_entity(
         &wall_entities.handles,
         &mut wall_entities.visibility,
-        &door_key(col, row),
+        &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
         persistent,
     );
     hud.show_message(if persistent {
@@ -415,7 +415,8 @@ pub fn on_player_moved(
             .get(&key)
             .is_some_and(|door| door.state == DoorState::Closed);
         if closed_underfoot {
-            set_door_state(game, &key, DoorState::Open);
+            let door_layer_index = game.active_layer_index;
+            set_door_state(game, door_layer_index, &key, DoorState::Open);
             set_panel_open(
                 &signal.door_panels,
                 &mut signal.panel_query,
@@ -427,6 +428,7 @@ pub fn on_player_moved(
                 BlockedDoor {
                     col,
                     row,
+                    layer_index: door_layer_index,
                     timer: DOOR_RETRY_INTERVAL,
                 },
             );
@@ -563,6 +565,11 @@ impl BlockedDoors {
 struct BlockedDoor {
     col: i64,
     row: i64,
+    /// The layer this door lives on, recorded at block time — same-level
+    /// falling can change `active_layer_index` before the retry fires, so
+    /// the close must write through this recorded layer, not whichever
+    /// layer happens to be active later.
+    layer_index: usize,
     timer: f32,
 }
 
@@ -578,8 +585,10 @@ fn bounce_panel(panels: &DoorPanels, panel_query: &mut Query<&mut DoorPanel>, ke
     }
 }
 
-fn set_door_state(game: &mut GameState, key: &str, state: DoorState) {
-    if let Some(door) = game.active_layer_mut().doors.get_mut(key) {
+fn set_door_state(game: &mut GameState, layer_index: usize, key: &str, state: DoorState) {
+    if let Some(layer) = game.layer_mut(layer_index)
+        && let Some(door) = layer.doors.get_mut(key)
+    {
         door.state = state;
     }
 }
@@ -612,7 +621,7 @@ fn tick_blocked_doors(
             continue;
         };
         let key = delve_core::game_state::door_key(entry.col, entry.row);
-        set_door_state(game, &key, DoorState::Closed);
+        set_door_state(game, entry.layer_index, &key, DoorState::Closed);
         set_panel_open(
             &signal.door_panels,
             &mut signal.panel_query,
@@ -633,6 +642,8 @@ fn tick_blocked_doors(
 pub fn tick_game(
     time: Res<Time>,
     mut session: ResMut<Session>,
+    dungeon: Res<DungeonRes>,
+    mut players: Query<&mut Player>,
     gate: crate::overlay::InputGate,
     mut signal: SignalRenderState,
 ) {
@@ -646,12 +657,21 @@ pub fn tick_game(
     );
     session.game.tick_signals(f64::from(delta));
     let events = session.game.take_events();
+    let level_id = session.current_level_id.clone();
+    let level = find_level_by_id(&dungeon, &level_id);
+    let mut player_query = players.single_mut();
     let Session { game, .. } = &mut *session;
-    // No `Player` query in this system (a purely-timed pit trap opening
-    // under a motionless, non-interacting player is a deliberately deferred
-    // edge case — see `FallTriggerContext`'s doc comment) — the floor-mesh
-    // toggle still applies, just not the fall trigger.
-    apply_world_events(events, game, player_cell, &mut signal, None);
+    // A purely-timed pit trap opening under a motionless, non-interacting
+    // player now also triggers a fall, once both the level and the single
+    // `Player` entity resolve — see `FallTriggerContext`'s doc comment for
+    // the shape this mirrors from `on_player_moved`. Either failing to
+    // resolve (no player entity yet, or an unknown level) still runs the
+    // floor-mesh toggle, just not the fall trigger.
+    let fall_trigger = match (&level, player_query.as_mut()) {
+        (Some(level), Ok(player)) => Some(FallTriggerContext { player, level }),
+        _ => None,
+    };
+    apply_world_events(events, game, player_cell, &mut signal, fall_trigger);
     tick_blocked_doors(game, player_cell, &mut signal, delta);
 }
 
@@ -698,12 +718,13 @@ pub fn apply_world_events(
                         true,
                     );
                 } else if is_door_cell_occupied(game, player_cell, col, row) {
-                    set_door_state(game, &key, DoorState::Open);
+                    set_door_state(game, active_layer_index, &key, DoorState::Open);
                     signal.blocked_doors.by_key.insert(
                         render_key.clone(),
                         BlockedDoor {
                             col,
                             row,
+                            layer_index: active_layer_index,
                             timer: DOOR_RETRY_INTERVAL,
                         },
                     );
@@ -739,11 +760,19 @@ pub fn apply_world_events(
                 );
             }
             WorldEvent::ChestSignalChanged { col, row, open } => {
-                let key = door_key(col, row);
+                let render_key = layer_door_key(active_layer_index, &door_key(col, row));
                 if open {
-                    chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                    chests::open_chest_mesh(
+                        &signal.chest_handles,
+                        &mut signal.chest_lids,
+                        &render_key,
+                    );
                 } else {
-                    chests::close_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &key);
+                    chests::close_chest_mesh(
+                        &signal.chest_handles,
+                        &mut signal.chest_lids,
+                        &render_key,
+                    );
                 }
             }
             // Active-layer launcher fires surface through whichever session
@@ -945,8 +974,8 @@ pub fn interact_input(
             if let (Some(to_col), Some(to_row)) = (result.target_col, result.target_row) {
                 blocks::animate_block_push(
                     &mut effects.blocks,
-                    &facing_key,
-                    door_key(to_col, to_row),
+                    &facing_render_key,
+                    layer_door_key(session.game.active_layer_index, &door_key(to_col, to_row)),
                     to_col,
                     to_row,
                 );
@@ -954,7 +983,11 @@ pub fn interact_input(
         }
         InteractionType::ChestOpened => {
             if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
-                chests::open_chest_mesh(&signal.chest_handles, &mut signal.chest_lids, &facing_key);
+                chests::open_chest_mesh(
+                    &signal.chest_handles,
+                    &mut signal.chest_lids,
+                    &facing_render_key,
+                );
                 let drops = session
                     .game
                     .get_chest(col, row)
@@ -999,7 +1032,7 @@ pub fn interact_input(
                 fountains::mark_fountain_used(
                     &effects.fountain_handles,
                     &mut sconce_render.visibility,
-                    &door_key(col, row),
+                    &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
                 );
             }
         }
@@ -1009,7 +1042,7 @@ pub fn interact_input(
                     &effects.altar_handles,
                     &effects.pillar_materials,
                     &mut effects.item_render.materials,
-                    &door_key(col, row),
+                    &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
                 );
             }
         }

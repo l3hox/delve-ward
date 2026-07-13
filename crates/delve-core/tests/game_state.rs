@@ -1826,3 +1826,46 @@ fn layer_returns_the_only_layer_for_a_single_layer_level() {
     assert!(state.layer(0).is_some());
     assert!(state.layer(1).is_none());
 }
+
+// --- layer_mut() companion (phase 5: blocked-door retries that must write
+// through a recorded, possibly-non-active layer) ---
+
+#[test]
+fn layer_mut_writes_through_to_a_non_active_layer_without_switching_active_index() {
+    let mut state = multi_layer_state();
+    assert_eq!(state.active_layer_index, 0);
+    assert_eq!(
+        state.layer(1).unwrap().doors[&door_key(2, 2)].state,
+        DoorState::Open
+    );
+
+    let upper = state.layer_mut(1).expect("layer 1 exists");
+    upper
+        .doors
+        .get_mut(&door_key(2, 2))
+        .expect("door exists")
+        .state = DoorState::Closed;
+
+    // The mutation landed on layer 1, not the active layer (0) — layer 0's
+    // own door (a different cell, untouched by the write) still resolves
+    // through `active_layer()`, proving that accessor still targets layer 0.
+    assert_eq!(
+        state.layer(1).unwrap().doors[&door_key(2, 2)].state,
+        DoorState::Closed
+    );
+    assert_eq!(
+        state.active_layer().doors[&door_key(1, 1)].state,
+        DoorState::Closed
+    );
+    assert!(!state.active_layer().doors.contains_key(&door_key(2, 2)));
+    // Peeking/mutating a non-active layer must not disturb which layer is
+    // active.
+    assert_eq!(state.active_layer_index, 0);
+}
+
+#[test]
+fn layer_mut_returns_none_for_an_out_of_range_index() {
+    let mut state = multi_layer_state();
+    assert!(state.layer_mut(2).is_none());
+    assert!(state.layer_mut(usize::MAX).is_none());
+}

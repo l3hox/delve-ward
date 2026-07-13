@@ -21,7 +21,7 @@ use crate::enemies::EnemyBillboards;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
-use delve_core::game_state::{GameState, layer_door_key};
+use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
 
 /// Matches TS's `ENEMY_DAMAGE_FLASH_DURATION` (`main.ts`).
@@ -111,6 +111,12 @@ impl EnemyHealthBars {
     pub fn remove(&mut self, key: &str) {
         self.by_key.remove(key);
     }
+
+    /// Merges another layer's spawn result in, keyed by its own
+    /// layer-prefixed keys.
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.by_key.extend(other.by_key);
+    }
 }
 
 /// 0..1, floored at zero — matches TS's `Math.max(0, hp / maxHp)`.
@@ -169,7 +175,8 @@ pub fn spawn_health_bars(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
     billboards: &EnemyBillboards,
     database: &EnemyDatabase,
 ) -> EnemyHealthBars {
@@ -183,8 +190,8 @@ pub fn spawn_health_bars(
     });
     let fill_mesh = meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT * 0.7));
 
-    for (key, enemy) in &game.active_layer().enemies {
-        let render_key = layer_door_key(game.active_layer_index, key);
+    for (key, enemy) in &layer_state.enemies {
+        let render_key = layer_door_key(layer_spawn.index, key);
         let Some(&parent) = billboards.by_key.get(&render_key) else {
             continue;
         };

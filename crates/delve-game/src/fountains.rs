@@ -8,7 +8,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, UsableState};
+use delve_core::game_state::{LayerState, UsableState, layer_door_key};
 use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 
@@ -28,14 +28,21 @@ pub struct FountainHandles {
     water_by_key: HashMap<String, Entity>,
 }
 
+impl FountainHandles {
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.water_by_key.extend(other.water_by_key);
+    }
+}
+
 pub fn spawn_fountains(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) -> FountainHandles {
     let mut handles = FountainHandles::default();
-    if game.active_layer().fountains.is_empty() {
+    if layer_state.fountains.is_empty() {
         return handles;
     }
 
@@ -61,14 +68,14 @@ pub fn spawn_fountains(
         ..default()
     });
 
-    for (key, fountain) in &game.active_layer().fountains {
+    for (key, fountain) in &layer_state.fountains {
         let center_x = fountain.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = fountain.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
 
         let group = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, 0.0, center_z),
+                Transform::from_xyz(center_x, layer_spawn.y_offset, center_z),
                 Visibility::default(),
             ))
             .id();
@@ -107,7 +114,9 @@ pub fn spawn_fountains(
             .id();
         commands.entity(group).add_child(water);
 
-        handles.water_by_key.insert(key.clone(), water);
+        handles
+            .water_by_key
+            .insert(layer_door_key(layer_spawn.index, key), water);
     }
 
     handles

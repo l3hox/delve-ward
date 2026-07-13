@@ -7,7 +7,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use delve_core::npcs::{DEFAULT_NPC_SPRITE_SIZE, NpcDatabase};
 use std::collections::HashMap;
 
@@ -30,16 +30,17 @@ pub fn spawn_npc_billboards(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
     database: &NpcDatabase,
 ) -> NpcBillboards {
     let mut billboards = NpcBillboards::default();
-    for (key, npc) in &game.active_layer().npcs {
+    for (key, npc) in &layer_state.npcs {
         let def = database.get_npc(&npc.npc_id);
         let size = def
             .and_then(|def| def.sprite.size)
             .unwrap_or(DEFAULT_NPC_SPRITE_SIZE) as f32;
-        let y_offset = def.and_then(|def| def.sprite.y_offset).unwrap_or(0.0) as f32;
+        let sprite_y_offset = def.and_then(|def| def.sprite.y_offset).unwrap_or(0.0) as f32;
         let texture_path = def
             .map(|def| sprite_asset_path(&def.sprite.path))
             .unwrap_or_else(|| "sprites/merchant.png".to_string());
@@ -61,10 +62,16 @@ pub fn spawn_npc_billboards(
                 crate::billboard::FacesCamera,
                 Mesh3d(meshes.add(Rectangle::new(size, size))),
                 MeshMaterial3d(material),
-                Transform::from_xyz(center_x, size * 0.5 + y_offset, center_z),
+                Transform::from_xyz(
+                    center_x,
+                    size * 0.5 + sprite_y_offset + layer_spawn.y_offset,
+                    center_z,
+                ),
             ))
             .id();
-        billboards.by_key.insert(key.clone(), entity);
+        billboards
+            .by_key
+            .insert(layer_door_key(layer_spawn.index, key), entity);
     }
     billboards
 }

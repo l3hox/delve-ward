@@ -6,7 +6,7 @@ use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::textures::{canvas_to_image, seed_for};
 use bevy::prelude::*;
-use delve_core::game_state::{ChestState, GameState};
+use delve_core::game_state::{ChestState, LayerState, layer_door_key};
 use delve_core::grid::Facing;
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
@@ -86,10 +86,11 @@ pub fn spawn_chests(
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) -> ChestHandles {
     let mut handles = ChestHandles::default();
-    if game.active_layer().chests.is_empty() {
+    if layer_state.chests.is_empty() {
         return handles;
     }
 
@@ -122,14 +123,14 @@ pub fn spawn_chests(
     let (clasp_width, clasp_height, clasp_depth) = CLASP_SIZE;
     let clasp_mesh = meshes.add(Cuboid::new(clasp_width, clasp_height, clasp_depth));
 
-    for (key, chest) in &game.active_layer().chests {
+    for (key, chest) in &layer_state.chests {
         let center_x = chest.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = chest.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
 
         let group = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, CHEST_Y, center_z)
+                Transform::from_xyz(center_x, CHEST_Y + layer_spawn.y_offset, center_z)
                     .with_rotation(Quat::from_rotation_y(facing_rotation(chest.facing))),
                 Visibility::default(),
             ))
@@ -180,7 +181,9 @@ pub fn spawn_chests(
             .id();
         commands.entity(lid_pivot).add_child(lid);
 
-        handles.by_key.insert(key.clone(), lid_pivot);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_spawn.index, key), lid_pivot);
     }
 
     handles

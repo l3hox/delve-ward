@@ -227,7 +227,6 @@ fn setup(
         npc_db: &npc_db,
         game: &game,
         level: &level,
-        grid: &grid,
         walkable: &walkable,
     };
     let handles = spawn_level_scene(&mut commands, &mut scene_assets, &scene);

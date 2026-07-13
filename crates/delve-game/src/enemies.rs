@@ -407,7 +407,7 @@ pub fn attack_input(
                     wall_entities::reveal_wall_entity(
                         &kill_effects.wall_entities,
                         &mut kill_effects.visibility,
-                        &door_key(col, row),
+                        &layer_door_key(game.active_layer_index, &door_key(col, row)),
                         false,
                     );
                     let rng = &mut rng.0;
@@ -440,7 +440,7 @@ pub fn attack_input(
                 barrels::despawn_barrel(
                     &mut kill_effects.barrels,
                     &mut kill_effects.item_render.commands,
-                    &door_key(col, row),
+                    &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
                 );
                 if result.drops_override.is_some() {
                     let rng = &mut rng.0;

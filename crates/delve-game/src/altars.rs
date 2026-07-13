@@ -7,7 +7,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, UsableState};
+use delve_core::game_state::{LayerState, UsableState, layer_door_key};
 use std::collections::HashMap;
 
 const PLATFORM_SIZE: (f32, f32, f32) = (1.2, 0.2, 1.2);
@@ -28,14 +28,21 @@ pub struct AltarHandles {
     pillar_by_key: HashMap<String, Entity>,
 }
 
+impl AltarHandles {
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.pillar_by_key.extend(other.pillar_by_key);
+    }
+}
+
 pub fn spawn_altars(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) -> AltarHandles {
     let mut handles = AltarHandles::default();
-    if game.active_layer().altars.is_empty() {
+    if layer_state.altars.is_empty() {
         return handles;
     }
 
@@ -51,14 +58,14 @@ pub fn spawn_altars(
     let (pillar_w, pillar_h, pillar_d) = PILLAR_SIZE;
     let pillar_mesh = meshes.add(Cuboid::new(pillar_w, pillar_h, pillar_d));
 
-    for (key, altar) in &game.active_layer().altars {
+    for (key, altar) in &layer_state.altars {
         let center_x = altar.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = altar.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
 
         let group = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, GROUP_Y, center_z),
+                Transform::from_xyz(center_x, GROUP_Y + layer_spawn.y_offset, center_z),
                 Visibility::default(),
             ))
             .id();
@@ -95,7 +102,9 @@ pub fn spawn_altars(
             .id();
         commands.entity(group).add_child(pillar);
 
-        handles.pillar_by_key.insert(key.clone(), pillar);
+        handles
+            .pillar_by_key
+            .insert(layer_door_key(layer_spawn.index, key), pillar);
     }
 
     handles

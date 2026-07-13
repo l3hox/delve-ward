@@ -6,7 +6,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::LayerState;
 use delve_core::grid::Facing;
 
 /// `bookshelfRenderer.ts`'s own `WALL_DIR` is rotated 180° from every other
@@ -32,9 +32,10 @@ pub fn spawn_bookshelves(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) {
-    if game.active_layer().bookshelves.is_empty() {
+    if layer_state.bookshelves.is_empty() {
         return;
     }
 
@@ -56,7 +57,7 @@ pub fn spawn_bookshelves(
         materials.add(lambert(Color::srgb_u8(0x33, 0x99, 0x33))),
     ];
 
-    for shelf in game.active_layer().bookshelves.values() {
+    for shelf in layer_state.bookshelves.values() {
         let center_x = shelf.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = shelf.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let (dir_x, dir_z, rotation_y) = bookshelf_wall_direction(shelf.wall);
@@ -67,7 +68,7 @@ pub fn spawn_bookshelves(
                 LevelEntity,
                 Transform::from_xyz(
                     center_x + dir_x * offset_dist,
-                    SHELF_Y,
+                    SHELF_Y + layer_spawn.y_offset,
                     center_z + dir_z * offset_dist,
                 )
                 .with_rotation(Quat::from_rotation_y(rotation_y)),

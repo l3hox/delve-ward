@@ -9,7 +9,7 @@ use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::textures::{canvas_to_image, seed_for};
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::LayerState;
 use delve_core::grid::Facing;
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -62,9 +62,10 @@ pub fn spawn_signs(
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
 ) {
-    if game.active_layer().signs.is_empty() {
+    if layer_state.signs.is_empty() {
         return;
     }
 
@@ -80,7 +81,7 @@ pub fn spawn_signs(
     });
     let mesh = meshes.add(Rectangle::new(SIGN_WIDTH, SIGN_HEIGHT));
 
-    for sign in game.active_layer().signs.values() {
+    for sign in layer_state.signs.values() {
         let center_x = sign.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = sign.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let (dx, dz, rotation_y) = wall_direction(sign.wall);
@@ -91,7 +92,7 @@ pub fn spawn_signs(
             MeshMaterial3d(material.clone()),
             Transform::from_xyz(
                 center_x + dx * OFFSET_DIST,
-                SIGN_Y,
+                SIGN_Y + layer_spawn.y_offset,
                 center_z + dz * OFFSET_DIST,
             )
             .with_rotation(Quat::from_rotation_y(rotation_y)),
