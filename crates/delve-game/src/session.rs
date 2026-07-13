@@ -557,6 +557,7 @@ pub struct InteractEffects<'w, 's> {
     pub dialog_cache: ResMut<'w, crate::dialog_overlay::DialogTreeCache>,
     pub dialog_state: ResMut<'w, crate::dialog_overlay::DialogOverlayState>,
     pub quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
+    pub trading_state: ResMut<'w, crate::trading_overlay::TradingOverlayState>,
 }
 
 pub fn interact_input(
@@ -692,6 +693,8 @@ pub fn interact_input(
                     &mut effects.overlay,
                     &mut effects.quests.0,
                     &mut effects.hud,
+                    &effects.npc_db.0,
+                    &mut effects.trading_state,
                 );
             }
         }

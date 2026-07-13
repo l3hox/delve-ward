@@ -18,13 +18,14 @@ use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
 use crate::session::Session;
+use crate::trading_overlay::TradingOverlayState;
 use bevy::prelude::*;
 use delve_core::dialog_manager::{
     DialogEvent, DialogSession, advance_dialog, execute_effects, get_available_choices,
     get_current_node, select_choice, start_dialog,
 };
 use delve_core::dialogs::DialogTree;
-use delve_core::npcs::NpcDef;
+use delve_core::npcs::{NpcDatabase, NpcDef};
 use delve_core::quest_manager::{QuestManager, QuestStatus};
 use std::collections::HashMap;
 
@@ -75,6 +76,8 @@ pub struct DialogEventSink<'a> {
     pub overlay: &'a mut ActiveOverlay,
     pub dialog_state: &'a mut DialogOverlayState,
     pub hud: &'a mut HudState,
+    pub npc_db: &'a NpcDatabase,
+    pub trading_state: &'a mut TradingOverlayState,
 }
 
 /// Applies every `DialogEvent` from a dialog step, in order — ported from
@@ -107,16 +110,21 @@ fn apply_dialog_events(
                 }
             }
             DialogEvent::OpenShop(npc_id) => {
-                // Trading hasn't landed yet — TS hides the dialog and opens
-                // the trading overlay here (`main.ts:310-316`); this port
-                // closes the dialog and shows a placeholder instead of
-                // opening a trading overlay that doesn't exist.
-                *sink.overlay = ActiveOverlay::None;
-                sink.dialog_state.session = None;
-                sink.hud.show_message("Trading isn't open yet.");
-                info!(
-                    "dialog requested trading for npc '{npc_id}' — trading overlay not built yet"
-                );
+                // TS: `const def = npcDatabase.getNpc(npcId); if (!def ||
+                // !def.stock) return;` — bails silently (dialog stays open,
+                // nothing changes) when the npc has no stock, matching
+                // `main.ts:310-316`'s guard exactly rather than falling
+                // back to some default trading state.
+                match sink.npc_db.get_npc(&npc_id) {
+                    Some(def) if def.stock.is_some() => {
+                        sink.trading_state.npc_id = npc_id.clone();
+                        *sink.overlay = ActiveOverlay::Trading;
+                        sink.dialog_state.session = None;
+                    }
+                    _ => {
+                        warn!("dialog requested trading for npc '{npc_id}', which has no stock");
+                    }
+                }
             }
         }
     }
@@ -140,6 +148,8 @@ pub fn open_dialog_for_npc(
     overlay: &mut ActiveOverlay,
     quests: &mut QuestManager,
     hud: &mut HudState,
+    npc_db: &NpcDatabase,
+    trading_state: &mut TradingOverlayState,
 ) {
     let tree = match load_dialog_tree(cache, &npc_def.dialog) {
         Ok(tree) => tree.clone(),
@@ -166,6 +176,8 @@ pub fn open_dialog_for_npc(
             overlay,
             dialog_state,
             hud,
+            npc_db,
+            trading_state,
         },
     );
 }
@@ -182,6 +194,8 @@ pub struct DialogInputEffects<'w> {
     dialog_state: ResMut<'w, DialogOverlayState>,
     quests: ResMut<'w, QuestManagerRes>,
     hud: ResMut<'w, HudState>,
+    npc_db: Res<'w, crate::npcs::NpcDb>,
+    trading_state: ResMut<'w, TradingOverlayState>,
 }
 
 /// Self-contained keydown handling, ported from `dialogOverlay.ts:106-145`.
@@ -315,6 +329,8 @@ fn apply_dialog_step(
             overlay,
             dialog_state: &mut effects.dialog_state,
             hud: &mut effects.hud,
+            npc_db: &effects.npc_db.0,
+            trading_state: &mut effects.trading_state,
         },
     );
 }
@@ -346,7 +362,7 @@ const HINT_TEXT: Rgba = Rgba::opaque(0x7a, 0x6a, 0x4a);
 /// Greedy word-wrap at `TEXT_WRAP_CHARS` columns — the pixel font has no
 /// lowercase glyphs, so every line is drawn uppercased, matching the rest of
 /// this HUD's text convention.
-fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+pub(crate) fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {

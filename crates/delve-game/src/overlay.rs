@@ -1,10 +1,10 @@
 //! Central "which modal is open" state, replacing a boolean flag on each
 //! overlay's own resource. Mirrors TS's `anyOverlayOpen` (a derived OR
 //! across every overlay's own `visible` flag) as a single enum instead — at
-//! most one overlay is ever open, so the enum is the more precise model and
-//! gives every future overlay (dialog, trading, quest log, inventory,
-//! attribute, stats) one shared place to plug into rather than an N-way
-//! `if`/`else if` chain repeated at every gate.
+//! most one overlay is ever open, so the enum is the more precise model —
+//! every overlay (dialog, trading, quest log, inventory, attribute, stats)
+//! has one shared place to plug into rather than an N-way `if`/`else if`
+//! chain repeated at every gate.
 //!
 //! Escape-handling stays distributed rather than centralized into a
 //! separate dispatcher system: each overlay's own input system is still the
@@ -12,9 +12,10 @@
 //! everything except character creation, which has no Escape binding in TS
 //! at all — only Enter-with-points-spent closes it).
 //!
-//! Five overlays now handle their own Escape (save/load, dialog, inventory,
-//! attribute panel, stats panel) — past the "once a second overlay also
-//! wants it" point `PHASE4-PLAN.md` set as the revisit trigger. A real
+//! Seven overlays now handle their own Escape (save/load, dialog, inventory,
+//! attribute panel, stats panel, trading, quest log) — past the "once a
+//! second overlay also wants it" point `PHASE4-PLAN.md` set as the revisit
+//! trigger. A real
 //! dispatcher was considered and rejected here: `ActiveOverlay`'s mutual
 //! exclusivity already gives every overlay's own `if *overlay != Self {
 //! return }` guard at Escape-check time, so no two systems can ever race to
@@ -53,7 +54,7 @@ pub enum ActiveOverlay {
     SaveLoad,
     /// The NPC dialog panel — opened by interacting with an NPC, closed by
     /// Escape, reaching a dialog-ending node, or `DialogEvent::OpenShop`
-    /// handing off to the (not yet landed) trading overlay.
+    /// handing off to the trading overlay.
     Dialog,
     /// The full-screen interactive inventory — opened by `KeyI`, closed by
     /// `KeyI` or Escape.
@@ -66,6 +67,12 @@ pub enum ActiveOverlay {
     /// The read-only character stats panel — opened and closed by `KeyT`
     /// (an unconditional toggle) or closed by Escape.
     StatsPanel,
+    /// The trading panel — opened only via `DialogEvent::OpenShop`, never
+    /// directly by a key (TS has no keyboard binding that opens it either).
+    /// Closed by Escape, its only keyboard binding.
+    Trading,
+    /// The quest log — opened by `KeyJ`, closed by `KeyJ` or Escape.
+    QuestLog,
     /// No overlay open; gameplay input reaches the dungeon.
     None,
 }

@@ -28,6 +28,7 @@ mod pixel_canvas;
 mod plates;
 mod player;
 mod projectiles;
+mod quest_log_overlay;
 mod save_load_overlay;
 mod save_store;
 mod sconces;
@@ -38,6 +39,7 @@ mod stats_panel;
 mod status_effects;
 mod textures;
 mod torch;
+mod trading_overlay;
 mod transition;
 mod tripwires;
 mod wall_entities;
@@ -405,6 +407,7 @@ fn main() {
         .init_resource::<hud::MiniPanelState>()
         .init_resource::<inventory_overlay::InventoryOverlayState>()
         .init_resource::<attribute_panel::AttributePanelState>()
+        .init_resource::<trading_overlay::TradingOverlayState>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
@@ -417,6 +420,8 @@ fn main() {
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
                     dialog_overlay::dialog_input,
+                    trading_overlay::trading_overlay_input,
+                    quest_log_overlay::quest_log_input,
                     inventory_overlay::inventory_overlay_input,
                     attribute_panel::attribute_panel_input,
                     stats_panel::stats_panel_input,

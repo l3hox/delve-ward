@@ -14,13 +14,16 @@ use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::inventory_overlay::InventoryOverlayState;
 use crate::item_tooltip::draw_item_tooltip;
 use crate::mouse::MouseState;
+use crate::npcs::NpcDb;
 use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
 use crate::player::Player;
+use crate::quest_log_overlay::draw_quest_log_overlay;
 use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
 use crate::save_store::FileSaveStore;
 use crate::session::{self, Session};
 use crate::stats_panel::draw_stats_panel;
+use crate::trading_overlay::{TradingOverlayState, draw_trading_overlay};
 use crate::transition::Transition;
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
@@ -417,6 +420,9 @@ pub struct HudSources<'w, 's> {
     mini_panel: Res<'w, MiniPanelState>,
     inventory_state: Res<'w, InventoryOverlayState>,
     attribute_state: Res<'w, AttributePanelState>,
+    trading_state: Res<'w, TradingOverlayState>,
+    npc_db: Res<'w, NpcDb>,
+    mouse: Res<'w, MouseState>,
 }
 
 pub fn draw_hud(
@@ -523,6 +529,19 @@ pub fn draw_hud(
     }
     if *sources.overlay == ActiveOverlay::StatsPanel {
         draw_stats_panel(&mut canvas, &sources.session.game);
+    }
+    if *sources.overlay == ActiveOverlay::Trading {
+        draw_trading_overlay(
+            &mut canvas,
+            &sources.trading_state,
+            &sources.npc_db.0,
+            &sources.session.game,
+            &sources.items.0,
+            &sources.mouse,
+        );
+    }
+    if *sources.overlay == ActiveOverlay::QuestLog {
+        draw_quest_log_overlay(&mut canvas, &sources.quests.0);
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
