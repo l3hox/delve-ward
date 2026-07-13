@@ -66,6 +66,31 @@ fn is_solid(grid: &[Vec<char>], col: i32, row: i32, renderable: &HashSet<char>) 
     !renderable.contains(&grid[row as usize][col as usize])
 }
 
+/// Ported from TS's `solidCheck` (`rendering/dungeon.ts:350-356`): identical
+/// to [`is_solid`] except an out-of-bounds neighbor is treated as open, not
+/// solid, when this layer's own ceiling is disabled — an open-air top layer
+/// has no boundary walls at its grid edges, matching TS's own comment there
+/// ("OOB neighbors are treated as non-solid so no walls are generated at the
+/// perimeter"). A layer with its ceiling on keeps every OOB neighbor solid,
+/// identical to plain `is_solid`. TS's `forceRenderable` half of the same
+/// closure (pit-trap fall-through cells on the layer below forced walkable)
+/// has no Rust caller-side data yet and isn't ported here — a separate,
+/// pre-existing gap from this one.
+fn is_solid_for_wall(
+    grid: &[Vec<char>],
+    col: i32,
+    row: i32,
+    renderable: &HashSet<char>,
+    ceiling_enabled: bool,
+) -> bool {
+    let out_of_bounds =
+        row < 0 || row as usize >= grid.len() || col < 0 || col as usize >= grid[0].len();
+    if !ceiling_enabled && out_of_bounds {
+        return false;
+    }
+    is_solid(grid, col, row, renderable)
+}
+
 // Wall faces against a solid charDef neighbor use that neighbor's wallTexture.
 fn wall_material_for_face(
     grid: &[Vec<char>],
@@ -235,7 +260,7 @@ pub fn spawn_dungeon(
                 if ramp_facing.is_some_and(|facing| facing.delta() == (dcol, drow)) {
                     continue;
                 }
-                if !is_solid(&grid, col + dcol, row + drow, &renderable) {
+                if !is_solid_for_wall(&grid, col + dcol, row + drow, &renderable, ceiling_enabled) {
                     continue;
                 }
                 let wall_texture = wall_material_for_face(
@@ -334,4 +359,53 @@ pub fn spawn_pit_floors(
         );
     }
     handles
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn grid(rows: &[&str]) -> Vec<Vec<char>> {
+        rows.iter().map(|row| row.chars().collect()).collect()
+    }
+
+    #[test]
+    fn is_solid_for_wall_treats_out_of_bounds_as_open_when_ceiling_is_disabled() {
+        let grid = grid(&["##", "##"]);
+        let renderable = HashSet::from(['.']);
+        assert!(!is_solid_for_wall(&grid, -1, 0, &renderable, false));
+        assert!(!is_solid_for_wall(&grid, 0, -1, &renderable, false));
+        assert!(!is_solid_for_wall(&grid, 5, 0, &renderable, false));
+        assert!(!is_solid_for_wall(&grid, 0, 5, &renderable, false));
+    }
+
+    #[test]
+    fn is_solid_for_wall_keeps_out_of_bounds_solid_when_ceiling_is_enabled() {
+        let grid = grid(&["##", "##"]);
+        let renderable = HashSet::from(['.']);
+        assert!(is_solid_for_wall(&grid, -1, 0, &renderable, true));
+        assert!(is_solid_for_wall(&grid, 5, 0, &renderable, true));
+    }
+
+    #[test]
+    fn is_solid_for_wall_still_reads_in_bounds_cells_normally_when_ceiling_is_disabled() {
+        let grid = grid(&["#."]);
+        let renderable = HashSet::from(['.']);
+        assert!(is_solid_for_wall(&grid, 0, 0, &renderable, false));
+        assert!(!is_solid_for_wall(&grid, 1, 0, &renderable, false));
+    }
+
+    #[test]
+    fn is_solid_for_wall_matches_is_solid_exactly_when_ceiling_is_enabled() {
+        let grid = grid(&["#.", ".#"]);
+        let renderable = HashSet::from(['.']);
+        for row in -1..3 {
+            for col in -1..3 {
+                assert_eq!(
+                    is_solid_for_wall(&grid, col, row, &renderable, true),
+                    is_solid(&grid, col, row, &renderable),
+                );
+            }
+        }
+    }
 }
