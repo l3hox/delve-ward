@@ -22,6 +22,7 @@ use crate::quest_log_overlay::draw_quest_log_overlay;
 use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
 use crate::save_store::FileSaveStore;
 use crate::session::{self, Session};
+use crate::sign_overlay::{SignOverlayState, draw_sign_overlay};
 use crate::stats_panel::draw_stats_panel;
 use crate::trading_overlay::{TradingOverlayState, draw_trading_overlay};
 use crate::transition::Transition;
@@ -424,6 +425,7 @@ pub struct HudSources<'w, 's> {
     save_store: Res<'w, FileSaveStore>,
     overlay: Res<'w, ActiveOverlay>,
     dialog_state: Res<'w, DialogOverlayState>,
+    sign_state: Res<'w, SignOverlayState>,
     quests: Res<'w, QuestManagerRes>,
     mini_panel: Res<'w, MiniPanelState>,
     inventory_state: Res<'w, InventoryOverlayState>,
@@ -532,6 +534,9 @@ pub fn draw_hud(
             &sources.items.0,
             hud.icons_mut(),
         );
+    }
+    if *sources.overlay == ActiveOverlay::Sign {
+        draw_sign_overlay(&mut canvas, &sources.sign_state);
     }
     if *sources.overlay == ActiveOverlay::AttributePanel {
         draw_attribute_panel(&mut canvas, &sources.attribute_state, &sources.session.game);

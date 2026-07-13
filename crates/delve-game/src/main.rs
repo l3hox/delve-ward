@@ -43,6 +43,7 @@ mod save_load_overlay;
 mod save_store;
 mod sconces;
 mod session;
+mod sign_overlay;
 mod signs;
 mod skybox;
 mod spawners;
@@ -270,6 +271,7 @@ fn setup(
     commands.insert_resource(dialog_overlay::QuestManagerRes(load_quest_manager()));
     commands.insert_resource(dialog_overlay::DialogTreeCache::default());
     commands.insert_resource(dialog_overlay::DialogOverlayState::default());
+    commands.insert_resource(sign_overlay::SignOverlayState::default());
 
     let stairs_map = game
         .active_layer()
@@ -442,6 +444,7 @@ fn main() {
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
                     dialog_overlay::dialog_input,
+                    sign_overlay::sign_overlay_input,
                     trading_overlay::trading_overlay_input,
                     quest_log_overlay::quest_log_input,
                     inventory_overlay::inventory_overlay_input,
@@ -457,16 +460,19 @@ fn main() {
                     enemies::tick_enemies,
                     enemies::tick_attack_cooldown,
                     session::tick_game,
-                    projectiles::tick_projectiles,
                 )
                     .chain(),
                 (
-                    // Matches `gameLoop.ts`'s `tickGameSystems` order
-                    // (boulders, then boulder spawners, then enemy
-                    // spawners) — spills into this tuple since tuple 1 is
-                    // already at Bevy's 20-element `.chain()` cap; nothing
-                    // here reads spawner/boulder state, so the reorder
-                    // relative to `tick_projectiles` above is inert.
+                    // `tick_projectiles` spills into this tuple (rather than
+                    // staying at the end of tuple 1, its position before
+                    // `sign_overlay_input` joined that tuple) since tuple 1
+                    // is at Bevy's 20-element `.chain()` cap; nothing here
+                    // reads projectile state before this point, so the split
+                    // is inert — the combined order across both tuples is
+                    // unchanged. Matches `gameLoop.ts`'s `tickGameSystems`
+                    // order (boulders, then boulder spawners, then enemy
+                    // spawners) for the rest of this tuple.
+                    projectiles::tick_projectiles,
                     boulders::tick_boulders_system,
                     boulders::tick_boulder_spawners_system,
                     spawners::tick_spawners_system,

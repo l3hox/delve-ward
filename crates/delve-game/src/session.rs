@@ -1195,6 +1195,7 @@ pub struct InteractEffects<'w, 's> {
     pub dialog_state: ResMut<'w, crate::dialog_overlay::DialogOverlayState>,
     pub quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
     pub trading_state: ResMut<'w, crate::trading_overlay::TradingOverlayState>,
+    pub sign_state: ResMut<'w, crate::sign_overlay::SignOverlayState>,
     pub fountain_handles: Res<'w, FountainHandles>,
     pub altar_handles: Res<'w, AltarHandles>,
     pub dungeon: Res<'w, DungeonRes>,
@@ -1429,19 +1430,30 @@ pub fn interact_input(
                 );
             }
         }
-        // `BookshelfRead` (like `SignRead`) has no dedicated visual state in
-        // TS beyond its own text popup, which the generic message toast
-        // below already substitutes for — no mesh update needed here.
+        // Signs and bookshelves share one text popup — TS routes both
+        // `sign_read` and `bookshelf_read` to the same `signOverlay.show`
+        // (`inputSystem.ts:200-205`); neither has any mesh state to update.
+        InteractionType::SignRead | InteractionType::BookshelfRead => {
+            if let Some(message) = &result.message {
+                crate::sign_overlay::open_sign(
+                    &mut effects.sign_state,
+                    &mut effects.overlay,
+                    message,
+                );
+            }
+        }
         _ => {}
     }
-    // Substitutes for TS's dedicated overlays (sign text, chest-locked
-    // notices, etc.) until this port grows them — every interaction message
-    // gets a HUD toast in addition to the log line. `NpcInteracted` is
-    // excluded: its `message` carries the NPC definition id (an internal
-    // lookup key, not user-facing text — see the match arm above), and TS's
-    // own dispatcher has no `npc_interacted` case in this generic-toast
-    // position either.
+    // Every interaction message gets a HUD toast in addition to the log
+    // line. Excluded: `NpcInteracted`, whose `message` carries the NPC
+    // definition id (an internal lookup key, not user-facing text — see the
+    // match arm above; TS's own dispatcher has no `npc_interacted` case in
+    // this generic-toast position either), and `SignRead`/`BookshelfRead`,
+    // which show the sign popup with no accompanying toast — TS's
+    // dispatcher has no `hud.showMessage` for either result type.
     if result.result_type != InteractionType::NpcInteracted
+        && result.result_type != InteractionType::SignRead
+        && result.result_type != InteractionType::BookshelfRead
         && let Some(message) = &result.message
     {
         info!("{message}");

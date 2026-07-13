@@ -73,6 +73,9 @@ pub enum ActiveOverlay {
     Trading,
     /// The quest log — opened by `KeyJ`, closed by `KeyJ` or Escape.
     QuestLog,
+    /// The sign/bookshelf text popup — opened by interacting with a sign or
+    /// bookshelf, closed by any key or a left click.
+    Sign,
     /// No overlay open; gameplay input reaches the dungeon.
     None,
 }

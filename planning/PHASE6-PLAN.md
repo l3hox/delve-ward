@@ -39,7 +39,15 @@ Phase 6 work queue, derived from the full COMPLETED.md audit (every item below v
 - Dialog hint text omits "or click": dialog mouse support is a recorded phase-6-polish deviation.
 - JSON save export/import: browser-DOM-only, deliberately excluded (D8).
 
+## Performance pass results (measured, phase 6)
+
+Frame timing across the five heaviest shipped levels (uncapped, windowed, ~26s samples): every level stays under 2.7ms worst-case frame time — a fraction of the 16.7ms 60fps budget. ruins (largest total grid volume) is the relative low point at 2.65ms worst; tower (most layers, tiny grids) the fastest at 2.34ms. No observed bottleneck; no fixes required for the phase gate.
+
+Two reasoned findings deferred as future follow-ups (real overhead, no observed cost today):
+
+- `tick_enemies` rebuilds per-layer snapshots from scratch every tick — a full grid clone plus fresh door/thin-wall edge sets per layer per frame. Rust-specific borrow-checker overhead, not a TS cost match (TS reads live references). Fix shape: cache live grids and edge sets in resources invalidated by the existing WorldEvent signals (wall destroyed, door state changed) instead of rebuilding unconditionally.
+- `draw_hud` allocates a fresh 900KB canvas buffer every frame; the full redraw matches TS but the allocation doesn't (a browser canvas backing store persists). Fix shape: persistent reused buffer in HudState, zeroed in place.
+
 ## Remaining phase items
 
-- Performance pass (frame timing on the largest shipped levels).
 - Final gate, merge, bundle rebuild.
