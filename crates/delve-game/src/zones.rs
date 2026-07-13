@@ -414,14 +414,17 @@ pub fn apply_camera_view_crop(
 /// targetCfg, delta * 2)` (`game/statusEffectSystem.ts:27`).
 const ENVIRONMENT_LERP_RATE: f32 = 2.0;
 
-/// Component-wise channel lerp matching THREE.Color's own `Color.lerp` —
-/// both colors read as sRGB (the space `environment_config`'s presets are
-/// declared in via `Color::srgb_u8`) and eased directly with no
-/// color-space conversion, the same non-color-managed math THREE performs.
+/// Component-wise channel lerp matching THREE.Color's own `Color.lerp` in
+/// its actual working space: linear. `ColorManagement.enabled` defaults to
+/// true with `LinearSRGBColorSpace` as the working space
+/// (`three/src/math/ColorManagement.js:6-8`), and `Color.setHex` converts
+/// every hex through `toWorkingColorSpace` before `lerp` ever runs — so the
+/// endpoints match either way, but intermediate frames must ease linear
+/// channels or they read brighter than TS's.
 fn lerp_color(from: Color, to: Color, t: f32) -> Color {
-    let from = from.to_srgba();
-    let to = to.to_srgba();
-    Color::srgba(
+    let from = from.to_linear();
+    let to = to.to_linear();
+    Color::linear_rgba(
         from.red + (to.red - from.red) * t,
         from.green + (to.green - from.green) * t,
         from.blue + (to.blue - from.blue) * t,
@@ -466,8 +469,9 @@ fn lerp_environment(
 /// fast path (`spawn_player_cameras`), and false whenever
 /// `debug::toggle_fullbright` has stripped `DistanceFog` for the fullbright
 /// light — so this system silently no-ops under fullbright with no explicit
-/// check needed, matching TS's own `!debugFullbright`-gated fog reapply
-/// (`main.ts:1443`) by construction. Never fights a multi-zone level's
+/// check needed, matching TS by construction: fullbright sets
+/// `scene.fog = null` (`inputSystem.ts:345`) and `lerpEnvironment` early
+/// returns on a null fog (`environment.ts:68-69`). Never fights a multi-zone level's
 /// per-`ZoneCamera` fog either, since those live on child entities and
 /// `Player` itself carries neither component while multi-zone.
 pub fn lerp_zone_environment(
@@ -599,13 +603,32 @@ mod tests {
         assert_eq!(crop.size, UVec2::new(817, 351));
     }
 
+    /// The midpoint is 0.5 in LINEAR channels — the space THREE's
+    /// color-managed `Color.lerp` actually eases in. A gamma-space lerp
+    /// would land here too for black/white endpoints, so the next test's
+    /// asymmetric endpoints are the real space pin; this one covers alpha
+    /// and the trivial case.
     #[test]
     fn lerp_color_eases_halfway_between_black_and_white() {
-        let mixed = lerp_color(Color::BLACK, Color::WHITE, 0.5).to_srgba();
+        let mixed = lerp_color(Color::BLACK, Color::WHITE, 0.5).to_linear();
         assert!((mixed.red - 0.5).abs() < 1e-6);
         assert!((mixed.green - 0.5).abs() < 1e-6);
         assert!((mixed.blue - 0.5).abs() < 1e-6);
         assert!((mixed.alpha - 1.0).abs() < 1e-6);
+    }
+
+    /// Pins the lerp SPACE with endpoints where gamma and linear midpoints
+    /// genuinely differ: black → sRGB 0x88aacc. The linear midpoint is half
+    /// the target's linear channels; easing sRGB channels instead would
+    /// read brighter (sRGB 0.266667 vs the correct ~0.226 for red).
+    #[test]
+    fn lerp_color_eases_in_linear_space_not_gamma() {
+        let target = Color::srgb_u8(0x88, 0xaa, 0xcc);
+        let mixed = lerp_color(Color::BLACK, target, 0.5).to_linear();
+        let expected = target.to_linear();
+        assert!((mixed.red - expected.red / 2.0).abs() < 1e-6);
+        assert!((mixed.green - expected.green / 2.0).abs() < 1e-6);
+        assert!((mixed.blue - expected.blue / 2.0).abs() < 1e-6);
     }
 
     #[test]
@@ -618,16 +641,17 @@ mod tests {
         assert!((mixed.blue - expected.blue).abs() < 1e-6);
     }
 
-    /// Hand-computed from `environment_config`'s dungeon and outdoor
-    /// presets: fog_near 6.0 → 20.0 and fog_far 26.0 → 80.0 land at 13.0 and
-    /// 53.0 halfway; fog_color 0x000000 → 0x88aacc lands at (0.266667,
-    /// 0.333333, 0.4) and ambient_color 0x1a1a22 → 0xbbccee at (0.417647,
-    /// 0.450980, 0.533333), both channel-wise sRGB midpoints.
+    /// Fog distances lerp in plain float space (fog_near 6.0 → 20.0 and
+    /// fog_far 26.0 → 80.0 land at 13.0 and 53.0 halfway); colors lerp in
+    /// linear channels, asserted against the same to_linear conversion the
+    /// implementation uses so the pinned fact is the midpoint formula and
+    /// the space, not a magic constant.
     #[test]
     fn lerp_environment_moves_fog_distances_and_colors_toward_the_target_by_t() {
         let mut fog = fog_for(Environment::Dungeon);
         let mut ambient = ambient_for(Environment::Dungeon);
         let mut clear_color = ClearColor(environment_config(Environment::Dungeon).fog_color);
+        let dungeon = environment_config(Environment::Dungeon);
         let target = environment_config(Environment::Outdoor);
 
         lerp_environment(&mut fog, &mut ambient, &mut clear_color, &target, 0.5);
@@ -638,18 +662,21 @@ mod tests {
         assert!((start - 13.0).abs() < 1e-4);
         assert!((end - 53.0).abs() < 1e-4);
 
-        let fog_srgba = fog.color.to_srgba();
-        assert!((fog_srgba.red - 0.266_667).abs() < 1e-3);
-        assert!((fog_srgba.green - 0.333_333).abs() < 1e-3);
-        assert!((fog_srgba.blue - 0.4).abs() < 1e-3);
+        let fog_linear = fog.color.to_linear();
+        let fog_expected = lerp_color(dungeon.fog_color, target.fog_color, 0.5).to_linear();
+        assert!((fog_linear.red - fog_expected.red).abs() < 1e-6);
+        assert!((fog_linear.green - fog_expected.green).abs() < 1e-6);
+        assert!((fog_linear.blue - fog_expected.blue).abs() < 1e-6);
 
-        let ambient_srgba = ambient.color.to_srgba();
-        assert!((ambient_srgba.red - 0.417_647).abs() < 1e-3);
-        assert!((ambient_srgba.green - 0.450_980).abs() < 1e-3);
-        assert!((ambient_srgba.blue - 0.533_333).abs() < 1e-3);
+        let ambient_linear = ambient.color.to_linear();
+        let ambient_expected =
+            lerp_color(dungeon.ambient_color, target.ambient_color, 0.5).to_linear();
+        assert!((ambient_linear.red - ambient_expected.red).abs() < 1e-6);
+        assert!((ambient_linear.green - ambient_expected.green).abs() < 1e-6);
+        assert!((ambient_linear.blue - ambient_expected.blue).abs() < 1e-6);
 
         // Clear color follows the same `target.fog_color`/`t` as the fog
         // color itself — same formula, same inputs.
-        assert_eq!(clear_color.0.to_srgba(), fog_srgba);
+        assert_eq!(clear_color.0.to_linear(), fog_linear);
     }
 }
