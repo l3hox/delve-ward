@@ -42,14 +42,26 @@
 //! spawn and does not reproduce the unread per-particle fade math — ported
 //! faithfully as "no fade," not silently improved into a working one.
 //!
-//! ## Ember source snapshot (one-shot, matching TS)
-//! `SconceEmbers.setSources()` (`particles.ts:192-215`) is called once per
-//! level load in TS, not every frame, so a sconce extinguished at runtime
-//! keeps emitting embers from its last-known position until the next
-//! level load (`extinguishSconce`, `sconceRenderer.ts:100-117`, never
-//! re-calls `setSources`). [`collect_ember_sources`] is a one-shot
-//! snapshot for the same reason — call it once after
-//! `sconces::spawn_sconces`, not per frame.
+//! ## Ember source snapshot (re-collected on pickup, matching TS)
+//! `SconceEmbers.setSources()` (`particles.ts:192-215`) is called once at
+//! level load (`main.ts:1121`) *and* again whenever a torch is taken —
+//! `inputSystem.ts:170-173` calls `extinguishSconce(...)` then
+//! `ctx.sconceEmbers.setSources(...)` as two sequential steps in the
+//! `sconce_taken` result handler, so the just-extinguished sconce (now
+//! `light.intensity === 0`) is excluded from the very next collection.
+//! `setSources` itself resets `this.particles = []`
+//! (`particles.ts:214`), discarding every in-flight ember, not just
+//! future spawns — the refresh is a full pool rebuild, not a filter.
+//! `extinguishSconce` alone never refreshes; a sconce extinguished by any
+//! future path that doesn't *also* call `setSources` right after (the
+//! same latent risk TS itself has, since the refresh is the caller's
+//! responsibility, not `extinguishSconce`'s) would keep emitting from a
+//! stale position — currently moot since `extinguish_sconce` has exactly
+//! one call site ([`crate::session::interact_input`]'s `SconceTaken` arm),
+//! which re-triggers collection right after by re-inserting
+//! [`EmbersPending`]. [`collect_ember_sources`] itself stays a pure
+//! snapshot function — [`init_embers`] is what makes it "once at load,
+//! once per pickup" rather than truly one-shot.
 //!
 //! ## Known limitation: dust motes ignore the player's layer Y-offset
 //! `DustMotes.createParticle` takes a `cy` parameter but never reads it
@@ -84,8 +96,12 @@
 //!     spawn inserts the [`EmbersPending`] marker instead, and
 //!     [`init_embers`] (registered in `PostUpdate` after
 //!     `TransformSystems::Propagate`) collects sources and builds the
-//!     [`EmberPool`] on the first frame the propagated positions exist —
-//!     still once per level load, matching TS's load-time `setSources`.
+//!     [`EmberPool`] on the first frame the propagated positions exist.
+//!   - [`crate::session::interact_input`]'s `SconceTaken` arm re-inserts
+//!     [`EmbersPending`] right after `extinguish_sconce`, so
+//!     [`init_embers`] rebuilds the pool again on torch pickup, matching
+//!     TS's load-once-plus-pickup-refresh `setSources` pattern (see the
+//!     module doc's "Ember source snapshot" section above).
 //! - **In the `Update` schedule**, gated the same way `sconce_flicker` is
 //!   (`InputGate::paused()`, `overlay.rs`) — TS runs all four `.update()`
 //!   calls inside the same `if (!anyOverlayOpen)` block as sconce flicker
@@ -321,7 +337,7 @@ pub(crate) struct Ember {
 }
 
 #[derive(Component)]
-struct EmbersRoot;
+pub(crate) struct EmbersRoot;
 
 #[derive(Resource)]
 pub struct EmberPool {
@@ -330,13 +346,14 @@ pub struct EmberPool {
     rng: Mulberry32,
 }
 
-/// One-shot snapshot of every lit sconce's flame-head world position,
-/// matching `SconceEmbers.setSources` (`particles.ts:192-215`) reading
+/// Snapshot of every lit sconce's flame-head world position, matching
+/// `SconceEmbers.setSources` (`particles.ts:192-215`) reading
 /// `sconceGroup.children[3]`'s world position from sconces whose
 /// `light.intensity !== 0` — an extinguished or torch-taken sconce emits
 /// nothing. `sconce_parts.torches` stores `[handle, head]` per sconce
-/// (`sconces.rs:175`) — index `1` is the head. Call once per level load,
-/// after `sconces::spawn_sconces`, not per frame (see the module doc's
+/// (`sconces.rs:175`) — index `1` is the head. A pure function, not
+/// itself gated to run once — [`init_embers`] is what calls it only at
+/// level load and on torch pickup, not per frame (see the module doc's
 /// "Ember source snapshot" section).
 pub fn collect_ember_sources(
     sconce_parts: &SconceParts,
@@ -357,22 +374,36 @@ pub fn collect_ember_sources(
         .collect()
 }
 
-/// Inserted by the level-scene spawn in place of an [`EmberPool`]: ember
+/// Inserted in place of an [`EmberPool`] whenever the ember source list
+/// needs recollecting: by the level-scene spawn (initial load — ember
 /// sources need the sconce heads' propagated `GlobalTransform`s, which
 /// don't exist until the frame the scene spawn's commands apply and
-/// propagate. [`init_embers`] consumes this and builds the pool.
+/// propagate) and by [`crate::session::interact_input`]'s `SconceTaken`
+/// arm (torch pickup — see the module doc's "Ember source snapshot"
+/// section). [`init_embers`] consumes this and rebuilds the pool either
+/// way.
 #[derive(Resource)]
 pub struct EmbersPending;
 
-/// Once-per-level-load ember initialization, deferred from the scene
-/// spawn (see [`EmbersPending`]). Registered in `PostUpdate` after
-/// `TransformSystems::Propagate`, so the first run after a scene spawn
-/// already sees real world positions — the same load-time-once semantics
-/// as TS's `setSources` call (`main.ts:1121`).
+/// Ember (re)initialization, deferred via [`EmbersPending`] from whichever
+/// caller needs a fresh source collection. Registered in `PostUpdate`
+/// after `TransformSystems::Propagate`, so it always sees up-to-date
+/// world positions — on initial load this is what makes the first run
+/// after a scene spawn see real positions instead of pre-propagation
+/// defaults; on a pickup-triggered refresh the positions haven't moved,
+/// only the light-intensity filter in [`collect_ember_sources`] has.
+///
+/// Despawns the previous [`EmbersRoot`] (and its pooled children, via
+/// Bevy's recursive despawn) before spawning the replacement — TS's
+/// `setSources` clears `this.particles = []` on every call
+/// (`particles.ts:214`), discarding in-flight embers too, so a full
+/// rebuild is the faithful behavior, not just a leak-avoidance measure.
+#[allow(clippy::too_many_arguments)]
 pub fn init_embers(
     mut commands: Commands,
     pending: Option<Res<EmbersPending>>,
     sconce_parts: Option<Res<SconceParts>>,
+    existing_roots: Query<Entity, With<EmbersRoot>>,
     lights: Query<&PointLight>,
     transforms: Query<&GlobalTransform>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -393,6 +424,9 @@ pub fn init_embers(
         .all(|[_handle, head]| transforms.contains(*head));
     if !heads_ready {
         return;
+    }
+    for root in &existing_roots {
+        commands.entity(root).despawn();
     }
     let sources = collect_ember_sources(&sconce_parts, &lights, &transforms);
     let pool = spawn_embers(&mut commands, &mut meshes, &mut materials, sources);
