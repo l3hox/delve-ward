@@ -20,7 +20,7 @@
 //! `_handleBuy` mutates it. Buying is effectively unlimited-supply, ported
 //! faithfully as such.
 
-use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState};
+use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, draw_item_icon};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::mouse::MouseState;
 use crate::overlay::ActiveOverlay;
@@ -160,6 +160,12 @@ const HEADER_Y: i32 = PANEL_Y + 44;
 const ROWS_START_Y: i32 = HEADER_Y + 16;
 const ROW_H: i32 = 20;
 const ROW_GAP: i32 = 2;
+/// The row's own drawn height (`ROW_H - ROW_GAP`) doubles as the icon's slot
+/// edge length — `draw_item_icon` fits the sprite to whatever size it's
+/// given, so the icon fills the row top-to-bottom with no separate vertical
+/// centering needed.
+const ROW_ICON_SIZE: i32 = ROW_H - ROW_GAP;
+const ROW_ICON_TEXT_GAP: i32 = 4;
 const BOTTOM_BAR_Y: i32 = PANEL_Y + PANEL_H - 22;
 
 const BACKDROP: Rgba = Rgba::translucent(0, 0, 0, 0.85);
@@ -173,6 +179,7 @@ const ROW_HOVER_FILL: Rgba = Rgba::translucent(0xe8, 0xc8, 0x4a, 0.1);
 const GOLD_COIN: Rgba = Rgba::opaque(0xda, 0xa5, 0x20);
 const WARNING_TEXT: Rgba = Rgba::opaque(0xcc, 0x44, 0x44);
 const HINT_TEXT: Rgba = Rgba::opaque(0x66, 0x66, 0x66);
+const ICON_FALLBACK: Rgba = Rgba::opaque(0x88, 0x88, 0x88);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TradeSide {
@@ -325,6 +332,7 @@ pub fn draw_trading_overlay(
     game: &GameState,
     items: &ItemDatabase,
     mouse: &MouseState,
+    icons: &mut IconCache,
 ) {
     let Some(npc_def) = npc_db.get_npc(&trading_state.npc_id) else {
         return;
@@ -381,11 +389,19 @@ pub fn draw_trading_overlay(
             h,
             in_rect(mouse.hud_x, mouse.hud_y, x, y, w, h),
         );
+        draw_item_icon(
+            canvas,
+            icons,
+            items,
+            item_id,
+            (x, y, ROW_ICON_SIZE),
+            ICON_FALLBACK,
+        );
         let text_color = if can_buy { ROW_TEXT } else { ROW_TEXT_DIM };
         draw_pixel_text(
             canvas,
             &def.name.to_uppercase(),
-            x + 4,
+            x + ROW_ICON_SIZE + ROW_ICON_TEXT_GAP,
             y + 4,
             text_color,
             1,
@@ -420,11 +436,19 @@ pub fn draw_trading_overlay(
             h,
             in_rect(mouse.hud_x, mouse.hud_y, x, y, w, h),
         );
+        draw_item_icon(
+            canvas,
+            icons,
+            items,
+            &entity.item_id,
+            (x, y, ROW_ICON_SIZE),
+            ICON_FALLBACK,
+        );
         let text_color = if can_sell { ROW_TEXT } else { ROW_TEXT_DIM };
         draw_pixel_text(
             canvas,
             &def.name.to_uppercase(),
-            x + 4,
+            x + ROW_ICON_SIZE + ROW_ICON_TEXT_GAP,
             y + 4,
             text_color,
             1,

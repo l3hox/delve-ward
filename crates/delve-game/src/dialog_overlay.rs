@@ -15,6 +15,7 @@
 
 use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
+use crate::mouse::MouseState;
 use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
 use crate::session::Session;
@@ -206,14 +207,25 @@ pub struct DialogInputEffects<'w> {
     trading_state: ResMut<'w, TradingOverlayState>,
 }
 
-/// Self-contained keydown handling, ported from `dialogOverlay.ts:106-145`.
-/// Escape always dismisses; with choices available, arrows cycle-and-wrap
-/// the highlight, Enter confirms the highlighted choice (a no-op with
-/// nothing highlighted, matching TS's `this.highlightedIndex >= 0` guard),
-/// and digits 1-9 select directly regardless of highlight; with no choices,
-/// any key advances.
+/// Self-contained keydown handling, ported from `dialogOverlay.ts:106-145`,
+/// plus its `mouseenter`/`mouseleave`/`click` choice-row handlers. Escape
+/// always dismisses; with choices available, arrows cycle-and-wrap the
+/// highlight, Enter confirms the highlighted choice (a no-op with nothing
+/// highlighted, matching TS's `this.highlightedIndex >= 0` guard), digits
+/// 1-9 select directly regardless of highlight, hovering a row highlights it
+/// and a left click selects it; with no choices, any key advances.
+///
+/// Mouse-hover reconciles with the keyboard highlight the same way
+/// `inventory_overlay_input` reconciles its mouse hover with the keyboard
+/// cursor (the template this was built from): hovering a row sets the
+/// highlight every frame the cursor rests on one, but moving off every row
+/// leaves the highlight wherever it last was rather than forcing it back to
+/// "none" — TS's own `mouseleave` clears to `-1` unconditionally, which this
+/// port doesn't reproduce, matching the precedent the inventory overlay
+/// already set for this exact tension rather than inventing a second rule.
 pub fn dialog_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<MouseState>,
     mut overlay: ResMut<ActiveOverlay>,
     mut effects: DialogInputEffects,
 ) {
@@ -233,14 +245,23 @@ pub fn dialog_input(
 
     // Scoped so this immutable borrow of `dialog_state` ends before the
     // highlight-cycling logic below needs a mutable one.
-    let choice_count = {
+    let (choice_count, hovered) = {
         let session = effects
             .dialog_state
             .session
             .as_ref()
             .expect("checked non-None above");
-        get_available_choices(session, &effects.session.game, Some(&effects.quests.0)).len()
+        let rects = choice_rects(session, &effects.session.game, &effects.quests.0);
+        let hovered = mouse
+            .in_window
+            .then(|| choice_at_point(mouse.hud_x, mouse.hud_y, &rects))
+            .flatten();
+        (rects.len(), hovered)
     };
+
+    if let Some(index) = hovered {
+        effects.dialog_state.highlighted = index as i32;
+    }
 
     let chosen_index = if choice_count > 0 {
         if keys.just_pressed(KeyCode::ArrowDown) {
@@ -261,6 +282,8 @@ pub fn dialog_input(
             None
         } else if keys.just_pressed(KeyCode::Enter) && effects.dialog_state.highlighted >= 0 {
             Some(effects.dialog_state.highlighted as usize)
+        } else if mouse.left_just_pressed && hovered.is_some() {
+            hovered
         } else {
             digit_just_pressed(&keys)
         }
@@ -402,6 +425,55 @@ pub(crate) fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     lines
 }
 
+/// Choice-row bounding rects for the session's current node, in the same
+/// order `get_available_choices` returns them — one function computing the
+/// same panel-layout math [`draw_dialog_overlay`]'s choice loop draws from,
+/// so mouse hit-testing and the drawn rows can never disagree on where a
+/// choice actually is.
+fn choice_rects(
+    session: &DialogSession,
+    game: &delve_core::game_state::GameState,
+    quests: &QuestManager,
+) -> Vec<(i32, i32, i32, i32)> {
+    let Some(node) = get_current_node(session) else {
+        return Vec::new();
+    };
+    let choices = get_available_choices(session, game, Some(quests));
+    if choices.is_empty() {
+        return Vec::new();
+    }
+    let body_lines = wrap_text(&node.text.to_uppercase(), TEXT_WRAP_CHARS);
+    let speaker_h = if node.speaker.is_some() {
+        LINE_HEIGHT
+    } else {
+        0
+    };
+    let body_h = body_lines.len() as i32 * LINE_HEIGHT;
+    let choices_h = choices.len() as i32 * CHOICE_ROW_H + 6;
+    let hint_h = LINE_HEIGHT + 6;
+    let panel_h = PANEL_PAD * 2 + speaker_h + body_h + choices_h + hint_h;
+    let panel_y = HUD_HEIGHT as i32 - PANEL_MARGIN_BOTTOM - panel_h;
+    let choices_start_y = panel_y + PANEL_PAD + speaker_h + body_h + 6;
+    (0..choices.len())
+        .map(|index| {
+            (
+                PANEL_X + PANEL_PAD,
+                choices_start_y + index as i32 * CHOICE_ROW_H,
+                PANEL_W - PANEL_PAD * 2,
+                CHOICE_ROW_H - 2,
+            )
+        })
+        .collect()
+}
+
+/// Inclusive-min/exclusive-max containment, matching every other hit-test in
+/// this codebase (`inventory_overlay::hit_test`, `trading_overlay::in_rect`).
+fn choice_at_point(hud_x: f32, hud_y: f32, rects: &[(i32, i32, i32, i32)]) -> Option<usize> {
+    rects.iter().position(|&(x, y, w, h)| {
+        hud_x >= x as f32 && hud_x < (x + w) as f32 && hud_y >= y as f32 && hud_y < (y + h) as f32
+    })
+}
+
 /// Draws the dialog panel from the current node's text and available
 /// choices, bottom-center — the canvas equivalent of TS's `DialogOverlay.show`
 /// (called on every node the session enters) plus `setHighlight`.
@@ -458,32 +530,22 @@ pub fn draw_dialog_overlay(
 
     if !choices.is_empty() {
         cursor_y += 6;
-        for (index, choice) in choices.iter().enumerate() {
+        let rects = choice_rects(session, game, quests);
+        for (index, (choice, &(row_x, row_y, row_w, row_h))) in
+            choices.iter().zip(rects.iter()).enumerate()
+        {
             let highlighted = state.highlighted == index as i32;
             let (bg, border) = if highlighted {
                 (CHOICE_BG_HIGHLIGHT, CHOICE_BORDER_HIGHLIGHT)
             } else {
                 (CHOICE_BG, CHOICE_BORDER)
             };
-            let row_y = cursor_y + index as i32 * CHOICE_ROW_H;
-            canvas.fill_rect(
-                PANEL_X + PANEL_PAD,
-                row_y,
-                PANEL_W - PANEL_PAD * 2,
-                CHOICE_ROW_H - 2,
-                bg,
-            );
-            canvas.stroke_rect(
-                PANEL_X + PANEL_PAD,
-                row_y,
-                PANEL_W - PANEL_PAD * 2,
-                CHOICE_ROW_H - 2,
-                border,
-            );
+            canvas.fill_rect(row_x, row_y, row_w, row_h, bg);
+            canvas.stroke_rect(row_x, row_y, row_w, row_h, border);
             draw_pixel_text(
                 canvas,
                 &format!("{}. {}", index + 1, choice.text.to_uppercase()),
-                PANEL_X + PANEL_PAD + 4,
+                row_x + 4,
                 row_y + 3,
                 CHOICE_TEXT,
                 1,

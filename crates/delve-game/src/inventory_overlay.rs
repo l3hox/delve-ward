@@ -9,7 +9,7 @@
 
 use crate::equip_layout::{EQUIP_SLOTS, equip_slot_index, subtype_to_equip_slot};
 use crate::ground_items::{GroundItemRender, ItemDb};
-use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState};
+use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, draw_item_icon};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::item_tooltip::draw_item_tooltip;
 use crate::mouse::MouseState;
@@ -674,16 +674,6 @@ fn draw_slot(canvas: &mut PixelCanvas, x: i32, y: i32) {
     canvas.stroke_rect(x, y, SLOT_SIZE, SLOT_SIZE, SLOT_BORDER);
 }
 
-/// Colored square + initial letter — the full overlay does not yet share
-/// `hud.rs`'s real item-icon cache (a private field of `HudState`); this is
-/// a scoped-down starting point, matching that function's own fallback
-/// path rather than the icon-image path.
-fn draw_item_icon_fallback(canvas: &mut PixelCanvas, name: &str, x: i32, y: i32, color: Rgba) {
-    canvas.fill_rect(x + 4, y + 4, SLOT_SIZE - 8, SLOT_SIZE - 8, color);
-    let label: String = name.chars().take(1).collect::<String>().to_uppercase();
-    draw_pixel_text(canvas, &label, x + 10, y + 9, Rgba::opaque(0, 0, 0), 2);
-}
-
 fn slot_highlight(
     canvas: &mut PixelCanvas,
     x: i32,
@@ -729,6 +719,7 @@ pub fn draw_inventory_overlay(
     state: &InventoryOverlayState,
     game: &GameState,
     items: &ItemDatabase,
+    icons: &mut IconCache,
 ) {
     canvas.fill_rect(0, 0, HUD_WIDTH as i32, HUD_HEIGHT as i32, BACKDROP);
     canvas.fill_rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PANEL_BG);
@@ -777,10 +768,14 @@ pub fn draw_inventory_overlay(
         draw_slot(canvas, sx, sy);
 
         if let Some(entity) = game.entity_registry.get_equipped(slot) {
-            let name = items
-                .get_item(&entity.item_id)
-                .map_or(entity.item_id.as_str(), |def| def.name.as_str());
-            draw_item_icon_fallback(canvas, name, sx, sy, ICON_FALLBACK);
+            draw_item_icon(
+                canvas,
+                icons,
+                items,
+                &entity.item_id,
+                (sx, sy, SLOT_SIZE),
+                ICON_FALLBACK,
+            );
         }
     }
 
@@ -814,10 +809,14 @@ pub fn draw_inventory_overlay(
         draw_slot(canvas, sx, sy);
 
         if let Some(entity) = game.entity_registry.backpack_item_at(index as u32) {
-            let name = items
-                .get_item(&entity.item_id)
-                .map_or(entity.item_id.as_str(), |def| def.name.as_str());
-            draw_item_icon_fallback(canvas, name, sx, sy, ICON_FALLBACK);
+            draw_item_icon(
+                canvas,
+                icons,
+                items,
+                &entity.item_id,
+                (sx, sy, SLOT_SIZE),
+                ICON_FALLBACK,
+            );
         }
     }
 
@@ -837,14 +836,16 @@ pub fn draw_inventory_overlay(
     }
 
     if let Some(drag) = &state.drag {
-        let name = items
-            .get_item(&drag.item_id)
-            .map_or(drag.item_id.as_str(), |def| def.name.as_str());
-        draw_item_icon_fallback(
+        draw_item_icon(
             canvas,
-            name,
-            drag.hud_x as i32 - SLOT_SIZE / 2,
-            drag.hud_y as i32 - SLOT_SIZE / 2,
+            icons,
+            items,
+            &drag.item_id,
+            (
+                drag.hud_x as i32 - SLOT_SIZE / 2,
+                drag.hud_y as i32 - SLOT_SIZE / 2,
+                SLOT_SIZE,
+            ),
             ICON_FALLBACK,
         );
     }

@@ -276,6 +276,14 @@ impl HudState {
         self.level_up_message = format!("LEVEL {level}");
         self.level_up_timer = LEVEL_UP_DISPLAY_DURATION;
     }
+
+    /// Mutable access to the shared icon cache for overlay renderers outside
+    /// this module (`inventory_overlay.rs`, `trading_overlay.rs`) that need
+    /// [`draw_item_icon`] — `icons` itself stays private so callers can only
+    /// reach it through the cache's own load-and-remember behavior.
+    pub(crate) fn icons_mut(&mut self) -> &mut IconCache {
+        &mut self.icons
+    }
 }
 
 /// Pixel-art sword: blade, edge highlight, tip, guard, grip, pommel — a 1:1
@@ -522,6 +530,7 @@ pub fn draw_hud(
             &sources.inventory_state,
             &sources.session.game,
             &sources.items.0,
+            hud.icons_mut(),
         );
     }
     if *sources.overlay == ActiveOverlay::AttributePanel {
@@ -538,6 +547,7 @@ pub fn draw_hud(
             &sources.session.game,
             &sources.items.0,
             &sources.mouse,
+            hud.icons_mut(),
         );
     }
     if *sources.overlay == ActiveOverlay::QuestLog {
@@ -922,15 +932,24 @@ fn draw_slot(canvas: &mut PixelCanvas, x: i32, y: i32) {
     canvas.stroke_rect(x, y, SLOT_SIZE, SLOT_SIZE, SLOT_BORDER);
 }
 
-fn draw_item_icon(
+/// Draws `item_id`'s real sprite (cached, loaded from `sprites/items/`) into
+/// a `size`x`size` square at `(x, y)`, falling back to a colored square plus
+/// the item's first initial when the item has no def or its sprite fails to
+/// load. `size` is a caller-chosen slot edge length — the mini panel, the
+/// full inventory overlay, and the trading overlay each have their own slot
+/// size, so this takes it explicitly rather than assuming `hud.rs`'s own
+/// `SLOT_SIZE`. Shared across overlay modules via [`HudState::icons_mut`] so
+/// every item-bearing surface renders the same real-PNG-or-fallback icon,
+/// not a second, drifting copy of this logic.
+pub(crate) fn draw_item_icon(
     canvas: &mut PixelCanvas,
     icons: &mut IconCache,
     items: &ItemDatabase,
     item_id: &str,
-    slot_x: i32,
-    slot_y: i32,
+    slot: (i32, i32, i32),
     fallback_color: Rgba,
 ) {
+    let (x, y, size) = slot;
     let def = items.get_item(item_id);
     let sprite = def
         .map(|def| format!("sprites/items/{}.png", def.icon))
@@ -938,22 +957,12 @@ fn draw_item_icon(
     if let Some(path) = sprite {
         if let Some(image) = icons.get(&path) {
             let padding = 2;
-            let icon_size = SLOT_SIZE - padding * 2;
-            canvas.blit_scaled(
-                image,
-                (slot_x + padding, slot_y + padding, icon_size, icon_size),
-                1.0,
-            );
+            let icon_size = size - padding * 2;
+            canvas.blit_scaled(image, (x + padding, y + padding, icon_size, icon_size), 1.0);
         }
         return;
     }
-    canvas.fill_rect(
-        slot_x + 4,
-        slot_y + 4,
-        SLOT_SIZE - 8,
-        SLOT_SIZE - 8,
-        fallback_color,
-    );
+    canvas.fill_rect(x + 4, y + 4, size - 8, size - 8, fallback_color);
     let label: String = def
         .map_or_else(|| item_id.to_string(), |def| def.name.clone())
         .chars()
@@ -963,8 +972,8 @@ fn draw_item_icon(
     draw_pixel_text(
         canvas,
         &label,
-        slot_x + 8,
-        slot_y + 7,
+        x + size / 3,
+        y + size / 3 - 1,
         Rgba::opaque(0, 0, 0),
         2,
     );
@@ -1261,8 +1270,7 @@ fn draw_inventory_panel(
                 icons,
                 items,
                 &item_id,
-                slot_x,
-                slot_y,
+                (slot_x, slot_y, SLOT_SIZE),
                 equip_slot_color(slot),
             );
         } else if let Some(ghost) = icons.get(paperdoll_path(slot)) {
@@ -1352,7 +1360,14 @@ fn draw_inventory_panel(
                     }
                 });
                 let item_id = entity.item_id.clone();
-                draw_item_icon(canvas, icons, items, &item_id, slot_x, slot_y, fallback);
+                draw_item_icon(
+                    canvas,
+                    icons,
+                    items,
+                    &item_id,
+                    (slot_x, slot_y, SLOT_SIZE),
+                    fallback,
+                );
             }
 
             // Quick-use slot numbers 1-8: gold for consumables, grey otherwise.
@@ -1397,8 +1412,11 @@ fn draw_inventory_panel(
             icons,
             items,
             &drag.item_id,
-            drag.hud_x as i32 - SLOT_SIZE / 2,
-            drag.hud_y as i32 - SLOT_SIZE / 2,
+            (
+                drag.hud_x as i32 - SLOT_SIZE / 2,
+                drag.hud_y as i32 - SLOT_SIZE / 2,
+                SLOT_SIZE,
+            ),
             Rgba::opaque(0x88, 0x88, 0x88),
         );
     }
