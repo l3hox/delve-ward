@@ -677,6 +677,7 @@ pub fn on_player_moved(
     mut key_billboards: ResMut<KeyBillboards>,
     mut hud: ResMut<crate::hud::HudState>,
     mut signal: SignalRenderState,
+    debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     let Ok(mut player) = players.single_mut() else {
         return;
@@ -811,8 +812,15 @@ pub fn on_player_moved(
         // Hole detection — falling through an open floor or an already-open
         // pit trap, ported from `main.ts:646-681`. TS's equivalent check
         // lives inside the `onMove` callback, never `onTurn`, so this stays
-        // inside the `moved` block too.
-        if game.active_layer_index > 0
+        // inside the `moved` block too. TS gates this specific block on
+        // `!ls.player.debugNoClip` (`main.ts:647`) — flying through a hole
+        // shouldn't drop you. The *other* `setPendingFall` call, a pit trap
+        // opening via signal while you stand on it (`main.ts:766-788`,
+        // ported at this file's `set_pending_fall` call inside
+        // `apply_world_events`), has no such gate in TS and stays that way
+        // here too — not every fall trigger is guarded, only this one.
+        if !debug_flags.fullbright
+            && game.active_layer_index > 0
             && let Some(level) = level
         {
             let key = delve_core::game_state::door_key(col, row);
