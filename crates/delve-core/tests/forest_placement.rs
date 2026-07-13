@@ -89,9 +89,21 @@ fn pins_exact_output_for_a_real_forest_cell() {
 }
 
 #[test]
-fn empty_grid_produces_no_placements() {
+fn missing_char_defs_produce_no_placements() {
     let grid = rows(&["....", "....", "....", "...."]);
     let char_defs: Vec<CharDef> = Vec::new();
+    let placements = compute_forest_placements(&grid, &char_defs, CELL_SIZE);
+    assert!(placements.is_empty());
+}
+
+/// TS guards this with an explicit early return (`if (!grid ||
+/// grid.length === 0)`); the Rust port is correct by construction (the
+/// row loop over an empty slice never executes) but the case deserves
+/// its own name.
+#[test]
+fn empty_grid_produces_no_placements() {
+    let grid: Vec<String> = Vec::new();
+    let char_defs = vec![simple_char_def('T', true, Some(true), Some("forest"))];
     let placements = compute_forest_placements(&grid, &char_defs, CELL_SIZE);
     assert!(placements.is_empty());
 }

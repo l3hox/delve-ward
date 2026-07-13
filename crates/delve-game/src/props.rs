@@ -106,7 +106,11 @@ pub fn spawn_props(
         return;
     }
 
-    let pillar_mesh = meshes.add(Cylinder::new(PILLAR_RADIUS, WALL_HEIGHT));
+    let pillar_mesh = meshes.add(
+        Cylinder::new(PILLAR_RADIUS, WALL_HEIGHT)
+            .mesh()
+            .resolution(8),
+    );
     let pillar_material = materials.add(lambert(Color::srgb_u8(0x88, 0x88, 0x88)));
 
     let (rw, rh, rd) = RUBBLE_SIZE;
@@ -294,5 +298,53 @@ pub fn spawn_props(
             // `prop_id` value has its own arm.
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_offset(actual: (f32, f32), expected: (f32, f32)) {
+        assert!(
+            (actual.0 - expected.0).abs() < 1e-6 && (actual.1 - expected.1).abs() < 1e-6,
+            "offset {actual:?} != expected {expected:?}"
+        );
+    }
+
+    /// Hand-computed from `propRenderer.ts`'s inline offset table for
+    /// col=3, row=5: piece 0 x-term `3*7+5*13 = 86`, `86 % 5 = 1`,
+    /// `1/10 - 0.25 = -0.15`, and so on term by term.
+    #[test]
+    fn rubble_offsets_match_the_ts_scatter_table_for_a_reference_cell() {
+        assert_offset(rubble_offset(3, 5, 0), (-0.15, 0.05));
+        assert_offset(rubble_offset(3, 5, 1), (0.15, -0.25));
+        assert_offset(rubble_offset(3, 5, 2), (0.15, -0.15));
+        assert_offset(rubble_offset(3, 5, 3), (-0.05, -0.15));
+    }
+
+    #[test]
+    fn rubble_offsets_stay_within_the_quarter_cell_scatter_bounds() {
+        for index in 0..4 {
+            let (x, z) = rubble_offset(12, 7, index);
+            assert!((-0.25..=0.25).contains(&x));
+            assert!((-0.25..=0.25).contains(&z));
+        }
+    }
+
+    #[test]
+    fn quarter_turn_converts_rotation_counts_to_radians() {
+        assert_eq!(quarter_turn(None), 0.0);
+        assert_eq!(quarter_turn(Some(1)), std::f32::consts::FRAC_PI_2);
+        assert_eq!(quarter_turn(Some(3)), 3.0 * std::f32::consts::FRAC_PI_2);
+    }
+
+    #[test]
+    fn only_statues_and_crate_stacks_honor_the_rotation_field() {
+        let quarter = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        assert_eq!(group_rotation("statue", Some(1)), quarter);
+        assert_eq!(group_rotation("crate_stack", Some(1)), quarter);
+        assert_eq!(group_rotation("pillar", Some(1)), Quat::IDENTITY);
+        assert_eq!(group_rotation("banner", Some(1)), Quat::IDENTITY);
     }
 }
