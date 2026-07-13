@@ -16,6 +16,7 @@
 use crate::dungeon::{CELL_SIZE, LayerSpawn, WALL_HEIGHT};
 use crate::level_scene::LevelEntity;
 use crate::sconces::wall_direction;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::LayerState;
 use delve_core::grid::Facing;
@@ -101,6 +102,7 @@ pub fn spawn_props(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &LayerSpawn,
+    zones: &LevelZones,
 ) {
     if layer_state.props.is_empty() {
         return;
@@ -190,6 +192,20 @@ pub fn spawn_props(
             ))
             .id();
 
+        // Every prop mesh gets its own cell's zone — `RenderLayers` doesn't
+        // propagate to `root`'s children, so each one is tagged individually
+        // rather than tagging `root` once.
+        let tag = |commands: &mut Commands, entity: Entity| {
+            zones::tag_cell(
+                commands,
+                zones,
+                layer_spawn.index,
+                entity,
+                prop.col,
+                prop.row,
+            );
+        };
+
         match prop_id {
             "pillar" => {
                 let mesh = commands
@@ -200,6 +216,7 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_child(mesh);
+                tag(commands, mesh);
             }
             "rubble" => {
                 for index in 0..4 {
@@ -212,6 +229,7 @@ pub fn spawn_props(
                         ))
                         .id();
                     commands.entity(root).add_child(mesh);
+                    tag(commands, mesh);
                 }
             }
             "stalactite" => {
@@ -225,6 +243,7 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_child(mesh);
+                tag(commands, mesh);
             }
             "stalagmite" => {
                 let mesh = commands
@@ -235,6 +254,7 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_child(mesh);
+                tag(commands, mesh);
             }
             "statue" => {
                 let pedestal = commands
@@ -259,6 +279,9 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_children(&[pedestal, torso, head]);
+                tag(commands, pedestal);
+                tag(commands, torso);
+                tag(commands, head);
             }
             "crate_stack" => {
                 let (ox, oy, oz) = CRATE_TOP_OFFSET;
@@ -277,6 +300,8 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_children(&[bottom, top]);
+                tag(commands, bottom);
+                tag(commands, top);
             }
             "banner" => {
                 // TS: `prop.wall ?? 'N'` — the only prop kind that reads
@@ -293,6 +318,7 @@ pub fn spawn_props(
                     ))
                     .id();
                 commands.entity(root).add_child(mesh);
+                tag(commands, mesh);
             }
             // Filtered by the `matches!` guard above — every reachable
             // `prop_id` value has its own arm.

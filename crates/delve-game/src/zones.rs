@@ -5,22 +5,33 @@
 //! tagged `RenderLayers::from_layers(&[0, zone])`, so it draws both its own
 //! zone's per-cell content and everything left on the shared layer (0).
 //!
-//! That shared layer is what makes most of TS's `layers.enableAll()` list
-//! (stairs, trap launcher meshes, sconce lights, damage numbers, fireball
-//! particles, health bars, projectiles) and every entity type this slice's
-//! file allowlist doesn't reach (signs, fountains, altars, barrels,
-//! bookshelves, wall entities, ramps, boulders, props) need no tagging code
-//! at all: Bevy's default `RenderLayers` is layer 0, which already
-//! intersects every zone camera's set. An untagged entity renders in every
-//! zone pass for free — the same visual result as TS's `enableAll()`
-//! through a different mechanism, and a safer failure mode than TS's own
-//! (default-layer-0 THREE.Object3Ds are invisible in every pass but zone 0,
-//! which no camera pass ever enables) for anything this slice doesn't reach.
+//! Every cell-positioned entity type — dungeon floor/ceiling/walls, doors,
+//! keys, plates, tripwires, levers, sconce brackets/arms/torches, enemies,
+//! NPCs, ground items, blocks, chests, signs, fountains, bookshelves,
+//! altars, barrels, ramps, props, spawners, boulders, thin walls, and wall
+//! entities — is tagged with its own cell's zone at spawn time, either via
+//! [`tag_cell`] (col/row already in scope in the spawning function) or
+//! [`tag_by_key`] (a layer-prefixed handle map, tagged centrally from
+//! `level_scene.rs` after the spawn call returns). `RenderLayers` does not
+//! propagate from a parent entity to its children (verified against the
+//! vendored visibility source: culling reads `Option<&RenderLayers>`
+//! directly off the entity being tested, no ancestor walk) — every one of
+//! these tagging calls targets the visible mesh entities themselves, never
+//! a group root.
+//!
+//! What's left genuinely shared (tagged with nothing, relying on Bevy's
+//! default `RenderLayers` being layer 0, which every zone camera's `[0,
+//! zone]` set already includes) is TS's own `enableAll()` list: stairs,
+//! trap launcher meshes, sconce lights (the brackets/arms/torches around
+//! them ARE tagged; only the light itself stays shared, matching TS's own
+//! `light.layers.enableAll()` call), damage numbers, fireball explosion
+//! particles, health bars, and projectiles.
 //!
 //! Single-zone levels never touch any of this: [`spawn_player_cameras`]
 //! keeps today's one-entity camera (Camera3d + Projection + DistanceFog +
 //! AmbientLight bundled directly on the player) untouched, matching TS's
-//! `!multiZone` fast path exactly.
+//! `!multiZone` fast path exactly, and every `tag_cell`/`tag_by_key`/
+//! `tag_forest` call is a no-op when the level isn't multi-zone.
 
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
 use bevy::camera::Camera3dDepthLoadOp;

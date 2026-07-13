@@ -7,6 +7,7 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, UsableState, layer_door_key};
 use std::collections::HashMap;
@@ -40,6 +41,7 @@ pub fn spawn_fountains(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) -> FountainHandles {
     let mut handles = FountainHandles::default();
     if layer_state.fountains.is_empty() {
@@ -88,6 +90,14 @@ pub fn spawn_fountains(
             ))
             .id();
         commands.entity(group).add_child(basin);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            basin,
+            fountain.col,
+            fountain.row,
+        );
 
         let pedestal = commands
             .spawn((
@@ -97,6 +107,14 @@ pub fn spawn_fountains(
             ))
             .id();
         commands.entity(group).add_child(pedestal);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            pedestal,
+            fountain.col,
+            fountain.row,
+        );
 
         let water_visibility = if fountain.state == UsableState::Used {
             Visibility::Hidden
@@ -113,6 +131,14 @@ pub fn spawn_fountains(
             ))
             .id();
         commands.entity(group).add_child(water);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            water,
+            fountain.col,
+            fountain.row,
+        );
 
         handles
             .water_by_key

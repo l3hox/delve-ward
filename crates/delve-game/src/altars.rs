@@ -6,6 +6,7 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, UsableState, layer_door_key};
 use std::collections::HashMap;
@@ -40,6 +41,7 @@ pub fn spawn_altars(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) -> AltarHandles {
     let mut handles = AltarHandles::default();
     if layer_state.altars.is_empty() {
@@ -78,6 +80,14 @@ pub fn spawn_altars(
             ))
             .id();
         commands.entity(group).add_child(platform);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            platform,
+            altar.col,
+            altar.row,
+        );
 
         // Each altar gets its own material instance (not shared) so
         // `mark_altar_used` can mutate just this pillar's emissive.
@@ -101,6 +111,14 @@ pub fn spawn_altars(
             ))
             .id();
         commands.entity(group).add_child(pillar);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            pillar,
+            altar.col,
+            altar.row,
+        );
 
         handles
             .pillar_by_key

@@ -192,6 +192,7 @@ pub fn spawn_level_scene(
             scene.dungeon_materials,
             &layer_spawn,
             layer,
+            &level_zones,
         );
         let layer_pit_floors = dungeon::spawn_pit_floors(
             commands,
@@ -323,6 +324,11 @@ pub fn spawn_level_scene(
         );
         key_billboards.by_key.extend(layer_keys.by_key);
 
+        // Bracket/arm/handle/head meshes are tagged inside `spawn_sconces`
+        // itself (their own cell's zone); the flicker lights stay untagged
+        // (TS's `light.layers.enableAll()`) so they illuminate across a zone
+        // boundary the same way an untagged light already does under the
+        // shared-layer-0 default.
         let layer_sconces = sconces::spawn_sconces(
             commands,
             assets.meshes,
@@ -330,19 +336,7 @@ pub fn spawn_level_scene(
             layer,
             layer_index,
             y_offset,
-        );
-        // Torch meshes (handle + head) get their own cell's zone; the
-        // flicker lights stay untagged (TS's `light.layers.enableAll()`) so
-        // they illuminate across a zone boundary the same way an untagged
-        // light already does under the shared-layer-0 default.
-        zones::tag_by_key(
-            commands,
             &level_zones,
-            layer_index,
-            layer_sconces
-                .torches
-                .iter()
-                .flat_map(|(key, handles)| handles.iter().map(move |entity| (key, entity))),
         );
         sconce_parts.torches.extend(layer_sconces.torches);
         sconce_parts.lights.extend(layer_sconces.lights);
@@ -410,11 +404,8 @@ pub fn spawn_level_scene(
             &layer_spawn,
             &layer_def.grid,
             &wall_entity_cells,
+            &level_zones,
         );
-        // Breakable/secret wall entities (`wall_entities.rs`) are outside
-        // this slice's touchable files and keep private handle types, so
-        // they're left untagged like the rest of the default-shared set —
-        // see the module doc at the top of `zones.rs`.
         wall_entity_handles.extend(layer_wall_entities);
 
         let layer_chests = chests::spawn_chests(
@@ -456,6 +447,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
 
         let layer_npcs = npcs::spawn_npc_billboards(
@@ -475,16 +467,13 @@ pub fn spawn_level_scene(
         );
         npc_billboards.by_key.extend(layer_npcs.by_key);
 
-        // Fountains, altars, barrels, bookshelves, boulders, ramps, and
-        // props keep private handle types or live outside this slice's
-        // touchable files — left untagged, same default-shared fallback as
-        // wall entities above.
         let layer_fountains = fountains::spawn_fountains(
             commands,
             assets.meshes,
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
         fountain_handles.extend(layer_fountains);
 
@@ -494,6 +483,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
         altar_handles.extend(layer_altars);
 
@@ -503,6 +493,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
         barrel_handles.extend(layer_barrels);
 
@@ -512,6 +503,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
 
         let layer_spawners = spawners::spawn_spawner_markers(
@@ -537,6 +529,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
         boulder_animator.extend(layer_boulders);
 
@@ -546,6 +539,7 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+            &level_zones,
         );
 
         thin_walls::spawn_thin_walls(

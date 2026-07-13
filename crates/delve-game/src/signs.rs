@@ -8,6 +8,7 @@ use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::textures::{canvas_to_image, seed_for};
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::LayerState;
 use delve_core::grid::Facing;
@@ -57,6 +58,7 @@ fn generate_sign_texture(rng: &mut CanvasRng) -> PixelCanvas {
     canvas
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_signs(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -64,6 +66,7 @@ pub fn spawn_signs(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) {
     if layer_state.signs.is_empty() {
         return;
@@ -86,16 +89,26 @@ pub fn spawn_signs(
         let center_z = sign.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let (dx, dz, rotation_y) = wall_direction(sign.wall);
 
-        commands.spawn((
-            LevelEntity,
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material.clone()),
-            Transform::from_xyz(
-                center_x + dx * OFFSET_DIST,
-                SIGN_Y + layer_spawn.y_offset,
-                center_z + dz * OFFSET_DIST,
-            )
-            .with_rotation(Quat::from_rotation_y(rotation_y)),
-        ));
+        let entity = commands
+            .spawn((
+                LevelEntity,
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material.clone()),
+                Transform::from_xyz(
+                    center_x + dx * OFFSET_DIST,
+                    SIGN_Y + layer_spawn.y_offset,
+                    center_z + dz * OFFSET_DIST,
+                )
+                .with_rotation(Quat::from_rotation_y(rotation_y)),
+            ))
+            .id();
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            entity,
+            sign.col,
+            sign.row,
+        );
     }
 }

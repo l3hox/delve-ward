@@ -32,6 +32,7 @@
 use crate::dungeon::{CELL_SIZE, LAYER_HEIGHT, LayerSpawn};
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
+use crate::zones::{self, LevelZones};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
@@ -159,7 +160,7 @@ fn spawn_smooth_ramp(
     parent: Entity,
     slope_material: Handle<StandardMaterial>,
     side_material: Handle<StandardMaterial>,
-) {
+) -> Vec<Entity> {
     let slope = commands
         .spawn((
             Mesh3d(meshes.add(build_slope_mesh())),
@@ -168,6 +169,7 @@ fn spawn_smooth_ramp(
         ))
         .id();
     commands.entity(parent).add_child(slope);
+    let mut pieces = vec![slope];
 
     for x in [-CELL_SIZE / 2.0, CELL_SIZE / 2.0] {
         let side = commands
@@ -178,7 +180,9 @@ fn spawn_smooth_ramp(
             ))
             .id();
         commands.entity(parent).add_child(side);
+        pieces.push(side);
     }
+    pieces
 }
 
 /// Stepped treads as stacked ascending boxes, mirroring `stairs.rs`'s own
@@ -192,8 +196,9 @@ fn spawn_stepped_ramp(
     parent: Entity,
     step_material: Handle<StandardMaterial>,
     side_material: Handle<StandardMaterial>,
-) {
+) -> Vec<Entity> {
     let half = CELL_SIZE / 2.0;
+    let mut pieces = Vec::with_capacity(RAMP_STEP_COUNT + 2);
     for step in 0..RAMP_STEP_COUNT {
         let step_z = half - RAMP_STEP_DEPTH / 2.0 - step as f32 * RAMP_STEP_DEPTH;
         let height = (step as f32 + 1.0) * RAMP_STEP_HEIGHT;
@@ -205,6 +210,7 @@ fn spawn_stepped_ramp(
             ))
             .id();
         commands.entity(parent).add_child(tread);
+        pieces.push(tread);
     }
     for x in [-CELL_SIZE / 2.0, CELL_SIZE / 2.0] {
         let side = commands
@@ -215,7 +221,9 @@ fn spawn_stepped_ramp(
             ))
             .id();
         commands.entity(parent).add_child(side);
+        pieces.push(side);
     }
+    pieces
 }
 
 /// Spawns every ramp on `layer_state`'s own layer — ported from
@@ -239,6 +247,7 @@ pub fn spawn_ramps(
     materials: &DungeonMaterials,
     layer_spawn: &LayerSpawn,
     layer_state: &LayerState,
+    zones: &LevelZones,
 ) {
     let (layer_defaults, layer_areas) = layer_spawn.texture_style();
     for ramp in layer_state.ramps.values() {
@@ -281,13 +290,23 @@ pub fn spawn_ramps(
             ))
             .id();
 
-        match ramp.style {
+        let pieces = match ramp.style {
             RampStyle::Ramp => {
                 spawn_smooth_ramp(commands, meshes, parent, step_material, side_material)
             }
             RampStyle::Stairs => {
                 spawn_stepped_ramp(commands, meshes, parent, step_material, side_material)
             }
+        };
+        for piece in pieces {
+            zones::tag_cell(
+                commands,
+                zones,
+                layer_spawn.index,
+                piece,
+                ramp.col,
+                ramp.row,
+            );
         }
     }
 }

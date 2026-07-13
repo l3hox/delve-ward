@@ -18,6 +18,7 @@ use crate::session::{DungeonRes, GameRng, Session, find_level_by_id};
 use crate::status_effects::PlayerVitals;
 use crate::textures::{canvas_to_image, seed_for};
 use crate::tripwires::{self, TripwireHandles};
+use crate::zones::{self, LevelZones};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::boulders::{
@@ -198,6 +199,7 @@ impl BoulderAnimator {
 
 /// Builds a boulder mesh for every boulder on this layer, registered into
 /// the animator at rest — ported from TS's `buildBoulderMeshes`.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_boulders(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -205,6 +207,7 @@ pub fn spawn_boulders(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &delve_core::game_state::LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) -> BoulderAnimator {
     let mut animator = BoulderAnimator::default();
     if layer_state.boulders.is_empty() {
@@ -232,6 +235,14 @@ pub fn spawn_boulders(
                 Transform::from_translation(position),
             ))
             .id();
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            entity,
+            boulder.col,
+            boulder.row,
+        );
         animator.register(
             layer_door_key(layer_spawn.index, key),
             entity,

@@ -5,6 +5,7 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::LayerState;
 use delve_core::grid::Facing;
@@ -34,6 +35,7 @@ pub fn spawn_bookshelves(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) {
     if layer_state.bookshelves.is_empty() {
         return;
@@ -84,6 +86,14 @@ pub fn spawn_bookshelves(
             ))
             .id();
         commands.entity(group).add_child(body);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            body,
+            shelf.col,
+            shelf.row,
+        );
 
         for (index, &y_offset) in SPINE_Y_OFFSETS.iter().enumerate() {
             let spine = commands
@@ -94,6 +104,14 @@ pub fn spawn_bookshelves(
                 ))
                 .id();
             commands.entity(group).add_child(spine);
+            zones::tag_cell(
+                commands,
+                zones,
+                layer_spawn.index,
+                spine,
+                shelf.col,
+                shelf.row,
+            );
         }
     }
 }

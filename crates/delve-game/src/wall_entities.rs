@@ -10,6 +10,7 @@
 use crate::dungeon::{CELL_SIZE, WALL_HEIGHT};
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::{door_key, layer_door_key};
 use delve_core::texture_resolver::resolve_textures;
@@ -79,6 +80,7 @@ fn cell_char(grid: &[Vec<char>], col: i32, row: i32) -> Option<char> {
 /// `cells` is the union of both entity kinds, keyed by `door_key`, since TS
 /// builds them through the same renderer with no texture override for
 /// either kind — a breakable wall looks identical to a plain wall too.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_wall_entities(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -86,6 +88,7 @@ pub fn spawn_wall_entities(
     layer_spawn: &crate::dungeon::LayerSpawn,
     grid: &[String],
     cells: &HashMap<String, (i64, i64)>,
+    zones: &LevelZones,
 ) -> WallEntityHandles {
     let mut handles = WallEntityHandles::default();
     if cells.is_empty() {
@@ -177,6 +180,7 @@ pub fn spawn_wall_entities(
                         .with_rotation(Quat::from_rotation_y(rotation_y)),
                     ))
                     .id();
+                zones::tag_cell(commands, zones, layer_spawn.index, entity, col, row);
                 cell.outward_walls.push(entity);
             } else if !neighbor_is_entity {
                 // Solid neighbor that isn't another wall entity — revealed
@@ -195,6 +199,7 @@ pub fn spawn_wall_entities(
                         .with_rotation(Quat::from_rotation_y(rotation_y + PI)),
                     ))
                     .id();
+                zones::tag_cell(commands, zones, layer_spawn.index, entity, col, row);
                 cell.hidden.push(entity);
             }
         }
@@ -209,6 +214,7 @@ pub fn spawn_wall_entities(
                     .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
             ))
             .id();
+        zones::tag_cell(commands, zones, layer_spawn.index, floor, col, row);
         cell.hidden.push(floor);
 
         if ceiling_enabled {
@@ -222,6 +228,7 @@ pub fn spawn_wall_entities(
                         .with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
                 ))
                 .id();
+            zones::tag_cell(commands, zones, layer_spawn.index, ceiling, col, row);
             cell.hidden.push(ceiling);
         }
 

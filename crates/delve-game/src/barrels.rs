@@ -4,6 +4,7 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
@@ -38,6 +39,7 @@ pub fn spawn_barrels(
     materials: &mut Assets<StandardMaterial>,
     layer_state: &LayerState,
     layer_spawn: &crate::dungeon::LayerSpawn,
+    zones: &LevelZones,
 ) -> BarrelHandles {
     let mut handles = BarrelHandles::default();
     if layer_state.barrels.is_empty() {
@@ -77,6 +79,14 @@ pub fn spawn_barrels(
             ))
             .id();
         commands.entity(group).add_child(body);
+        zones::tag_cell(
+            commands,
+            zones,
+            layer_spawn.index,
+            body,
+            barrel.col,
+            barrel.row,
+        );
 
         for &y_offset in &BAND_Y_OFFSETS {
             let band = commands
@@ -87,6 +97,14 @@ pub fn spawn_barrels(
                 ))
                 .id();
             commands.entity(group).add_child(band);
+            zones::tag_cell(
+                commands,
+                zones,
+                layer_spawn.index,
+                band,
+                barrel.col,
+                barrel.row,
+            );
         }
 
         handles

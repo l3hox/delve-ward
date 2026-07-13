@@ -5,6 +5,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use crate::torch::LUMENS_PER_THREE_UNIT;
+use crate::zones::{self, LevelZones};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, layer_door_key};
@@ -66,6 +67,7 @@ impl Default for SconceFlicker {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_sconces(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -73,6 +75,7 @@ pub fn spawn_sconces(
     layer: &LayerState,
     layer_index: usize,
     layer_y_offset: f32,
+    zones: &LevelZones,
 ) -> SconceParts {
     let mut parts = SconceParts::default();
     if layer.sconces.is_empty() {
@@ -171,6 +174,12 @@ pub fn spawn_sconces(
         commands
             .entity(group)
             .add_children(&[bracket, arm, handle, head]);
+        // Every mesh child TS's `.traverse()` reaches — bracket and arm
+        // included, not just the handle+head pair `SconceParts.torches`
+        // tracks for the extinguish-on-take toggle.
+        for mesh in [bracket, arm, handle, head] {
+            zones::tag_cell(commands, zones, layer_index, mesh, sconce.col, sconce.row);
+        }
         let render_key = layer_door_key(layer_index, key);
         parts.torches.insert(render_key.clone(), [handle, head]);
 
