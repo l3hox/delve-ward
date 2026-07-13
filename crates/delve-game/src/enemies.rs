@@ -6,15 +6,19 @@ use crate::dungeon::CELL_SIZE;
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
 use crate::player::Player;
-use crate::session::{GameRng, Session};
+use crate::session::{self, DungeonRes, GameRng, Session};
 use crate::wall_entities;
 use bevy::prelude::*;
 use delve_core::combat::{CombatResultType, enemy_attack_player, player_attack};
 use delve_core::enemies::{DEFAULT_SPRITE_SIZE, EnemyDatabase};
 use delve_core::enemy_ai::{EnemyActionType, EnemyUpdateContext, update_enemies};
-use delve_core::game_state::{DoorState, GameState, LayerState, door_key, layer_door_key};
+use delve_core::game_state::{
+    DoorState, GameState, LayerState, ThinWallSide, door_key, layer_door_key, thin_wall_key,
+};
 use delve_core::loot::{DropsOverride, LootTables};
 use delve_core::random::Mulberry32;
+use delve_core::status_effects::apply_effect;
+use delve_core::types::{CharDef, DungeonLevel};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -57,6 +61,7 @@ pub struct EnemyRenderState<'w, 's> {
     feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
     visibility: Query<'w, 's, &'static mut Visibility>,
     hud: ResMut<'w, crate::hud::HudState>,
+    dungeon: Res<'w, DungeonRes>,
 }
 
 fn sprite_asset_path(sprite_path: &str) -> String {
@@ -110,6 +115,7 @@ fn spawn_one_enemy_billboard(
         metallic: 0.0,
         reflectance: 0.0,
         alpha_mode: AlphaMode::Mask(0.5),
+        double_sided: true,
         cull_mode: None,
         ..default()
     });
@@ -218,6 +224,180 @@ fn cell_center(col: i64, row: i64) -> (f32, f32) {
     )
 }
 
+/// TS: `ch === '#' || (def !== undefined && def.solid && !def.seeThrough)`
+/// (`main.ts:1324`) — duplicated rather than reusing `session.rs`'s private
+/// `is_solid_floor_char` (same formula, but that one's `fn`-private to its
+/// module and this module owns only `enemies.rs` for this change).
+fn is_solid_floor_char(character: char, char_defs: &[CharDef]) -> bool {
+    character == '#'
+        || char_defs
+            .iter()
+            .find(|def| def.character == character)
+            .is_some_and(|def| def.solid && def.see_through != Some(true))
+}
+
+/// TS's enemy-AI `isHole` (`main.ts:1320-1325`) — deliberately not
+/// `session.rs`'s `is_hole_below` (the player's fall-trigger predicate):
+/// that one fails *closed* on out-of-bounds ("not a hole"), matching its own
+/// TS source (`main.ts:646-681`), while this one fails *open* ("is a hole"),
+/// matching `main.ts:1321`'s explicit `return true` on an out-of-range
+/// `col`/`row`. Same-looking predicates, opposite out-of-bounds polarity —
+/// verified against both TS sources rather than assumed identical.
+fn enemy_is_hole(below_grid: &[String], char_defs: &[CharDef], col: i64, row: i64) -> bool {
+    let (Ok(row_usize), Ok(col_usize)) = (usize::try_from(row), usize::try_from(col)) else {
+        return true;
+    };
+    let Some(character) = below_grid
+        .get(row_usize)
+        .and_then(|line| line.chars().nth(col_usize))
+    else {
+        return true;
+    };
+    !is_solid_floor_char(character, char_defs)
+}
+
+/// TS's `gameState.isEdgeBlocked` dispatch (`worldEntityState.ts:293-294` /
+/// `:283-289`) against a caller-supplied snapshot of blocked-edge keys,
+/// rather than `&GameState` directly — the AI callbacks can't borrow `game`
+/// while `update_enemies` takes `&mut game`.
+fn thin_wall_edge_key(from_col: i64, from_row: i64, to_col: i64, to_row: i64) -> Option<String> {
+    match (to_col - from_col, to_row - from_row) {
+        (0, 1) => Some(thin_wall_key(from_col, from_row, ThinWallSide::S)),
+        (0, -1) => Some(thin_wall_key(to_col, to_row, ThinWallSide::S)),
+        (1, 0) => Some(thin_wall_key(from_col, from_row, ThinWallSide::E)),
+        (-1, 0) => Some(thin_wall_key(to_col, to_row, ThinWallSide::E)),
+        _ => None,
+    }
+}
+
+/// TS's `ls.layerGrids[li]`: a per-layer grid that starts from the level's
+/// pristine definition and stays live-mutated for the whole session as
+/// walls are destroyed on *any* layer (`activeGrid()` in `main.ts` returns
+/// the very same array `damageBreakableWall`/`openSecretWall` mutate in
+/// place, and `ls.layerGrids[li]` is that array — not a fresh snapshot per
+/// read). Rust instead records destruction as `LayerState::destroyed_walls`
+/// and replays it onto a pristine clone on demand (see
+/// `transition.rs::replay_destroyed_walls`'s own doc comment for why); this
+/// mirrors that replay for an arbitrary `layer_index` rather than only
+/// `active_layer()`, since `transition.rs` isn't this change's file and
+/// hardcodes the active layer.
+fn live_layer_grid(level: &DungeonLevel, game: &GameState, layer_index: usize) -> Vec<String> {
+    let mut grid = level
+        .layers
+        .get(layer_index)
+        .map(|layer| layer.grid.clone())
+        .unwrap_or_default();
+    let Some(layer_state) = game.layer(layer_index) else {
+        return grid;
+    };
+    for key in &layer_state.destroyed_walls {
+        let Some((col_text, row_text)) = key.split_once(',') else {
+            continue;
+        };
+        let (Ok(col), Ok(row)) = (col_text.parse::<usize>(), row_text.parse::<usize>()) else {
+            continue;
+        };
+        let Some(line) = grid.get_mut(row) else {
+            continue;
+        };
+        let mut characters: Vec<char> = line.chars().collect();
+        if let Some(cell) = characters.get_mut(col) {
+            *cell = '.';
+            *line = characters.into_iter().collect();
+        }
+    }
+    grid
+}
+
+#[cfg(test)]
+mod tick_helper_tests {
+    use super::*;
+
+    fn char_def(character: char, solid: bool, see_through: Option<bool>) -> CharDef {
+        CharDef {
+            character,
+            solid,
+            see_through,
+            textures: delve_core::types::TextureSet::default(),
+        }
+    }
+
+    #[test]
+    fn is_solid_floor_char_treats_hash_as_solid_regardless_of_char_defs() {
+        assert!(is_solid_floor_char('#', &[]));
+    }
+
+    #[test]
+    fn is_solid_floor_char_is_true_for_solid_non_see_through_chars() {
+        let defs = [char_def('F', true, None)];
+        assert!(is_solid_floor_char('F', &defs));
+    }
+
+    #[test]
+    fn is_solid_floor_char_is_false_for_solid_see_through_chars() {
+        let defs = [char_def('T', true, Some(true))];
+        assert!(!is_solid_floor_char('T', &defs));
+    }
+
+    #[test]
+    fn is_solid_floor_char_is_false_for_undefined_chars() {
+        assert!(!is_solid_floor_char('.', &[]));
+    }
+
+    #[test]
+    fn enemy_is_hole_is_true_out_of_bounds() {
+        let grid = vec!["##".to_string(), "##".to_string()];
+        assert!(enemy_is_hole(&grid, &[], -1, 0));
+        assert!(enemy_is_hole(&grid, &[], 0, -1));
+        assert!(enemy_is_hole(&grid, &[], 5, 0));
+    }
+
+    #[test]
+    fn enemy_is_hole_is_false_over_solid_floor_and_true_over_open_floor() {
+        let grid = vec!["#.".to_string()];
+        let defs = [char_def('.', false, None)];
+        assert!(!enemy_is_hole(&grid, &defs, 0, 0));
+        assert!(enemy_is_hole(&grid, &defs, 1, 0));
+    }
+
+    #[test]
+    fn thin_wall_edge_key_covers_all_four_cardinal_moves() {
+        assert_eq!(
+            thin_wall_edge_key(1, 1, 1, 2),
+            Some(thin_wall_key(1, 1, ThinWallSide::S))
+        );
+        assert_eq!(
+            thin_wall_edge_key(1, 2, 1, 1),
+            Some(thin_wall_key(1, 1, ThinWallSide::S))
+        );
+        assert_eq!(
+            thin_wall_edge_key(1, 1, 2, 1),
+            Some(thin_wall_key(1, 1, ThinWallSide::E))
+        );
+        assert_eq!(
+            thin_wall_edge_key(2, 1, 1, 1),
+            Some(thin_wall_key(1, 1, ThinWallSide::E))
+        );
+    }
+
+    #[test]
+    fn thin_wall_edge_key_is_none_for_a_non_adjacent_move() {
+        assert_eq!(thin_wall_edge_key(1, 1, 2, 2), None);
+        assert_eq!(thin_wall_edge_key(1, 1, 1, 1), None);
+    }
+}
+
+/// Mirrors `main.ts:1308-1330`'s enemy-AI tick: every layer updates in
+/// real time, not just the player's active one, with a per-layer `isHole`
+/// (sourced from the layer below) and `isEdgeBlocked` (thin walls) wired
+/// in. `active_layer_index` is saved and restored around the loop exactly
+/// like `tick_boulders` (`delve-core/src/boulders.rs`) already does for the
+/// same reason: everything `update_enemies` and the action-application
+/// loop below it touch — `game.active_layer()`, `layer_door_key`,
+/// `KillTarget.layer_index` — reads whichever layer is "active" at the
+/// time, so the loop iteration variable has to *be* that layer for the
+/// whole time its actions are applied, not just for the `update_enemies`
+/// call itself.
 pub fn tick_enemies(
     time: Res<Time>,
     mut session: ResMut<Session>,
@@ -237,145 +417,235 @@ pub fn tick_enemies(
     let player_state = player.grid_state();
     let (player_col, player_row) = (i64::from(player_state.col), i64::from(player_state.row));
 
-    // Snapshot door state so the AI's callbacks don't borrow the game state.
-    let closed_doors: HashSet<String> = session
-        .game
-        .active_layer()
-        .doors
-        .values()
-        .filter(|door| door.state == DoorState::Closed)
-        .map(|door| door_key(door.col, door.row))
+    // Owned rather than borrowed from `render.dungeon`: `render`'s other
+    // fields (billboards, feedback, ...) need `&mut` access further down,
+    // and this way that borrow of `render.dungeon` is done and gone before
+    // any of that starts, instead of quietly overlapping with it.
+    let Some(level) = session::find_level_by_id(&render.dungeon, &session.current_level_id) else {
+        return;
+    };
+    let char_defs: Vec<CharDef> = level.char_defs.clone().unwrap_or_default();
+    // Built once per tick, ahead of the mutable `game` split below — every
+    // layer's grid, live-mutated per `live_layer_grid`'s doc comment, since
+    // TS passes the *same* live grid array whether or not it belongs to
+    // the player's current layer.
+    let live_grids: Vec<Vec<String>> = (0..session.game.layers.len())
+        .map(|layer_index| live_layer_grid(level, &session.game, layer_index))
         .collect();
-    let is_door_open = |col: i64, row: i64| !closed_doors.contains(&door_key(col, row));
 
-    let Session {
-        game,
-        grid,
-        walkable,
-        ..
-    } = &mut *session;
-    let context = EnemyUpdateContext {
-        player_col,
-        player_row,
-        grid,
-        walkable,
-        is_door_open: &is_door_open,
-        is_hole: None,
-        is_edge_blocked: None,
-        enemies: &render.database.0,
-    };
-    let rng_ref = &mut rng.0;
-    let actions = {
-        let mut random = || rng_ref.next_f64();
-        update_enemies(game, &context, f64::from(time.delta_secs()), &mut random)
-    };
+    let saved_layer = session.game.active_layer_index;
+    let Session { game, walkable, .. } = &mut *session;
 
-    for action in actions {
-        match action.action_type {
-            EnemyActionType::Idle => {}
-            EnemyActionType::Move => {
-                let (Some(to_col), Some(to_row)) = (action.to_col, action.to_row) else {
-                    continue;
-                };
-                let old_key = layer_door_key(
-                    game.active_layer_index,
-                    &door_key(action.from_col, action.from_row),
-                );
-                if let Some(entity) = render.billboards.by_key.remove(&old_key) {
-                    let new_key =
-                        layer_door_key(game.active_layer_index, &door_key(to_col, to_row));
-                    render.billboards.by_key.insert(new_key.clone(), entity);
-                    render.feedback.health_bars.rekey(&old_key, &new_key);
-                    if let Ok(mut transform) = render.transforms.get_mut(entity) {
-                        let (center_x, center_z) = cell_center(to_col, to_row);
-                        transform.translation.x = center_x;
-                        transform.translation.z = center_z;
+    for layer_index in 0..live_grids.len() {
+        game.active_layer_index = layer_index;
+
+        // Snapshot per-layer door/thin-wall state so the AI's callbacks
+        // don't borrow `game` while `update_enemies` takes `&mut game` —
+        // the same pattern the pre-existing `closed_doors` snapshot below
+        // already used for one layer, now redone fresh each iteration.
+        let closed_doors: HashSet<String> = game
+            .active_layer()
+            .doors
+            .values()
+            .filter(|door| door.state == DoorState::Closed)
+            .map(|door| door_key(door.col, door.row))
+            .collect();
+        let is_door_open = |col: i64, row: i64| !closed_doors.contains(&door_key(col, row));
+
+        let blocked_edges: HashSet<String> =
+            game.active_layer().thin_walls.keys().cloned().collect();
+        let is_edge_blocked = |from_col: i64, from_row: i64, to_col: i64, to_row: i64| {
+            thin_wall_edge_key(from_col, from_row, to_col, to_row)
+                .is_some_and(|key| blocked_edges.contains(&key))
+        };
+
+        // `None` below-layer (the ground floor) makes `enemy_is_hole`
+        // unreachable, but the closure still needs a body — `is_some_and`
+        // on `below_grid` folds "no layer below" into "never a hole",
+        // exactly matching TS's `isHole = undefined` for `li === 0`
+        // (`context.is_hole.is_some_and(...)` is `false` either way).
+        let below_grid = layer_index.checked_sub(1).map(|below| &live_grids[below]);
+        let is_hole =
+            |col: i64, row: i64| below_grid.is_some_and(|g| enemy_is_hole(g, &char_defs, col, row));
+
+        let context = EnemyUpdateContext {
+            player_col,
+            player_row,
+            grid: &live_grids[layer_index],
+            walkable,
+            is_door_open: &is_door_open,
+            is_hole: Some(&is_hole),
+            is_edge_blocked: Some(&is_edge_blocked),
+            enemies: &render.database.0,
+        };
+        let rng_ref = &mut rng.0;
+        let actions = {
+            let mut random = || rng_ref.next_f64();
+            update_enemies(game, &context, f64::from(time.delta_secs()), &mut random)
+        };
+
+        for action in actions {
+            match action.action_type {
+                EnemyActionType::Idle => {}
+                EnemyActionType::Move => {
+                    let (Some(to_col), Some(to_row)) = (action.to_col, action.to_row) else {
+                        continue;
+                    };
+                    let old_key = layer_door_key(
+                        game.active_layer_index,
+                        &door_key(action.from_col, action.from_row),
+                    );
+                    if let Some(entity) = render.billboards.by_key.remove(&old_key) {
+                        let new_key =
+                            layer_door_key(game.active_layer_index, &door_key(to_col, to_row));
+                        render.billboards.by_key.insert(new_key.clone(), entity);
+                        render.feedback.health_bars.rekey(&old_key, &new_key);
+                        if let Ok(mut transform) = render.transforms.get_mut(entity) {
+                            let (center_x, center_z) = cell_center(to_col, to_row);
+                            transform.translation.x = center_x;
+                            transform.translation.z = center_z;
+                        }
                     }
                 }
-            }
-            EnemyActionType::Attack => {
-                let Some(enemy_atk) = game
-                    .get_enemy(action.from_col, action.from_row)
-                    .map(|enemy| enemy.atk)
-                else {
-                    continue;
-                };
-                let mut random = || rng_ref.next_f64();
-                let result = enemy_attack_player(game, enemy_atk, &mut random);
-                vitals.flash();
-                info!(
-                    "Enemy hits you for {} — HP {}/{}",
-                    result.damage, game.player.hp, game.player.max_hp
-                );
-                // Death detection is centralized in `save_load::check_player_death`,
-                // which runs once per frame after all combat resolves — matching
-                // where TS's own single `if (gameState.hp <= 0)` check lives,
-                // rather than duplicating it at every place HP can drop to zero.
-            }
-            EnemyActionType::Regen => {
-                let key = door_key(action.from_col, action.from_row);
-                let render_key = layer_door_key(game.active_layer_index, &key);
-                if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
-                    render.feedback.update_health_bar(
-                        &mut render.visibility,
-                        &mut render.item_render.materials,
-                        &render_key,
-                        enemy.hp,
-                        enemy.max_hp,
+                EnemyActionType::Attack => {
+                    // TS: `if (li === savedLayer && !debugFullbright)` —
+                    // an enemy can only land a hit on the layer the player
+                    // is actually standing on; `player_col`/`player_row`
+                    // alone can't tell layers apart, since TS passes the
+                    // same player position to every layer's AI tick.
+                    // `debugFullbright` has no Rust equivalent yet (no
+                    // debug toggle reaches this code), so only the layer
+                    // half of TS's gate applies here.
+                    if layer_index != saved_layer {
+                        continue;
+                    }
+                    let Some((enemy_atk, enemy_type)) = game
+                        .get_enemy(action.from_col, action.from_row)
+                        .map(|enemy| (enemy.atk, enemy.enemy_type.clone()))
+                    else {
+                        continue;
+                    };
+                    let mut random = || rng_ref.next_f64();
+                    let result = enemy_attack_player(game, enemy_atk, &mut random);
+                    vitals.flash();
+                    info!(
+                        "Enemy hits you for {} — HP {}/{}",
+                        result.damage, game.player.hp, game.player.max_hp
                     );
+                    // Death detection is centralized in `save_load::check_player_death`,
+                    // which runs once per frame after all combat resolves — matching
+                    // where TS's own single `if (gameState.hp <= 0)` check lives,
+                    // rather than duplicating it at every place HP can drop to zero.
+
+                    // TS: `onHitBehavior && Math.random() < (params.chance
+                    // as number)` -> `applyEffect(gameState.playerStatusEffects,
+                    // params.statusEffect as StatusEffectType, params.duration
+                    // as number)` (`main.ts:1345-1348`). Nothing reads
+                    // `onHit`'s params yet, so `chance`/`duration` are read
+                    // the way `enemy_ai.rs`'s "erratic" behavior already reads
+                    // its own `chance` param (`.params.get(...).and_then(|v|
+                    // v.as_f64())`) -- the closest established convention,
+                    // not a literal `onHit` precedent. A missing `chance`
+                    // compares false against any roll, matching TS's
+                    // `Math.random() < undefined` always-false NaN comparison.
+                    // A missing or unrecognized `statusEffect` skips the
+                    // apply outright rather than guessing a type; a missing
+                    // `duration` falls back to `0.0`, the least-harmful
+                    // stand-in for TS's unchecked `as number` on `undefined`.
+                    if let Some(behavior) = render.database.0.get_behavior(&enemy_type, "onHit") {
+                        let chance = behavior
+                            .params
+                            .get("chance")
+                            .and_then(|value| value.as_f64())
+                            .unwrap_or(0.0);
+                        if rng_ref.next_f64() < chance {
+                            let effect_type = behavior
+                                .params
+                                .get("statusEffect")
+                                .and_then(|value| value.as_str())
+                                .and_then(crate::projectiles::parse_status_effect_type);
+                            if let Some(effect_type) = effect_type {
+                                let duration = behavior
+                                    .params
+                                    .get("duration")
+                                    .and_then(|value| value.as_f64())
+                                    .unwrap_or(0.0);
+                                apply_effect(
+                                    &mut game.status_fx.player_status_effects,
+                                    effect_type,
+                                    duration,
+                                );
+                            }
+                        }
+                    }
                 }
-            }
-            EnemyActionType::StatusDamage => {
-                let key = door_key(action.from_col, action.from_row);
-                let render_key = layer_door_key(game.active_layer_index, &key);
-                if let Some(&entity) = render.billboards.by_key.get(&render_key) {
-                    render.feedback.flash(entity);
+                EnemyActionType::Regen => {
+                    let key = door_key(action.from_col, action.from_row);
+                    let render_key = layer_door_key(game.active_layer_index, &key);
+                    if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
+                        render.feedback.update_health_bar(
+                            &mut render.visibility,
+                            &mut render.item_render.materials,
+                            &render_key,
+                            enemy.hp,
+                            enemy.max_hp,
+                        );
+                    }
                 }
-                if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
-                    render.feedback.update_health_bar(
-                        &mut render.visibility,
-                        &mut render.item_render.materials,
-                        &render_key,
-                        enemy.hp,
-                        enemy.max_hp,
+                EnemyActionType::StatusDamage => {
+                    let key = door_key(action.from_col, action.from_row);
+                    let render_key = layer_door_key(game.active_layer_index, &key);
+                    if let Some(&entity) = render.billboards.by_key.get(&render_key) {
+                        render.feedback.flash(entity);
+                    }
+                    if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
+                        render.feedback.update_health_bar(
+                            &mut render.visibility,
+                            &mut render.item_render.materials,
+                            &render_key,
+                            enemy.hp,
+                            enemy.max_hp,
+                        );
+                    }
+                }
+                EnemyActionType::StatusKill => {
+                    let key = door_key(action.from_col, action.from_row);
+                    let render_key = layer_door_key(game.active_layer_index, &key);
+                    if let Some(&entity) = render.billboards.by_key.get(&render_key) {
+                        render.feedback.flash(entity);
+                    }
+                    // Unlike `damage_enemy`, the AI tick's direct hp mutation
+                    // doesn't remove the enemy from the map on death — do that
+                    // here before handing off to the shared kill effects.
+                    let Some(enemy) = game.active_layer_mut().enemies.remove(&key) else {
+                        continue;
+                    };
+                    let target = KillTarget {
+                        col: action.from_col,
+                        row: action.from_row,
+                        enemy_type: enemy.enemy_type,
+                        drops_override: enemy.drops,
+                        layer_index: game.active_layer_index,
+                    };
+                    let leveled = handle_kill(
+                        game,
+                        rng_ref,
+                        &mut render.billboards,
+                        &render.database.0,
+                        &render.loot_tables.0,
+                        &mut render.item_render,
+                        &target,
                     );
-                }
-            }
-            EnemyActionType::StatusKill => {
-                let key = door_key(action.from_col, action.from_row);
-                let render_key = layer_door_key(game.active_layer_index, &key);
-                if let Some(&entity) = render.billboards.by_key.get(&render_key) {
-                    render.feedback.flash(entity);
-                }
-                // Unlike `damage_enemy`, the AI tick's direct hp mutation
-                // doesn't remove the enemy from the map on death — do that
-                // here before handing off to the shared kill effects.
-                let Some(enemy) = game.active_layer_mut().enemies.remove(&key) else {
-                    continue;
-                };
-                let target = KillTarget {
-                    col: action.from_col,
-                    row: action.from_row,
-                    enemy_type: enemy.enemy_type,
-                    drops_override: enemy.drops,
-                    layer_index: game.active_layer_index,
-                };
-                let leveled = handle_kill(
-                    game,
-                    rng_ref,
-                    &mut render.billboards,
-                    &render.database.0,
-                    &render.loot_tables.0,
-                    &mut render.item_render,
-                    &target,
-                );
-                render.feedback.health_bars.remove(&render_key);
-                if leveled {
-                    render.hud.trigger_level_up(game.player.level);
+                    render.feedback.health_bars.remove(&render_key);
+                    if leveled {
+                        render.hud.trigger_level_up(game.player.level);
+                    }
                 }
             }
         }
     }
+
+    game.active_layer_index = saved_layer;
 }
 
 pub fn attack_input(

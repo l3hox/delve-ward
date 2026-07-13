@@ -295,7 +295,9 @@ pub fn update_fireball_explosions(
 
 // --- Launcher fire + projectile tick + hit resolution ---
 
-fn parse_status_effect_type(value: &str) -> Option<StatusEffectType> {
+/// TS's implicit string-to-enum cast on a behavior's `statusEffect` param —
+/// shared by the projectile-hit and enemy melee `onHit` paths.
+pub(crate) fn parse_status_effect_type(value: &str) -> Option<StatusEffectType> {
     match value {
         "poison" => Some(StatusEffectType::Poison),
         "slow" => Some(StatusEffectType::Slow),
