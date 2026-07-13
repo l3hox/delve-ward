@@ -275,34 +275,10 @@ pub fn spawn_player_cameras(
     });
 }
 
-/// `RenderLayers` for content meant to render in every zone pass — exposed
-/// so other slices (the skybox, per the phase 5 environment-zones scope
-/// note) can opt an entity into the same shared layer this module's
-/// untagged-entities-are-shared default already relies on, without
-/// depending on this module's other, cell-tagging-specific internals.
-///
-/// Unused within this crate until that skybox integration lands (verified by
-/// this module's own test, not a call site here) — `delve-game` is a binary
-/// crate, so a `pub` item with no in-crate caller yet reads as dead code to
-/// the bin target's own lint pass even though a sibling module will pick it
-/// up.
-#[must_use]
-#[allow(dead_code)]
-pub fn shared_layers() -> RenderLayers {
-    RenderLayers::layer(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use delve_core::level_loader::{ValidationContext, validate_dungeon_str};
-
-    #[test]
-    fn shared_layers_intersects_only_layer_zero() {
-        let layers = shared_layers();
-        assert!(layers.intersects(&RenderLayers::layer(0)));
-        assert!(!layers.intersects(&RenderLayers::layer(1)));
-    }
 
     fn layered_level() -> DungeonLevel {
         let path = crate::assets_dir().join("levels/dungeon_m1-layered.json");

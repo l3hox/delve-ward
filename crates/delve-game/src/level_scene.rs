@@ -535,6 +535,7 @@ pub fn spawn_level_scene(
         assets.images,
         assets.materials,
         scene.level,
+        &level_zones,
     );
 
     LevelSceneHandles {

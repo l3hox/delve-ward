@@ -468,6 +468,7 @@ fn main() {
                     doors::animate_door_panels,
                     levers::animate_levers,
                     torch::torch_update,
+                    skybox::follow_skybox_camera,
                     sconces::sconce_flicker,
                 )
                     .chain(),

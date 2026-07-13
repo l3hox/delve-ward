@@ -20,13 +20,14 @@
 //! `main.ts`'s render loop recenters the skybox mesh on the camera every
 //! frame (`skyboxMesh.position.copy(camera.position)`) so its bounds
 //! never come into view as the player walks. `follow_skybox_camera` ports
-//! that behavior; it is not yet wired into the app's system schedule
-//! (owned by `main.rs`, outside this module's scope).
+//! that behavior, registered in `main.rs`'s `Update` schedule.
 
 use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::player::Player;
 use crate::textures::{canvas_to_image, seed_for};
+use crate::zones::LevelZones;
+use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 use delve_core::types::{DungeonLevel, Skybox};
@@ -46,6 +47,7 @@ pub fn spawn_skybox(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
     level: &DungeonLevel,
+    zones: &LevelZones,
 ) {
     let Some(skybox) = level.skybox else {
         return;
@@ -66,22 +68,28 @@ pub fn spawn_skybox(
         ..default()
     });
 
-    commands.spawn((
-        Mesh3d(mesh),
-        MeshMaterial3d(material),
-        Transform::default(),
-        SkyboxRoot,
-        LevelEntity,
-    ));
+    let sphere = commands
+        .spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+            Transform::default(),
+            SkyboxRoot,
+            LevelEntity,
+        ))
+        .id();
+    // `levelSceneBuilder.ts:574`: `if (multiZone) skyboxMesh.layers.set(1)` —
+    // the sphere renders only in the first zone's pass (which also owns the
+    // clear). Single-zone levels leave it untagged on the default layer 0.
+    if zones.multi_zone {
+        commands.entity(sphere).insert(RenderLayers::layer(1));
+    }
 }
 
 /// Recenters the skybox sphere on the player every frame, matching
 /// `main.ts`'s `skyboxMesh.position.copy(camera.position)` so the sphere's
-/// bounds never come into view as the player walks the level.
-///
-/// Not yet registered in `main.rs`'s `Update` schedule; that wiring is
-/// outside this module's ownership for this slice.
-#[allow(dead_code)]
+/// bounds never come into view as the player walks the level. Zone cameras
+/// are children of the player at identity transforms, so player position
+/// and camera position coincide in both camera architectures.
 pub fn follow_skybox_camera(
     player: Query<&Transform, (With<Player>, Without<SkyboxRoot>)>,
     mut skyboxes: Query<&mut Transform, (With<SkyboxRoot>, Without<Player>)>,
