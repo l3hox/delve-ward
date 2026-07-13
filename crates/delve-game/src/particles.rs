@@ -67,26 +67,25 @@
 //! `torch.rs`'s `TorchFlicker` — visual character matches, exact frames
 //! don't need to.
 //!
-//! ## Registration (not wired by this module)
-//! Nothing here is called from `main.rs`/`level_scene.rs` yet — that
-//! wiring is a later integration pass. What it needs, once it exists:
-//!
-//! - **At level-scene spawn** (once per level load, mirroring
-//!   `props::spawn_props`/`sconces::spawn_sconces`'s call sites):
-//!   - [`spawn_dust_motes`] — pass `level.dust_motes != Some(false)` (TS
+//! ## Registration
+//! - **At level-scene spawn** (`level_scene.rs`, once per level load):
+//!   - [`spawn_dust_motes`] — `level.dust_motes != Some(false)` (TS
 //!     default: visible unless `dustMotes === false`, `main.ts:1122`).
-//!   - [`spawn_fireflies`] — pass `level.fireflies == Some(true)` (TS
-//!     default: off, `main.ts:1125`). Insert the returned [`FireflyPool`]
-//!     as a resource.
-//!   - [`spawn_water_drips`] — pass layer 0's grid/char_defs (TS predates
+//!   - [`spawn_fireflies`] — `level.fireflies == Some(true)` (TS
+//!     default: off, `main.ts:1125`); the returned [`FireflyPool`] is a
+//!     resource.
+//!   - [`spawn_water_drips`] — layer 0's grid/char_defs (TS predates
 //!     multi-layer for this system; see the module doc above) and
 //!     `level.water_drips == Some(true)` (TS default: off,
-//!     `main.ts:1124`). Insert the returned [`WaterDripPool`] as a
-//!     resource.
-//!   - After `sconces::spawn_sconces` returns its `SconceParts`, call
-//!     [`collect_ember_sources`] then [`spawn_embers`]; insert the
-//!     returned [`EmberPool`] as a resource. Re-run both once per level
-//!     load only — never per frame (see the module doc above).
+//!     `main.ts:1124`); the returned [`WaterDripPool`] is a resource.
+//!   - Embers can't spawn there: [`collect_ember_sources`] reads the
+//!     sconce heads' `GlobalTransform`s, and the scene spawn's own
+//!     commands haven't applied yet, let alone propagated. The scene
+//!     spawn inserts the [`EmbersPending`] marker instead, and
+//!     [`init_embers`] (registered in `PostUpdate` after
+//!     `TransformSystems::Propagate`) collects sources and builds the
+//!     [`EmberPool`] on the first frame the propagated positions exist —
+//!     still once per level load, matching TS's load-time `setSources`.
 //! - **In the `Update` schedule**, gated the same way `sconce_flicker` is
 //!   (`InputGate::paused()`, `overlay.rs`) — TS runs all four `.update()`
 //!   calls inside the same `if (!anyOverlayOpen)` block as sconce flicker
@@ -100,12 +99,6 @@
 //! - Run order between the systems above is free: the gated ones only
 //!   translate/scale/reactivate particles, `cull_distant_lights` only
 //!   touches light `Visibility`, and none read each other's output.
-//!
-//! Until that integration pass lands, nothing in this module is reachable
-//! from `main`, so every item below would otherwise trigger `dead_code` —
-//! see `skybox.rs`'s `follow_skybox_camera` for the same situation on a
-//! single function; here it applies file-wide.
-#![allow(dead_code)]
 
 use bevy::prelude::*;
 use delve_core::grid::build_walkable_set;
@@ -339,21 +332,72 @@ pub struct EmberPool {
 
 /// One-shot snapshot of every lit sconce's flame-head world position,
 /// matching `SconceEmbers.setSources` (`particles.ts:192-215`) reading
-/// `sconceGroup.children[3]`'s world position. `sconce_parts.torches`
-/// stores `[handle, head]` per sconce (`sconces.rs:175`) — index `1` is
-/// the head. Call once per level load, after `sconces::spawn_sconces`,
-/// not per frame (see the module doc's "Ember source snapshot" section).
+/// `sconceGroup.children[3]`'s world position from sconces whose
+/// `light.intensity !== 0` — an extinguished or torch-taken sconce emits
+/// nothing. `sconce_parts.torches` stores `[handle, head]` per sconce
+/// (`sconces.rs:175`) — index `1` is the head. Call once per level load,
+/// after `sconces::spawn_sconces`, not per frame (see the module doc's
+/// "Ember source snapshot" section).
 pub fn collect_ember_sources(
     sconce_parts: &SconceParts,
+    lights: &Query<&PointLight>,
     transforms: &Query<&GlobalTransform>,
 ) -> Vec<Vec3> {
     sconce_parts
         .lights
-        .keys()
-        .filter_map(|key| sconce_parts.torches.get(key))
+        .iter()
+        .filter(|(_, light)| {
+            lights
+                .get(**light)
+                .is_ok_and(|light| light.intensity != 0.0)
+        })
+        .filter_map(|(key, _)| sconce_parts.torches.get(key))
         .filter_map(|[_handle, head]| transforms.get(*head).ok())
         .map(GlobalTransform::translation)
         .collect()
+}
+
+/// Inserted by the level-scene spawn in place of an [`EmberPool`]: ember
+/// sources need the sconce heads' propagated `GlobalTransform`s, which
+/// don't exist until the frame the scene spawn's commands apply and
+/// propagate. [`init_embers`] consumes this and builds the pool.
+#[derive(Resource)]
+pub struct EmbersPending;
+
+/// Once-per-level-load ember initialization, deferred from the scene
+/// spawn (see [`EmbersPending`]). Registered in `PostUpdate` after
+/// `TransformSystems::Propagate`, so the first run after a scene spawn
+/// already sees real world positions — the same load-time-once semantics
+/// as TS's `setSources` call (`main.ts:1121`).
+pub fn init_embers(
+    mut commands: Commands,
+    pending: Option<Res<EmbersPending>>,
+    sconce_parts: Option<Res<SconceParts>>,
+    lights: Query<&PointLight>,
+    transforms: Query<&GlobalTransform>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if pending.is_none() {
+        return;
+    }
+    let Some(sconce_parts) = sconce_parts else {
+        return;
+    };
+    // A head entity the transform query can't see yet means this frame's
+    // commands haven't applied — retry next frame rather than snapshot a
+    // partial set.
+    let heads_ready = sconce_parts
+        .torches
+        .values()
+        .all(|[_handle, head]| transforms.contains(*head));
+    if !heads_ready {
+        return;
+    }
+    let sources = collect_ember_sources(&sconce_parts, &lights, &transforms);
+    let pool = spawn_embers(&mut commands, &mut meshes, &mut materials, sources);
+    commands.insert_resource(pool);
+    commands.remove_resource::<EmbersPending>();
 }
 
 /// Spawns the ember pool sized to `sources.len() * EMBER_COUNT_PER_SCONCE`
@@ -408,13 +452,18 @@ pub fn spawn_embers(
 }
 
 /// Gated the same way TS's `.update()` call is — see the module doc's
-/// "Registration" section.
+/// "Registration" section. The pool is optional because [`init_embers`]
+/// builds it a frame after the scene spawn (see [`EmbersPending`]) — until
+/// then there is nothing to update.
 pub fn update_embers(
     time: Res<Time>,
     gate: InputGate,
-    mut pool: ResMut<EmberPool>,
+    pool: Option<ResMut<EmberPool>>,
     mut embers: Query<(&mut Transform, &mut Ember, &mut Visibility)>,
 ) {
+    let Some(mut pool) = pool else {
+        return;
+    };
     if gate.paused() {
         return;
     }

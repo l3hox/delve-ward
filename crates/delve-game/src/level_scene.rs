@@ -17,6 +17,7 @@ use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
 use crate::npcs::{self, NpcBillboards};
+use crate::particles;
 use crate::plates::{self, PlateHandles};
 use crate::props;
 use crate::ramps;
@@ -561,6 +562,34 @@ pub fn spawn_level_scene(
         scene.level,
         &level_zones,
     );
+
+    // Particle systems are per-level, player-relative — spawned once here,
+    // not per layer. Pools become resources; embers defer to
+    // `particles::init_embers` since sconce head positions don't exist
+    // until this spawn's own commands apply (see particles.rs).
+    particles::spawn_dust_motes(
+        commands,
+        assets.meshes,
+        assets.materials,
+        scene.level.dust_motes != Some(false),
+    );
+    let fireflies = particles::spawn_fireflies(
+        commands,
+        assets.meshes,
+        assets.materials,
+        scene.level.fireflies == Some(true),
+    );
+    commands.insert_resource(fireflies);
+    let water_drips = particles::spawn_water_drips(
+        commands,
+        assets.meshes,
+        assets.materials,
+        &scene.level.layers[0].grid,
+        scene.level.char_defs.as_deref().unwrap_or(&[]),
+        scene.level.water_drips == Some(true),
+    );
+    commands.insert_resource(water_drips);
+    commands.insert_resource(particles::EmbersPending);
 
     LevelSceneHandles {
         door_panels,

@@ -59,6 +59,7 @@ mod zones;
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
+use bevy::transform::TransformSystems;
 use bevy::window::WindowFocused;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::{GameState, GameStateDeps, door_key};
@@ -491,6 +492,27 @@ fn main() {
                     .chain(),
             )
                 .chain(),
+        )
+        // Particle updates gate themselves (InputGate::paused, matching
+        // TS's anyOverlayOpen block); cull_distant_lights runs unmuted like
+        // TS's own culling loop. Order among these is free — none reads
+        // another's output.
+        .add_systems(
+            Update,
+            (
+                particles::update_dust_motes,
+                particles::update_embers,
+                particles::update_fireflies,
+                particles::update_water_drips,
+                particles::update_splash_rings,
+                particles::cull_distant_lights,
+            ),
+        )
+        // After propagation so the first run after a scene spawn sees the
+        // sconce heads' real world positions (see particles::init_embers).
+        .add_systems(
+            PostUpdate,
+            particles::init_embers.after(TransformSystems::Propagate),
         )
         .run();
 }
