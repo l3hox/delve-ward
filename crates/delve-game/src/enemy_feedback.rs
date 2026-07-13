@@ -21,7 +21,7 @@ use crate::enemies::EnemyBillboards;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{GameState, layer_door_key};
 use std::collections::HashMap;
 
 /// Matches TS's `ENEMY_DAMAGE_FLASH_DURATION` (`main.ts`).
@@ -184,7 +184,8 @@ pub fn spawn_health_bars(
     let fill_mesh = meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT * 0.7));
 
     for (key, enemy) in &game.active_layer().enemies {
-        let Some(&parent) = billboards.by_key.get(key) else {
+        let render_key = layer_door_key(game.active_layer_index, key);
+        let Some(&parent) = billboards.by_key.get(&render_key) else {
             continue;
         };
         let def = database.get_enemy(&enemy.enemy_type);
@@ -224,7 +225,7 @@ pub fn spawn_health_bars(
         commands.entity(anchor).add_child(fill);
 
         health_bars.by_key.insert(
-            key.clone(),
+            render_key,
             HealthBarHandles {
                 anchor,
                 fill,

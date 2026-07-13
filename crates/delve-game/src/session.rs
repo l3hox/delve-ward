@@ -19,7 +19,7 @@ use crate::wall_entities::{self, WallEntityHandles};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::game_state::{
-    DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent, door_key,
+    DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent, door_key, layer_door_key,
 };
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
@@ -268,6 +268,7 @@ pub fn on_player_moved(
         // Safety: if the player ended up on a closed door cell, force it
         // open and hand it to the blocked-door retry cycle.
         let key = delve_core::game_state::door_key(col, row);
+        let render_key = layer_door_key(game.active_layer_index, &key);
         let closed_underfoot = game
             .active_layer()
             .doors
@@ -275,9 +276,14 @@ pub fn on_player_moved(
             .is_some_and(|door| door.state == DoorState::Closed);
         if closed_underfoot {
             set_door_state(game, &key, DoorState::Open);
-            set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+            set_panel_open(
+                &signal.door_panels,
+                &mut signal.panel_query,
+                &render_key,
+                true,
+            );
             signal.blocked_doors.by_key.insert(
-                key,
+                render_key,
                 BlockedDoor {
                     col,
                     row,
@@ -297,15 +303,23 @@ pub fn on_player_moved(
             keys::hide_key_mesh(
                 &mut key_billboards,
                 &mut item_render.commands,
-                &delve_core::game_state::door_key(col, row),
+                &layer_door_key(
+                    game.active_layer_index,
+                    &delve_core::game_state::door_key(col, row),
+                ),
             );
         }
         ground_items::handle_pickups(game, &mut item_render, &mut hud, col, row);
 
         let key = delve_core::game_state::door_key(col, row);
+        let render_key = layer_door_key(game.active_layer_index, &key);
         game.activate_trigger(col, row);
         if game.activate_tripwire(col, row) {
-            tripwires::hide_tripwire_mesh(&signal.tripwires, &mut item_render.commands, &key);
+            tripwires::hide_tripwire_mesh(
+                &signal.tripwires,
+                &mut item_render.commands,
+                &render_key,
+            );
             hud.show_message("Oops! A tripwire!");
         }
         let pressed = game.activate_pressure_plate(col, row).is_some()
@@ -315,7 +329,8 @@ pub fn on_player_moved(
                 .get(&key)
                 .is_some_and(|plate| plate.activated);
         if pressed {
-            plates::press_plate(&mut signal.plate, &key);
+            let layer_y_offset = game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
+            plates::press_plate(&mut signal.plate, &render_key, layer_y_offset);
         }
 
         // Torch fuel drains one unit per step, except in environments with
@@ -406,25 +421,33 @@ fn tick_blocked_doors(
 ) {
     let mut close_now = Vec::new();
     let mut bounce_now = Vec::new();
-    for (key, entry) in &mut signal.blocked_doors.by_key {
+    for (render_key, entry) in &mut signal.blocked_doors.by_key {
         entry.timer -= delta;
         if entry.timer > 0.0 {
             continue;
         }
         if is_door_cell_occupied(game, player_cell, entry.col, entry.row) {
             entry.timer = DOOR_RETRY_INTERVAL;
-            bounce_now.push(key.clone());
+            bounce_now.push(render_key.clone());
         } else {
-            close_now.push(key.clone());
+            close_now.push(render_key.clone());
         }
     }
-    for key in close_now {
-        signal.blocked_doors.by_key.remove(&key);
+    for render_key in close_now {
+        let Some(entry) = signal.blocked_doors.by_key.remove(&render_key) else {
+            continue;
+        };
+        let key = delve_core::game_state::door_key(entry.col, entry.row);
         set_door_state(game, &key, DoorState::Closed);
-        set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+        set_panel_open(
+            &signal.door_panels,
+            &mut signal.panel_query,
+            &render_key,
+            false,
+        );
     }
-    for key in bounce_now {
-        bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
+    for render_key in bounce_now {
+        bounce_panel(&signal.door_panels, &mut signal.panel_query, &render_key);
     }
 }
 
@@ -477,40 +500,63 @@ pub fn apply_world_events(
     player_cell: (i64, i64),
     signal: &mut SignalRenderState,
 ) {
+    // Events are always drained the same frame they're produced, and
+    // gameplay only ever mutates `active_layer_mut()`, so `active_layer_index`
+    // unambiguously names the layer every event's `(col, row)` belongs to.
+    let active_layer_index = game.active_layer_index;
+    let layer_y_offset = active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
     for event in events {
         match event {
             WorldEvent::DoorSignalChanged { col, row, open } => {
                 let key = delve_core::game_state::door_key(col, row);
+                let render_key = layer_door_key(active_layer_index, &key);
                 if open {
-                    signal.blocked_doors.by_key.remove(&key);
-                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, true);
+                    signal.blocked_doors.by_key.remove(&render_key);
+                    set_panel_open(
+                        &signal.door_panels,
+                        &mut signal.panel_query,
+                        &render_key,
+                        true,
+                    );
                 } else if is_door_cell_occupied(game, player_cell, col, row) {
                     set_door_state(game, &key, DoorState::Open);
                     signal.blocked_doors.by_key.insert(
-                        key.clone(),
+                        render_key.clone(),
                         BlockedDoor {
                             col,
                             row,
                             timer: DOOR_RETRY_INTERVAL,
                         },
                     );
-                    bounce_panel(&signal.door_panels, &mut signal.panel_query, &key);
+                    bounce_panel(&signal.door_panels, &mut signal.panel_query, &render_key);
                 } else {
-                    signal.blocked_doors.by_key.remove(&key);
-                    set_panel_open(&signal.door_panels, &mut signal.panel_query, &key, false);
+                    signal.blocked_doors.by_key.remove(&render_key);
+                    set_panel_open(
+                        &signal.door_panels,
+                        &mut signal.panel_query,
+                        &render_key,
+                        false,
+                    );
                 }
             }
             WorldEvent::LeverReset { col, row } => {
                 levers::set_lever_target(
                     &mut signal.lever,
-                    &delve_core::game_state::door_key(col, row),
+                    &layer_door_key(
+                        active_layer_index,
+                        &delve_core::game_state::door_key(col, row),
+                    ),
                     LeverState::Up,
                 );
             }
             WorldEvent::PlateReset { col, row } => {
                 plates::release_plate(
                     &mut signal.plate,
-                    &delve_core::game_state::door_key(col, row),
+                    &layer_door_key(
+                        active_layer_index,
+                        &delve_core::game_state::door_key(col, row),
+                    ),
+                    layer_y_offset,
                 );
             }
             WorldEvent::ChestSignalChanged { col, row, open } => {
@@ -598,6 +644,10 @@ pub fn interact_input(
     let facing_cell = delve_core::grid::get_facing_cell(player_state);
     let facing_key =
         delve_core::game_state::door_key(i64::from(facing_cell.0), i64::from(facing_cell.1));
+    // The facing cell is always on the player's own (active) layer —
+    // interaction only ever targets what the player is standing in front
+    // of.
+    let facing_render_key = layer_door_key(session.game.active_layer_index, &facing_key);
 
     let result = {
         let Session { game, grid, .. } = &mut *session;
@@ -609,7 +659,7 @@ pub fn interact_input(
             set_panel_open(
                 &signal.door_panels,
                 &mut signal.panel_query,
-                &facing_key,
+                &facing_render_key,
                 true,
             );
         }
@@ -617,12 +667,12 @@ pub fn interact_input(
             set_panel_open(
                 &signal.door_panels,
                 &mut signal.panel_query,
-                &facing_key,
+                &facing_render_key,
                 false,
             );
         }
         InteractionType::DoorBlocked => {
-            if let Some(&entity) = signal.door_panels.by_key.get(&facing_key)
+            if let Some(&entity) = signal.door_panels.by_key.get(&facing_render_key)
                 && let Ok(mut panel) = signal.panel_query.get_mut(entity)
             {
                 panel.bounce();
@@ -631,9 +681,12 @@ pub fn interact_input(
         InteractionType::SconceTaken => {
             sconces::extinguish_sconce(
                 &mut sconce_render,
-                &delve_core::game_state::door_key(
-                    i64::from(player_state.col),
-                    i64::from(player_state.row),
+                &layer_door_key(
+                    session.game.active_layer_index,
+                    &delve_core::game_state::door_key(
+                        i64::from(player_state.col),
+                        i64::from(player_state.row),
+                    ),
                 ),
             );
         }
@@ -642,12 +695,16 @@ pub fn interact_input(
                 let Some(position) = session.game.resolve_entity_position(target) else {
                     continue;
                 };
-                let (col, row) = (position.col, position.row);
+                let (col, row, target_layer_index) =
+                    (position.col, position.row, position.layer_index);
                 let open = session.game.is_door_open(col, row);
                 set_panel_open(
                     &signal.door_panels,
                     &mut signal.panel_query,
-                    &delve_core::game_state::door_key(col, row),
+                    &layer_door_key(
+                        target_layer_index,
+                        &delve_core::game_state::door_key(col, row),
+                    ),
                     open,
                 );
             }
@@ -659,7 +716,10 @@ pub fn interact_input(
             {
                 levers::set_lever_target(
                     &mut signal.lever,
-                    &delve_core::game_state::door_key(lever_col, lever_row),
+                    &layer_door_key(
+                        session.game.active_layer_index,
+                        &delve_core::game_state::door_key(lever_col, lever_row),
+                    ),
                     state,
                 );
             }
@@ -796,7 +856,7 @@ pub(crate) fn apply_inventory_action(
         && let Some(def) = item_render.items.0.get_item(&entity.item_id)
     {
         let kind = ground_items::ItemKind::of(def.item_type);
-        ground_items::add_single_item_mesh(item_render, kind, &entity);
+        ground_items::add_single_item_mesh(item_render, kind, &entity, game.active_layer_index);
     }
 }
 

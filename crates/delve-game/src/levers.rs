@@ -7,7 +7,7 @@ use crate::level_scene::LevelEntity;
 use crate::sconces::wall_direction;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, LeverState};
+use delve_core::game_state::{LayerState, LeverState, layer_door_key};
 use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 
@@ -46,10 +46,12 @@ pub fn spawn_levers(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer: &LayerState,
+    layer_index: usize,
+    layer_y_offset: f32,
 ) -> LeverHandles {
     let mut handles = LeverHandles::default();
-    if game.active_layer().levers.is_empty() {
+    if layer.levers.is_empty() {
         return handles;
     }
 
@@ -72,7 +74,7 @@ pub fn spawn_levers(
     let handle_material = materials.add(lambert(Color::srgb_u8(0x88, 0x66, 0x44)));
     let knob_material = materials.add(lambert(Color::srgb_u8(0x44, 0x44, 0x44)));
 
-    for (key, lever) in &game.active_layer().levers {
+    for (key, lever) in &layer.levers {
         let center_x = lever.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = lever.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let (dir_x, dir_z, rotation_y) = wall_direction(lever.wall);
@@ -83,7 +85,7 @@ pub fn spawn_levers(
                 LevelEntity,
                 Transform::from_xyz(
                     center_x + dir_x * offset_dist,
-                    LEVER_HEIGHT,
+                    LEVER_HEIGHT + layer_y_offset,
                     center_z + dir_z * offset_dist,
                 )
                 .with_rotation(Quat::from_rotation_y(rotation_y)),
@@ -132,7 +134,9 @@ pub fn spawn_levers(
             .id();
         commands.entity(pivot).add_child(knob);
 
-        handles.by_key.insert(key.clone(), pivot);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_index, key), pivot);
     }
     handles
 }

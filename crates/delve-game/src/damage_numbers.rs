@@ -71,6 +71,7 @@ pub fn spawn_damage_number(
     materials: &mut Assets<StandardMaterial>,
     damage: f64,
     (col, row): (i64, i64),
+    layer_y_offset: f32,
 ) {
     let texture = images.add(canvas_to_image(number_texture(damage)));
     let material = materials.add(StandardMaterial {
@@ -92,7 +93,8 @@ pub fn spawn_damage_number(
         },
         Mesh3d(meshes.add(Rectangle::new(1.0, 1.0))),
         MeshMaterial3d(material),
-        Transform::from_xyz(center_x, 1.4, center_z).with_scale(Vec3::splat(NUMBER_SIZE)),
+        Transform::from_xyz(center_x, 1.4 + layer_y_offset, center_z)
+            .with_scale(Vec3::splat(NUMBER_SIZE)),
     ));
 }
 

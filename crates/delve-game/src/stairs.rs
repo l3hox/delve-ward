@@ -9,10 +9,9 @@ use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, StairDirection};
+use delve_core::game_state::{LayerState, StairDirection};
 use delve_core::grid::Facing;
 use delve_core::texture_resolver::resolve_textures;
-use delve_core::types::DungeonLevel;
 use std::collections::HashSet;
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -123,21 +122,24 @@ pub fn spawn_stairs(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &DungeonMaterials,
-    game: &GameState,
-    level: &DungeonLevel,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
     grid: &[String],
     walkable: &HashSet<char>,
 ) {
-    for stair in game.active_layer().stairs.values() {
+    let (layer_defaults, layer_areas) = layer_spawn.texture_style();
+    let layer_y_offset = layer_spawn.y_offset;
+
+    for stair in layer_state.stairs.values() {
         let (col, row) = (stair.col, stair.row);
         let character = cell_char(grid, col, row).unwrap_or('.');
         let textures = resolve_textures(
             col as i32,
             row as i32,
             character,
-            level.defaults.as_ref(),
-            level.char_defs.as_deref(),
-            level.areas.as_deref(),
+            layer_defaults,
+            layer_spawn.level.char_defs.as_deref(),
+            layer_areas,
         );
         let step_material = materials.floor(&textures.floor);
         let side_material = materials.wall_repeat(&textures.wall);
@@ -153,7 +155,7 @@ pub fn spawn_stairs(
         let parent = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, 0.0, center_z)
+                Transform::from_xyz(center_x, layer_y_offset, center_z)
                     .with_rotation(Quat::from_rotation_y(facing_rotation(stair.facing))),
                 Visibility::default(),
             ))

@@ -5,7 +5,7 @@
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, TripwireOrientation};
+use delve_core::game_state::{LayerState, TripwireOrientation, layer_door_key};
 use std::collections::HashMap;
 use std::f32::consts::FRAC_PI_2;
 
@@ -23,10 +23,12 @@ pub fn spawn_tripwires(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer: &LayerState,
+    layer_index: usize,
+    layer_y_offset: f32,
 ) -> TripwireHandles {
     let mut handles = TripwireHandles::default();
-    if game.active_layer().tripwires.is_empty() {
+    if layer.tripwires.is_empty() {
         return handles;
     }
 
@@ -39,7 +41,7 @@ pub fn spawn_tripwires(
         ..default()
     });
 
-    for (key, tripwire) in &game.active_layer().tripwires {
+    for (key, tripwire) in &layer.tripwires {
         if tripwire.triggered {
             continue;
         }
@@ -60,10 +62,13 @@ pub fn spawn_tripwires(
                 LevelEntity,
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material.clone()),
-                Transform::from_xyz(center_x, WIRE_HEIGHT, center_z).with_rotation(rotation),
+                Transform::from_xyz(center_x, WIRE_HEIGHT + layer_y_offset, center_z)
+                    .with_rotation(rotation),
             ))
             .id();
-        handles.by_key.insert(key.clone(), entity);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_index, key), entity);
     }
     handles
 }

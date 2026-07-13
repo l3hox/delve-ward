@@ -26,7 +26,7 @@ use crate::session::{DungeonRes, GameRng, Session};
 use crate::torch::LUMENS_PER_THREE_UNIT;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::{GameState, WorldEvent, door_key};
+use delve_core::game_state::{GameState, WorldEvent, door_key, layer_door_key};
 use delve_core::projectiles::{
     HitType, Projectile, ProjectileHitEvent, ProjectileManager, ProjectileUpdateContext,
     SpawnOptions,
@@ -446,6 +446,7 @@ fn apply_projectile_hit(
         }
         HitType::Enemy => {
             let key = door_key(event.col, event.row);
+            let render_key = layer_door_key(game.active_layer_index, &key);
             let dying_enemy = {
                 let Some(enemy) = game.active_layer_mut().enemies.get_mut(&key) else {
                     return;
@@ -469,12 +470,13 @@ fn apply_projectile_hit(
             // the module doc comment), so these no-op cleanly for
             // background-layer hits — matching TS's own `render_visuals`
             // gate on the mesh-dependent parts of this same callback.
-            if let Some(&entity) = effects.enemies.by_key.get(&key) {
+            if let Some(&entity) = effects.enemies.by_key.get(&render_key) {
                 effects.feedback.flash(entity);
                 effects.feedback.trigger_hit_shake(entity);
             }
             let killed = game.damage_enemy(event.col, event.row, event.projectile.damage);
             if render_visuals {
+                let layer_y_offset = game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
                 crate::damage_numbers::spawn_damage_number(
                     &mut effects.item_render.commands,
                     &mut effects.item_render.meshes,
@@ -482,6 +484,7 @@ fn apply_projectile_hit(
                     &mut effects.item_render.materials,
                     event.projectile.damage,
                     (event.col, event.row),
+                    layer_y_offset,
                 );
             }
             if killed {
@@ -501,7 +504,7 @@ fn apply_projectile_hit(
                     &mut effects.item_render,
                     &target,
                 );
-                effects.feedback.health_bars.remove(&key);
+                effects.feedback.health_bars.remove(&render_key);
                 if leveled {
                     effects.hud.trigger_level_up(game.player.level);
                 }
@@ -510,7 +513,7 @@ fn apply_projectile_hit(
                 effects.feedback.update_health_bar(
                     &mut effects.visibility,
                     &mut effects.item_render.materials,
-                    &key,
+                    &render_key,
                     hp,
                     max_hp,
                 );

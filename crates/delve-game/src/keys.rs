@@ -7,7 +7,7 @@ use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
 use crate::textures::canvas_to_image;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
 
 const KEY_SIZE: f32 = 0.4;
@@ -43,10 +43,12 @@ pub fn spawn_keys(
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer: &LayerState,
+    layer_index: usize,
+    layer_y_offset: f32,
 ) -> KeyBillboards {
     let mut billboards = KeyBillboards::default();
-    if game.active_layer().keys.is_empty() {
+    if layer.keys.is_empty() {
         return billboards;
     }
 
@@ -62,7 +64,7 @@ pub fn spawn_keys(
     });
     let mesh = meshes.add(Rectangle::new(KEY_SIZE, KEY_SIZE));
 
-    for (map_key, key_instance) in &game.active_layer().keys {
+    for (map_key, key_instance) in &layer.keys {
         if key_instance.picked_up {
             continue;
         }
@@ -74,10 +76,12 @@ pub fn spawn_keys(
                 FacesCamera,
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material.clone()),
-                Transform::from_xyz(center_x, KEY_HEIGHT, center_z),
+                Transform::from_xyz(center_x, KEY_HEIGHT + layer_y_offset, center_z),
             ))
             .id();
-        billboards.by_key.insert(map_key.clone(), entity);
+        billboards
+            .by_key
+            .insert(layer_door_key(layer_index, map_key), entity);
     }
     billboards
 }

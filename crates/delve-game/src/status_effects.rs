@@ -11,6 +11,7 @@ use crate::overlay::InputGate;
 use crate::player::Player;
 use crate::session::Session;
 use bevy::prelude::*;
+use delve_core::game_state::layer_door_key;
 use delve_core::player_controller::{
     PLAYER_DAMAGE_FLASH_DURATION, PlayerTickState, tick_player_controller,
 };
@@ -95,7 +96,8 @@ pub fn tint_enemy_status_effects(
 ) {
     let delta = time.delta_secs();
     for (key, enemy) in &session.game.active_layer().enemies {
-        let Some(&entity) = billboards.by_key.get(key) else {
+        let render_key = layer_door_key(session.game.active_layer_index, key);
+        let Some(&entity) = billboards.by_key.get(&render_key) else {
             continue;
         };
         let Ok((material_handle, mut flash)) = billboard_query.get_mut(entity) else {

@@ -8,7 +8,7 @@ use crate::pixel_canvas::{CanvasRng, PixelCanvas, Rgba};
 use crate::textures::{canvas_to_image, seed_for};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use std::collections::HashMap;
 
 const PLATE_SIZE: f32 = 0.8;
@@ -69,10 +69,12 @@ pub fn spawn_plates(
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer: &LayerState,
+    layer_index: usize,
+    layer_y_offset: f32,
 ) -> PlateHandles {
     let mut handles = PlateHandles::default();
-    if game.active_layer().plates.is_empty() {
+    if layer.plates.is_empty() {
         return handles;
     }
 
@@ -97,7 +99,7 @@ pub fn spawn_plates(
     )));
     let pressed_material = materials.add(lambert_texture(pressed_image));
 
-    for (key, plate) in &game.active_layer().plates {
+    for (key, plate) in &layer.plates {
         let center_x = plate.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = plate.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let material = if plate.activated {
@@ -105,11 +107,11 @@ pub fn spawn_plates(
         } else {
             normal_material.clone()
         };
-        let y = if plate.activated {
+        let y = (if plate.activated {
             PLATE_Y_PRESSED
         } else {
             PLATE_Y
-        };
+        }) + layer_y_offset;
 
         let entity = commands
             .spawn((
@@ -120,7 +122,9 @@ pub fn spawn_plates(
                 Transform::from_xyz(center_x, y, center_z),
             ))
             .id();
-        handles.by_key.insert(key.clone(), entity);
+        handles
+            .by_key
+            .insert(layer_door_key(layer_index, key), entity);
     }
 
     handles.normal_material = normal_material;
@@ -143,24 +147,24 @@ pub struct PlateRender<'w, 's> {
     >,
 }
 
-pub fn press_plate(render: &mut PlateRender, key: &str) {
+pub fn press_plate(render: &mut PlateRender, key: &str, layer_y_offset: f32) {
     let Some(&entity) = render.handles.by_key.get(key) else {
         return;
     };
     let pressed_material = render.handles.pressed_material.clone();
     if let Ok((mut material, mut transform)) = render.visuals.get_mut(entity) {
         material.0 = pressed_material;
-        transform.translation.y = PLATE_Y_PRESSED;
+        transform.translation.y = PLATE_Y_PRESSED + layer_y_offset;
     }
 }
 
-pub fn release_plate(render: &mut PlateRender, key: &str) {
+pub fn release_plate(render: &mut PlateRender, key: &str, layer_y_offset: f32) {
     let Some(&entity) = render.handles.by_key.get(key) else {
         return;
     };
     let normal_material = render.handles.normal_material.clone();
     if let Ok((mut material, mut transform)) = render.visuals.get_mut(entity) {
         material.0 = normal_material;
-        transform.translation.y = PLATE_Y;
+        transform.translation.y = PLATE_Y + layer_y_offset;
     }
 }

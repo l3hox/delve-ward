@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use delve_core::combat::{CombatResultType, enemy_attack_player, player_attack};
 use delve_core::enemies::{DEFAULT_SPRITE_SIZE, EnemyDatabase};
 use delve_core::enemy_ai::{EnemyActionType, EnemyUpdateContext, update_enemies};
-use delve_core::game_state::{DoorState, GameState, door_key};
+use delve_core::game_state::{DoorState, GameState, LayerState, door_key, layer_door_key};
 use delve_core::loot::{DropsOverride, LootTables};
 use delve_core::random::Mulberry32;
 use std::collections::{HashMap, HashSet};
@@ -81,13 +81,16 @@ pub fn spawn_enemy_billboards(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
-    game: &delve_core::game_state::GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
     database: &EnemyDatabase,
 ) -> EnemyBillboards {
+    let layer_index = layer_spawn.index;
+    let layer_y_offset = layer_spawn.y_offset;
     let mut billboards = EnemyBillboards::default();
-    for (key, enemy) in &game.active_layer().enemies {
+    for (key, enemy) in &layer_state.enemies {
         let def = database.get_enemy(&enemy.enemy_type);
-        let (size, y_offset) = sprite_dimensions(def);
+        let (size, sprite_y_offset) = sprite_dimensions(def);
         let texture_path = def
             .map(|def| sprite_asset_path(&def.sprite.path))
             .unwrap_or_else(|| "sprites/skeleton.png".to_string());
@@ -112,10 +115,16 @@ pub fn spawn_enemy_billboards(
                 crate::enemy_feedback::EnemyHitShake::default(),
                 Mesh3d(meshes.add(Rectangle::new(size, size))),
                 MeshMaterial3d(material),
-                Transform::from_xyz(center_x, size * 0.5 + y_offset, center_z),
+                Transform::from_xyz(
+                    center_x,
+                    size * 0.5 + sprite_y_offset + layer_y_offset,
+                    center_z,
+                ),
             ))
             .id();
-        billboards.by_key.insert(key.clone(), entity);
+        billboards
+            .by_key
+            .insert(layer_door_key(layer_index, key), entity);
     }
     billboards
 }
@@ -186,9 +195,13 @@ pub fn tick_enemies(
                 let (Some(to_col), Some(to_row)) = (action.to_col, action.to_row) else {
                     continue;
                 };
-                let old_key = door_key(action.from_col, action.from_row);
+                let old_key = layer_door_key(
+                    game.active_layer_index,
+                    &door_key(action.from_col, action.from_row),
+                );
                 if let Some(entity) = render.billboards.by_key.remove(&old_key) {
-                    let new_key = door_key(to_col, to_row);
+                    let new_key =
+                        layer_door_key(game.active_layer_index, &door_key(to_col, to_row));
                     render.billboards.by_key.insert(new_key.clone(), entity);
                     render.feedback.health_bars.rekey(&old_key, &new_key);
                     if let Ok(mut transform) = render.transforms.get_mut(entity) {
@@ -219,11 +232,12 @@ pub fn tick_enemies(
             }
             EnemyActionType::Regen => {
                 let key = door_key(action.from_col, action.from_row);
+                let render_key = layer_door_key(game.active_layer_index, &key);
                 if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
                     render.feedback.update_health_bar(
                         &mut render.visibility,
                         &mut render.item_render.materials,
-                        &key,
+                        &render_key,
                         enemy.hp,
                         enemy.max_hp,
                     );
@@ -231,14 +245,15 @@ pub fn tick_enemies(
             }
             EnemyActionType::StatusDamage => {
                 let key = door_key(action.from_col, action.from_row);
-                if let Some(&entity) = render.billboards.by_key.get(&key) {
+                let render_key = layer_door_key(game.active_layer_index, &key);
+                if let Some(&entity) = render.billboards.by_key.get(&render_key) {
                     render.feedback.flash(entity);
                 }
                 if let Some(enemy) = game.get_enemy(action.from_col, action.from_row) {
                     render.feedback.update_health_bar(
                         &mut render.visibility,
                         &mut render.item_render.materials,
-                        &key,
+                        &render_key,
                         enemy.hp,
                         enemy.max_hp,
                     );
@@ -246,7 +261,8 @@ pub fn tick_enemies(
             }
             EnemyActionType::StatusKill => {
                 let key = door_key(action.from_col, action.from_row);
-                if let Some(&entity) = render.billboards.by_key.get(&key) {
+                let render_key = layer_door_key(game.active_layer_index, &key);
+                if let Some(&entity) = render.billboards.by_key.get(&render_key) {
                     render.feedback.flash(entity);
                 }
                 // Unlike `damage_enemy`, the AI tick's direct hp mutation
@@ -270,7 +286,7 @@ pub fn tick_enemies(
                     &mut render.item_render,
                     &target,
                 );
-                render.feedback.health_bars.remove(&key);
+                render.feedback.health_bars.remove(&render_key);
                 if leveled {
                     render.hud.trigger_level_up(game.player.level);
                 }
@@ -294,6 +310,7 @@ pub fn attack_input(
     let Ok(player) = players.single() else {
         return;
     };
+    let layer_y_offset = session.game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
     let results = {
         let rng = &mut rng.0;
         let mut random = || rng.next_f64();
@@ -318,12 +335,13 @@ pub fn attack_input(
                     result.enemy_type.as_deref().unwrap_or("enemy"),
                     result.damage.unwrap_or(0.0)
                 );
-                spawn_hit_number(&mut kill_effects, &result);
+                spawn_hit_number(&mut kill_effects, &result, layer_y_offset);
                 let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
                     continue;
                 };
-                let key = door_key(col, row);
-                if let Some(&entity) = billboards.by_key.get(&key) {
+                let render_key =
+                    layer_door_key(session.game.active_layer_index, &door_key(col, row));
+                if let Some(&entity) = billboards.by_key.get(&render_key) {
                     kill_effects.feedback.flash(entity);
                     kill_effects.feedback.trigger_hit_shake(entity);
                 }
@@ -331,7 +349,7 @@ pub fn attack_input(
                     kill_effects.feedback.update_health_bar(
                         &mut kill_effects.visibility,
                         &mut kill_effects.item_render.materials,
-                        &key,
+                        &render_key,
                         enemy.hp,
                         enemy.max_hp,
                     );
@@ -342,12 +360,13 @@ pub fn attack_input(
                     "You slay the {}!",
                     result.enemy_type.as_deref().unwrap_or("enemy")
                 );
-                spawn_hit_number(&mut kill_effects, &result);
+                spawn_hit_number(&mut kill_effects, &result, layer_y_offset);
                 let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
                     continue;
                 };
-                let key = door_key(col, row);
-                if let Some(&entity) = billboards.by_key.get(&key) {
+                let render_key =
+                    layer_door_key(session.game.active_layer_index, &door_key(col, row));
+                if let Some(&entity) = billboards.by_key.get(&render_key) {
                     kill_effects.feedback.flash(entity);
                     kill_effects.feedback.trigger_hit_shake(entity);
                 }
@@ -366,7 +385,7 @@ pub fn attack_input(
                     &mut kill_effects.item_render,
                     &target,
                 );
-                kill_effects.feedback.health_bars.remove(&key);
+                kill_effects.feedback.health_bars.remove(&render_key);
                 if leveled {
                     kill_effects.hud.trigger_level_up(session.game.player.level);
                 }
@@ -375,7 +394,7 @@ pub fn attack_input(
                 let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
                     continue;
                 };
-                spawn_hit_number(&mut kill_effects, &result);
+                spawn_hit_number(&mut kill_effects, &result, layer_y_offset);
                 // TS wires wall hits through `damageBreakableWall` in
                 // inputSystem.ts: hp tracking, grid mutation, and the loot
                 // drop comes from the destroy outcome, not the combat
@@ -411,10 +430,10 @@ pub fn attack_input(
             // never calls `hud.showMessage`, unlike every other combat
             // result here, so none is added.
             CombatResultType::BarrelHit => {
-                spawn_hit_number(&mut kill_effects, &result);
+                spawn_hit_number(&mut kill_effects, &result, layer_y_offset);
             }
             CombatResultType::BarrelDestroy => {
-                spawn_hit_number(&mut kill_effects, &result);
+                spawn_hit_number(&mut kill_effects, &result, layer_y_offset);
                 let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
                     continue;
                 };
@@ -444,7 +463,11 @@ pub fn attack_input(
     }
 }
 
-fn spawn_hit_number(effects: &mut KillEffects, result: &delve_core::combat::CombatResult) {
+fn spawn_hit_number(
+    effects: &mut KillEffects,
+    result: &delve_core::combat::CombatResult,
+    layer_y_offset: f32,
+) {
     let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
         return;
     };
@@ -455,6 +478,7 @@ fn spawn_hit_number(effects: &mut KillEffects, result: &delve_core::combat::Comb
         &mut effects.item_render.materials,
         result.damage.unwrap_or(0.0),
         (col, row),
+        layer_y_offset,
     );
 }
 
@@ -506,8 +530,8 @@ pub(crate) fn handle_kill(
     item_render: &mut GroundItemRender,
     target: &KillTarget,
 ) -> bool {
-    let key = door_key(target.col, target.row);
-    if let Some(entity) = billboards.by_key.remove(&key) {
+    let render_key = layer_door_key(game.active_layer_index, &door_key(target.col, target.row));
+    if let Some(entity) = billboards.by_key.remove(&render_key) {
         item_render.commands.entity(entity).despawn();
     }
 

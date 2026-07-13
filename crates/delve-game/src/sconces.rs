@@ -7,7 +7,7 @@ use crate::level_scene::LevelEntity;
 use crate::torch::LUMENS_PER_THREE_UNIT;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use delve_core::game_state::GameState;
+use delve_core::game_state::{LayerState, layer_door_key};
 use delve_core::grid::Facing;
 use delve_core::random::Mulberry32;
 use std::collections::HashMap;
@@ -70,10 +70,12 @@ pub fn spawn_sconces(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    game: &GameState,
+    layer: &LayerState,
+    layer_index: usize,
+    layer_y_offset: f32,
 ) -> SconceParts {
     let mut parts = SconceParts::default();
-    if game.active_layer().sconces.is_empty() {
+    if layer.sconces.is_empty() {
         return parts;
     }
 
@@ -115,7 +117,7 @@ pub fn spawn_sconces(
     });
     let dead_flame_material = materials.add(lambert(Color::srgb_u8(0x33, 0x22, 0x11)));
 
-    for (key, sconce) in &game.active_layer().sconces {
+    for (key, sconce) in &layer.sconces {
         let center_x = sconce.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = sconce.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let (dir_x, dir_z, rotation_y) = wall_direction(sconce.wall);
@@ -126,7 +128,7 @@ pub fn spawn_sconces(
                 LevelEntity,
                 Transform::from_xyz(
                     center_x + dir_x * offset_dist,
-                    SCONCE_HEIGHT,
+                    SCONCE_HEIGHT + layer_y_offset,
                     center_z + dir_z * offset_dist,
                 )
                 .with_rotation(Quat::from_rotation_y(rotation_y)),
@@ -169,7 +171,8 @@ pub fn spawn_sconces(
         commands
             .entity(group)
             .add_children(&[bracket, arm, handle, head]);
-        parts.torches.insert(key.clone(), [handle, head]);
+        let render_key = layer_door_key(layer_index, key);
+        parts.torches.insert(render_key.clone(), [handle, head]);
 
         if sconce.lit {
             let light = commands
@@ -186,12 +189,12 @@ pub fn spawn_sconces(
                     // Slightly in front of the sconce, toward the room center.
                     Transform::from_xyz(
                         center_x + dir_x * (offset_dist - 0.4),
-                        SCONCE_HEIGHT + 0.3,
+                        SCONCE_HEIGHT + 0.3 + layer_y_offset,
                         center_z + dir_z * (offset_dist - 0.4),
                     ),
                 ))
                 .id();
-            parts.lights.insert(key.clone(), light);
+            parts.lights.insert(render_key, light);
         }
     }
     parts

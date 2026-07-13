@@ -7,7 +7,7 @@ use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use delve_core::game_state::{DoorState, GameState, door_key};
+use delve_core::game_state::{DoorState, LayerState, door_key, layer_door_key};
 use std::collections::{HashMap, HashSet};
 use std::f32::consts::FRAC_PI_2;
 
@@ -153,11 +153,14 @@ pub fn spawn_doors(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &DungeonMaterials,
-    game_state: &GameState,
+    layer_state: &LayerState,
+    layer_spawn: &crate::dungeon::LayerSpawn,
     grid: &[String],
     walkable: &HashSet<char>,
 ) -> DoorPanels {
     let mut panels = DoorPanels::default();
+    let layer_index = layer_spawn.index;
+    let layer_y_offset = layer_spawn.y_offset;
 
     let panel_width = CELL_SIZE - FRAME_WIDTH * 2.0;
     let panel_height = WALL_HEIGHT - FRAME_WIDTH;
@@ -167,7 +170,7 @@ pub fn spawn_doors(
     let button_mesh = box_mesh(meshes, BUTTON_SIZE, BUTTON_SIZE, BUTTON_DEPTH, false);
     let panel_mesh = box_mesh(meshes, panel_width, panel_height, PANEL_DEPTH, true);
 
-    for door in game_state.active_layer().doors.values() {
+    for door in layer_state.doors.values() {
         let center_x = door.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = door.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let orientation = detect_door_orientation(grid, door.col, door.row, walkable);
@@ -181,7 +184,7 @@ pub fn spawn_doors(
         let frame = commands
             .spawn((
                 LevelEntity,
-                Transform::from_xyz(center_x, 0.0, center_z).with_rotation(rotation),
+                Transform::from_xyz(center_x, layer_y_offset, center_z).with_rotation(rotation),
                 Visibility::default(),
             ))
             .id();
@@ -227,8 +230,8 @@ pub fn spawn_doors(
         } else {
             materials.door.clone()
         };
-        let closed_y = panel_height / 2.0;
-        let open_y = WALL_HEIGHT + panel_height / 2.0;
+        let closed_y = panel_height / 2.0 + layer_y_offset;
+        let open_y = WALL_HEIGHT + panel_height / 2.0 + layer_y_offset;
         let is_open = door.state == DoorState::Open;
         let start_y = if is_open { open_y } else { closed_y };
         let panel = commands
@@ -245,7 +248,10 @@ pub fn spawn_doors(
                 },
             ))
             .id();
-        panels.by_key.insert(door_key(door.col, door.row), panel);
+        panels.by_key.insert(
+            layer_door_key(layer_index, &door_key(door.col, door.row)),
+            panel,
+        );
     }
 
     panels

@@ -6,13 +6,51 @@ use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
 use delve_core::texture_resolver::resolve_textures;
-use delve_core::types::{CharDef, DungeonLevel};
+use delve_core::types::{CharDef, DungeonLevel, LayerDef};
 use std::collections::HashSet;
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub const CELL_SIZE: f32 = 2.0;
 pub const WALL_HEIGHT: f32 = 2.5;
 pub const EYE_HEIGHT: f32 = WALL_HEIGHT * 0.65;
+/// Layers stack flush: the floor of layer N+1 sits on the ceiling of layer N.
+pub const LAYER_HEIGHT: f32 = WALL_HEIGHT;
+
+/// Which layer a spawn call is building for: the level-wide and per-layer
+/// definitions (for texture default/area/ceiling resolution), the layer's
+/// index (for handle-map key prefixing via `layer_door_key`), and its Y
+/// offset (for transform placement) — bundled so the multi-layer spawn
+/// functions this slice's per-layer loop drives stay under the
+/// argument-count lint.
+pub struct LayerSpawn<'a> {
+    pub level: &'a DungeonLevel,
+    pub layer_def: &'a LayerDef,
+    pub index: usize,
+    pub y_offset: f32,
+}
+
+impl LayerSpawn<'_> {
+    /// Per-layer `defaults`/`areas` override the level-wide ones when
+    /// present, matching TS's `ld.defaults ?? level.defaults` /
+    /// `ld.areas ?? level.areas`.
+    pub(crate) fn texture_style(
+        &self,
+    ) -> (
+        Option<&delve_core::types::TextureSet>,
+        Option<&[delve_core::types::TextureArea]>,
+    ) {
+        (
+            self.layer_def
+                .defaults
+                .as_ref()
+                .or(self.level.defaults.as_ref()),
+            self.layer_def
+                .areas
+                .as_deref()
+                .or(self.level.areas.as_deref()),
+        )
+    }
+}
 
 // Rendering counterpart to walkability: OOB cells are solid boundary walls.
 fn is_solid(grid: &[Vec<char>], col: i32, row: i32, renderable: &HashSet<char>) -> bool {
@@ -54,14 +92,31 @@ pub fn spawn_dungeon(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &DungeonMaterials,
-    level: &DungeonLevel,
+    layer: &LayerSpawn,
     stair_cells: &HashSet<String>,
     wall_entity_cells: &HashSet<String>,
 ) {
-    let grid: Vec<Vec<char>> = level.grid.iter().map(|row| row.chars().collect()).collect();
-    let char_defs: &[CharDef] = level.char_defs.as_deref().unwrap_or(&[]);
-    let areas = level.areas.as_deref();
-    let ceiling_enabled = level.ceiling.unwrap_or(true);
+    let grid: Vec<Vec<char>> = layer
+        .layer_def
+        .grid
+        .iter()
+        .map(|row| row.chars().collect())
+        .collect();
+    let char_defs: &[CharDef] = layer.level.char_defs.as_deref().unwrap_or(&[]);
+    let (layer_defaults, layer_areas) = layer.texture_style();
+    // No-ceiling only applies to the topmost layer — a lower layer's ceiling
+    // is physically the floor of the layer above it, so it always renders.
+    let is_top_layer = layer.index + 1 == layer.level.layers.len();
+    let ceiling_enabled = if is_top_layer {
+        layer
+            .layer_def
+            .ceiling
+            .or(layer.level.ceiling)
+            .unwrap_or(true)
+    } else {
+        true
+    };
+    let layer_y_offset = layer.y_offset;
 
     let mut renderable: HashSet<char> = HashSet::from(['.']);
     for def in char_defs {
@@ -97,16 +152,16 @@ pub fn spawn_dungeon(
                 col,
                 row,
                 cell_char,
-                level.defaults.as_ref(),
-                level.char_defs.as_deref(),
-                areas,
+                layer_defaults,
+                layer.level.char_defs.as_deref(),
+                layer_areas,
             );
 
             commands.spawn((
                 LevelEntity,
                 Mesh3d(tile_mesh.clone()),
                 MeshMaterial3d(materials.floor(&textures.floor)),
-                Transform::from_xyz(center_x, 0.0, center_z)
+                Transform::from_xyz(center_x, layer_y_offset, center_z)
                     .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
             ));
 
@@ -115,7 +170,7 @@ pub fn spawn_dungeon(
                     LevelEntity,
                     Mesh3d(tile_mesh.clone()),
                     MeshMaterial3d(materials.ceiling(&textures.ceiling)),
-                    Transform::from_xyz(center_x, WALL_HEIGHT, center_z)
+                    Transform::from_xyz(center_x, WALL_HEIGHT + layer_y_offset, center_z)
                         .with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
                 ));
             }
@@ -144,7 +199,7 @@ pub fn spawn_dungeon(
                     MeshMaterial3d(materials.wall(&wall_texture)),
                     Transform::from_xyz(
                         center_x + offset_x,
-                        WALL_HEIGHT / 2.0,
+                        WALL_HEIGHT / 2.0 + layer_y_offset,
                         center_z + offset_z,
                     )
                     .with_rotation(Quat::from_rotation_y(rotation_y)),
