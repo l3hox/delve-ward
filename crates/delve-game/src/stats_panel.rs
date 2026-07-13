@@ -62,7 +62,7 @@ pub fn stats_panel_input(
 fn draw_row(canvas: &mut PixelCanvas, row: &StatRow, y: i32) {
     draw_pixel_text(canvas, row.label, LABEL_X, y, NEUTRAL, 2);
 
-    let base_str = format!("{}", row.base as i64);
+    let base_str = crate::hud::format_number(row.base);
     draw_pixel_text(canvas, &base_str, BASE_X, y, NEUTRAL, 2);
     if !row.suffix.is_empty() {
         let base_w = measure_pixel_text(&base_str, 2);
@@ -77,7 +77,7 @@ fn draw_row(canvas: &mut PixelCanvas, row: &StatRow, y: i32) {
     } else {
         NEUTRAL
     };
-    let eff_str = format!("{}", row.effective as i64);
+    let eff_str = crate::hud::format_number(row.effective);
     draw_pixel_text(canvas, &eff_str, EFF_X, y, color, 2);
     let mut native_x = EFF_X + measure_pixel_text(&eff_str, 2) + 3;
     if !row.suffix.is_empty() {
@@ -86,9 +86,9 @@ fn draw_row(canvas: &mut PixelCanvas, row: &StatRow, y: i32) {
     }
     if diff.abs() > f64::EPSILON {
         let diff_label = if diff > 0.0 {
-            format!("(+{})", diff as i64)
+            format!("(+{})", crate::hud::format_number(diff))
         } else {
-            format!("(-{})", (-diff) as i64)
+            format!("(-{})", crate::hud::format_number(-diff))
         };
         draw_pixel_text(canvas, &diff_label, native_x, y + 3, color, 1);
     }

@@ -5,9 +5,22 @@
 
 use crate::dungeon::CELL_SIZE;
 use crate::level_scene::LevelEntity;
-use crate::sconces::wall_direction;
 use bevy::prelude::*;
 use delve_core::game_state::GameState;
+use delve_core::grid::Facing;
+
+/// `bookshelfRenderer.ts`'s own `WALL_DIR` is rotated 180° from every other
+/// TS wall-mounted renderer (sconce, lever, sign): same outward offsets,
+/// inverted rotations. Ported as its own table rather than reusing
+/// `sconces::wall_direction`.
+fn bookshelf_wall_direction(wall: Facing) -> (f32, f32, f32) {
+    match wall {
+        Facing::N => (0.0, -1.0, std::f32::consts::PI),
+        Facing::S => (0.0, 1.0, 0.0),
+        Facing::E => (1.0, 0.0, std::f32::consts::FRAC_PI_2),
+        Facing::W => (-1.0, 0.0, -std::f32::consts::FRAC_PI_2),
+    }
+}
 
 const BODY_SIZE: (f32, f32, f32) = (1.2, 1.8, 0.2);
 const SPINE_SIZE: (f32, f32, f32) = (1.0, 0.1, 0.02);
@@ -46,7 +59,7 @@ pub fn spawn_bookshelves(
     for shelf in game.active_layer().bookshelves.values() {
         let center_x = shelf.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = shelf.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
-        let (dir_x, dir_z, rotation_y) = wall_direction(shelf.wall);
+        let (dir_x, dir_z, rotation_y) = bookshelf_wall_direction(shelf.wall);
         let offset_dist = CELL_SIZE / 2.0 - 0.1;
 
         let group = commands

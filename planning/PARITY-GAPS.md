@@ -166,6 +166,8 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 
 Upstream content bug, inherited faithfully: `questgiver_hilda.json`'s "The spider queen is dead." choice requires the `spider_queen_killed` flag, but nothing in the TS reference sets it either (no kill-time flag mechanism exists in TS src/ or its data) — the bounty quest is uncompletable in both implementations. Report upstream rather than inventing a kill-flag hook here.
 
+Deliberate shell deviations from the phase 4 review, kept: the trading overlay's click region is the whole row (TS binds only the small button; the row-click surfaces the same guard toasts TS's handler carries, so feedback is a superset); the inventory overlay clears drag state on close (TS keeps a stale drag across close/reopen — a quirk, not a behavior worth reproducing). Dialog choices are keyboard-only (TS also supports mouse hover/click) — joins the phase 6 polish list with the overlay PNG icons.
+
 Known shell gap: TS pushes blocks both by face+interact and by walking into them (a `setOnMoveBlocked` movement hook); the Rust shell implements face+interact only — the movement-blocked hook doesn't exist in `player.rs` yet. Revisit with the phase 4 input work.
 
 Phase 5 note: TS has a latent ground-item key-format bug (initial meshes keyed unprefixed, pickup hides with a layer-prefixed key — level-authored items leave a ghost billboard after pickup). `ground_items.rs` keys consistently and does not reproduce it. When layer-aware keying lands in phase 5, decide whether to preserve that incidental correctness or match TS bit-for-bit.

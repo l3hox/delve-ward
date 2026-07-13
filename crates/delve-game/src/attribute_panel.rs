@@ -315,7 +315,7 @@ fn draw_levelup(canvas: &mut PixelCanvas, state: &AttributePanelState, game: &Ga
 
         let pending = state.pending[index];
         let current_val = state.baseline[index] + pending as f64;
-        let value_text = format!("{}", current_val as i64);
+        let value_text = crate::hud::format_number(current_val);
         let controls_x = PANEL_X + PANEL_W - 96;
         let value_y = row_y + 6;
         draw_pixel_text(canvas, &value_text, controls_x, value_y + 3, label_color, 2);
@@ -400,7 +400,7 @@ fn draw_stats(canvas: &mut PixelCanvas, state: &AttributePanelState, game: &Game
 
         let base_val = stat.base_value(game);
         let eff_val = stat.effective_value(game);
-        let base_str = format!("{}", base_val as i64);
+        let base_str = crate::hud::format_number(base_val);
         let controls_x = PANEL_X + PANEL_W - 96;
         let value_y = row_y + 6;
         draw_pixel_text(canvas, &base_str, controls_x, value_y + 3, label_color, 2);
@@ -408,7 +408,7 @@ fn draw_stats(canvas: &mut PixelCanvas, state: &AttributePanelState, game: &Game
             let base_w = measure_pixel_text(&base_str, 2);
             draw_pixel_text(
                 canvas,
-                &format!("{}", eff_val as i64),
+                &crate::hud::format_number(eff_val),
                 controls_x + base_w + 6,
                 value_y + 3,
                 EFFECTIVE_GREEN,
