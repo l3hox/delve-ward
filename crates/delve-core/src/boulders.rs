@@ -338,6 +338,7 @@ fn damage_enemy_by_boulder(
     col: i64,
     row: i64,
     damage: f64,
+    layer_index: usize,
 ) -> Option<BoulderEvent> {
     let key = door_key(col, row);
     let enemy = game.active_layer_mut().enemies.get_mut(&key)?;
@@ -354,10 +355,16 @@ fn damage_enemy_by_boulder(
         damage,
         killed,
         enemy: enemy_snapshot,
+        layer_index,
     })
 }
 
-fn kill_enemy_at(game: &mut GameState, col: i64, row: i64) -> Option<BoulderEvent> {
+fn kill_enemy_at(
+    game: &mut GameState,
+    col: i64,
+    row: i64,
+    layer_index: usize,
+) -> Option<BoulderEvent> {
     let key = door_key(col, row);
     let enemy = game.active_layer_mut().enemies.remove(&key)?;
     Some(BoulderEvent::EnemyInstaKilled {
@@ -365,6 +372,7 @@ fn kill_enemy_at(game: &mut GameState, col: i64, row: i64) -> Option<BoulderEven
         col,
         row,
         enemy,
+        layer_index,
     })
 }
 
@@ -412,12 +420,14 @@ pub enum BoulderEvent {
         damage: f64,
         killed: bool,
         enemy: EnemyInstance,
+        layer_index: usize,
     },
     EnemyInstaKilled {
         key: String,
         col: i64,
         row: i64,
         enemy: EnemyInstance,
+        layer_index: usize,
     },
 }
 
@@ -478,12 +488,16 @@ fn decide_next(
             tick_state.player_damage_flash_timer = PLAYER_DAMAGE_FLASH_DURATION;
         }
         if boulder.insta_kill_enemies {
-            if let Some(event) = kill_enemy_at(game, boulder.col, boulder.row) {
+            if let Some(event) = kill_enemy_at(game, boulder.col, boulder.row, layer_index) {
                 events.push(event);
             }
-        } else if let Some(event) =
-            damage_enemy_by_boulder(game, boulder.col, boulder.row, boulder.fall_damage)
-        {
+        } else if let Some(event) = damage_enemy_by_boulder(
+            game,
+            boulder.col,
+            boulder.row,
+            boulder.fall_damage,
+            layer_index,
+        ) {
             events.push(event);
         }
         if let Some(entry) = game.active_layer_mut().boulders.get_mut(key) {
@@ -622,12 +636,14 @@ fn decide_next(
     let result = can_boulder_enter(game, context, layer_index, nc, nr, &boulder);
     match result {
         EnterResult::KillEnemy => {
-            if let Some(event) = kill_enemy_at(game, nc, nr) {
+            if let Some(event) = kill_enemy_at(game, nc, nr, layer_index) {
                 events.push(event);
             }
         }
         EnterResult::DamageEnemy => {
-            if let Some(event) = damage_enemy_by_boulder(game, nc, nr, boulder.roll_damage) {
+            if let Some(event) =
+                damage_enemy_by_boulder(game, nc, nr, boulder.roll_damage, layer_index)
+            {
                 events.push(event);
             }
         }

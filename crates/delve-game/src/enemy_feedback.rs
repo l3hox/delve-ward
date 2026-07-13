@@ -65,12 +65,14 @@ pub struct EnemyHitShake {
 #[derive(Component)]
 pub struct HealthBarFill;
 
-/// `Without<EnemyBillboard>` isn't redundant with `With<HealthBarFill>`:
-/// Bevy only proves two same-component queries disjoint via an explicit
-/// With/Without pair on the SAME marker on both sides, not just two
-/// different `With<T>` filters — without it, this conflicts with any
-/// caller's own `Query<&mut Transform, With<EnemyBillboard>>` (see
-/// `enemies::EnemyRenderState::transforms`) and panics at schedule build.
+/// Neither `Without<EnemyBillboard>` nor `Without<PlateVisual>` is redundant
+/// with `With<HealthBarFill>`: Bevy only proves two same-component queries
+/// disjoint via an explicit With/Without pair on the SAME marker on both
+/// sides, not just two different `With<T>` filters — without them, this
+/// conflicts with any caller's own `Query<&mut Transform, With<EnemyBillboard>>`
+/// (see `enemies::EnemyRenderState::transforms`) or `PlateRender::visuals`
+/// (see `boulders::BoulderRenderState`, the first system to bundle both a
+/// `CombatFeedback` and a `PlateRender`) and panics at schedule build.
 type BarFillQuery<'w, 's> = Query<
     'w,
     's,
@@ -78,7 +80,11 @@ type BarFillQuery<'w, 's> = Query<
         &'static mut Transform,
         &'static MeshMaterial3d<StandardMaterial>,
     ),
-    (With<HealthBarFill>, Without<crate::enemies::EnemyBillboard>),
+    (
+        With<HealthBarFill>,
+        Without<crate::enemies::EnemyBillboard>,
+        Without<crate::plates::PlateVisual>,
+    ),
 >;
 
 struct HealthBarHandles {
@@ -166,6 +172,85 @@ fn bar_anchor_y_offset(sprite_height: f32) -> f32 {
     sprite_height * 0.5 + BAR_Y_OFFSET
 }
 
+/// Mesh handles a health bar's background/fill quads are built from — shared
+/// between the bulk per-layer spawn and a single runtime addition (a
+/// spawner's enemy) so both draw from the same two `Assets<Mesh>` entries
+/// instead of each allocating its own.
+struct HealthBarMeshes {
+    bg_mesh: Handle<Mesh>,
+    bg_material: Handle<StandardMaterial>,
+    fill_mesh: Handle<Mesh>,
+}
+
+fn health_bar_meshes(
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) -> HealthBarMeshes {
+    HealthBarMeshes {
+        bg_mesh: meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT)),
+        bg_material: materials.add(StandardMaterial {
+            base_color: BAR_BG_COLOR,
+            unlit: true,
+            cull_mode: None,
+            ..default()
+        }),
+        fill_mesh: meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT * 0.7)),
+    }
+}
+
+/// Spawns one hidden health bar (background + fill quad) as a child of
+/// `parent`, matching `EnemyHealthBarManager::create`'s "start hidden — full
+/// HP" behaviour.
+fn spawn_one_health_bar(
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    handles: &HealthBarMeshes,
+    parent: Entity,
+    sprite_height: f32,
+    hp: f64,
+    max_hp: f64,
+) -> HealthBarHandles {
+    let anchor = commands
+        .spawn((
+            Transform::from_xyz(0.0, bar_anchor_y_offset(sprite_height), 0.001),
+            Visibility::Hidden,
+        ))
+        .id();
+    commands.entity(parent).add_child(anchor);
+
+    let bg = commands
+        .spawn((
+            Mesh3d(handles.bg_mesh.clone()),
+            MeshMaterial3d(handles.bg_material.clone()),
+            Transform::IDENTITY,
+        ))
+        .id();
+    commands.entity(anchor).add_child(bg);
+
+    let fill_material = materials.add(StandardMaterial {
+        base_color: fill_color_for_ratio(1.0),
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+    let fill = commands
+        .spawn((
+            Mesh3d(handles.fill_mesh.clone()),
+            MeshMaterial3d(fill_material),
+            Transform::from_xyz(0.0, 0.0, 0.001),
+            HealthBarFill,
+        ))
+        .id();
+    commands.entity(anchor).add_child(fill);
+
+    HealthBarHandles {
+        anchor,
+        fill,
+        last_hp: hp,
+        last_max_hp: max_hp,
+    }
+}
+
 /// Spawns a hidden health bar (background + fill quad) as a child of every
 /// enemy billboard, matching `EnemyHealthBarManager::create`'s "start
 /// hidden — full HP" behaviour. Must run after
@@ -181,14 +266,7 @@ pub fn spawn_health_bars(
     database: &EnemyDatabase,
 ) -> EnemyHealthBars {
     let mut health_bars = EnemyHealthBars::default();
-    let bg_mesh = meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT));
-    let bg_material = materials.add(StandardMaterial {
-        base_color: BAR_BG_COLOR,
-        unlit: true,
-        cull_mode: None,
-        ..default()
-    });
-    let fill_mesh = meshes.add(Rectangle::new(BAR_FULL_WIDTH, BAR_HEIGHT * 0.7));
+    let handles = health_bar_meshes(meshes, materials);
 
     for (key, enemy) in &layer_state.enemies {
         let render_key = layer_door_key(layer_spawn.index, key);
@@ -197,52 +275,55 @@ pub fn spawn_health_bars(
         };
         let def = database.get_enemy(&enemy.enemy_type);
         let (sprite_height, _) = crate::enemies::sprite_dimensions(def);
-
-        let anchor = commands
-            .spawn((
-                Transform::from_xyz(0.0, bar_anchor_y_offset(sprite_height), 0.001),
-                Visibility::Hidden,
-            ))
-            .id();
-        commands.entity(parent).add_child(anchor);
-
-        let bg = commands
-            .spawn((
-                Mesh3d(bg_mesh.clone()),
-                MeshMaterial3d(bg_material.clone()),
-                Transform::IDENTITY,
-            ))
-            .id();
-        commands.entity(anchor).add_child(bg);
-
-        let fill_material = materials.add(StandardMaterial {
-            base_color: fill_color_for_ratio(1.0),
-            unlit: true,
-            cull_mode: None,
-            ..default()
-        });
-        let fill = commands
-            .spawn((
-                Mesh3d(fill_mesh.clone()),
-                MeshMaterial3d(fill_material),
-                Transform::from_xyz(0.0, 0.0, 0.001),
-                HealthBarFill,
-            ))
-            .id();
-        commands.entity(anchor).add_child(fill);
-
-        health_bars.by_key.insert(
-            render_key,
-            HealthBarHandles {
-                anchor,
-                fill,
-                last_hp: enemy.hp,
-                last_max_hp: enemy.max_hp,
-            },
+        let bar = spawn_one_health_bar(
+            commands,
+            materials,
+            &handles,
+            parent,
+            sprite_height,
+            enemy.hp,
+            enemy.max_hp,
         );
+        health_bars.by_key.insert(render_key, bar);
     }
 
     health_bars
+}
+
+/// A single runtime health-bar addition's parent entity, sprite height, and
+/// starting HP — bundled so [`add_single_health_bar`] stays under the
+/// argument-count lint.
+pub struct SingleHealthBarSpawn {
+    pub parent: Entity,
+    pub render_key: String,
+    pub sprite_height: f32,
+    pub hp: f64,
+    pub max_hp: f64,
+}
+
+/// Adds one health bar for a single enemy spawned mid-game (a spawner's
+/// enemy), matching TS's `healthBarManager.create(...)` call right after
+/// `createSingleEnemyMesh` in `spawnerSystem.ts`'s spawn-event handling.
+/// `spawn.render_key` must be the same layer-prefixed key `billboards.by_key`
+/// was just given for this enemy.
+pub fn add_single_health_bar(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    health_bars: &mut EnemyHealthBars,
+    spawn: SingleHealthBarSpawn,
+) {
+    let handles = health_bar_meshes(meshes, materials);
+    let bar = spawn_one_health_bar(
+        commands,
+        materials,
+        &handles,
+        spawn.parent,
+        spawn.sprite_height,
+        spawn.hp,
+        spawn.max_hp,
+    );
+    health_bars.by_key.insert(spawn.render_key, bar);
 }
 
 /// Enemy hit-flash and hit-shake queries, plus the health bar tracking

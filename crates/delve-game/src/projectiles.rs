@@ -494,6 +494,7 @@ fn apply_projectile_hit(
                     row: event.row,
                     enemy_type,
                     drops_override,
+                    layer_index: game.active_layer_index,
                 };
                 let leveled = handle_kill(
                     game,

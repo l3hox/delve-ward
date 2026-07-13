@@ -225,3 +225,13 @@ pub fn open_chest_mesh(handles: &ChestHandles, lids: &mut Query<&mut ChestLid>, 
 pub fn close_chest_mesh(handles: &ChestHandles, lids: &mut Query<&mut ChestLid>, key: &str) {
     set_chest_target(handles, lids, key, false);
 }
+
+/// Removes a boulder-crashed chest's mesh entirely, ported from TS's
+/// `destroyChestMesh` — unlike opening, a crashed chest is gone from
+/// `GameState` for good (`destroy_chest` removes it, not just marks it
+/// open), so its whole group despawns rather than animating a lid.
+pub fn despawn_chest_mesh(handles: &mut ChestHandles, commands: &mut Commands, key: &str) {
+    if let Some(entity) = handles.by_key.remove(key) {
+        commands.entity(entity).despawn();
+    }
+}

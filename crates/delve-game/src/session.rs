@@ -144,7 +144,10 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
 /// Finds the currently-loaded level by id — the same
 /// `level.id.clone().unwrap_or_else(|| level.name.clone()) == id` lookup
 /// `transition.rs` already repeats at each of its own call sites.
-fn find_level_by_id<'a>(dungeon: &'a DungeonRes, level_id: &str) -> Option<&'a DungeonLevel> {
+pub(crate) fn find_level_by_id<'a>(
+    dungeon: &'a DungeonRes,
+    level_id: &str,
+) -> Option<&'a DungeonLevel> {
     dungeon
         .0
         .levels
@@ -953,7 +956,19 @@ pub fn apply_world_events(
                     }
                 }
             }
-            other => debug!("unhandled world event: {other:?}"),
+            // TS's `onSpawnerSignalChanged`/`onBoulderSpawnerSignalChanged`/
+            // `onBoulderSignalChanged` are themselves no-op stubs
+            // (`main.ts:795-802`): the `active`/state flip these events
+            // announce already landed in `GameState` before the event fired
+            // (`spawner.active = active`, etc.), and the resulting behavior
+            // change (a spawner firing again, a boulder starting to roll)
+            // surfaces through the next `tick_spawners`/`tick_boulders` call
+            // instead — there's no separate visual for the signal itself to
+            // drive here either, matching TS exactly rather than an
+            // oversight.
+            WorldEvent::SpawnerSignalChanged { .. }
+            | WorldEvent::BoulderSpawnerSignalChanged { .. }
+            | WorldEvent::BoulderSignalChanged { .. } => {}
         }
     }
 }
@@ -1124,13 +1139,14 @@ pub fn interact_input(
                     .and_then(|chest| chest.drops.clone());
                 let rng = &mut effects.rng.0;
                 let mut random = || rng.next_f64();
+                let chest_layer_index = session.game.active_layer_index;
                 ground_items::spawn_loot(
                     &mut session.game,
                     &mut effects.item_render,
                     &effects.loot_tables.0,
                     "",
                     drops.as_ref(),
-                    (col, row),
+                    (col, row, chest_layer_index),
                     &mut random,
                 );
             }

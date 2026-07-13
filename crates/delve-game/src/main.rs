@@ -6,6 +6,7 @@ mod barrels;
 mod billboard;
 mod blocks;
 mod bookshelves;
+mod boulders;
 mod char_creation;
 mod chests;
 mod damage_numbers;
@@ -39,6 +40,7 @@ mod save_store;
 mod sconces;
 mod session;
 mod signs;
+mod spawners;
 mod stairs;
 mod stats_panel;
 mod status_effects;
@@ -248,6 +250,8 @@ fn setup(
     commands.insert_resource(handles.altar_handles);
     commands.insert_resource(handles.barrel_handles);
     commands.insert_resource(handles.pit_floor_handles);
+    commands.insert_resource(handles.spawner_handles);
+    commands.insert_resource(handles.boulder_animator);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(npcs::NpcDb(npc_db));
     commands.insert_resource(ItemDb(items));
@@ -447,6 +451,15 @@ fn main() {
                 )
                     .chain(),
                 (
+                    // Matches `gameLoop.ts`'s `tickGameSystems` order
+                    // (boulders, then boulder spawners, then enemy
+                    // spawners) — spills into this tuple since tuple 1 is
+                    // already at Bevy's 20-element `.chain()` cap; nothing
+                    // here reads spawner/boulder state, so the reorder
+                    // relative to `tick_projectiles` above is inert.
+                    boulders::tick_boulders_system,
+                    boulders::tick_boulder_spawners_system,
+                    spawners::tick_spawners_system,
                     projectiles::position_projectile_meshes,
                     projectiles::update_fireball_explosions,
                     status_effects::tick_player_vitals,
@@ -463,6 +476,7 @@ fn main() {
                 (
                     chests::animate_chest_lids,
                     blocks::animate_blocks,
+                    boulders::animate_boulders,
                     enemy_feedback::tick_enemy_hit_shake,
                     damage_numbers::update_damage_numbers,
                     hud::draw_hud,

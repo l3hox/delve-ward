@@ -383,7 +383,7 @@ pub fn spawn_loot(
     loot_tables: &LootTables,
     enemy_type: &str,
     drops: Option<&DropsOverride>,
-    (col, row): (i64, i64),
+    (col, row, layer_index): (i64, i64, usize),
     random: &mut dyn FnMut() -> f64,
 ) {
     let result = loot_tables.roll_loot(enemy_type, drops, random);
@@ -398,7 +398,7 @@ pub fn spawn_loot(
             level_id: game.current_level_id.clone(),
             col: i32::try_from(col).unwrap_or(0),
             row: i32::try_from(row).unwrap_or(0),
-            layer_index: Some(i32::try_from(game.active_layer_index).unwrap_or(0)),
+            layer_index: Some(i32::try_from(layer_index).unwrap_or(0)),
         };
         let entity =
             game.entity_registry
@@ -406,11 +406,6 @@ pub fn spawn_loot(
         let Some(def) = items.get_item(&drop.item_id) else {
             continue;
         };
-        add_single_item_mesh(
-            render,
-            ItemKind::of(def.item_type),
-            &entity,
-            game.active_layer_index,
-        );
+        add_single_item_mesh(render, ItemKind::of(def.item_type), &entity, layer_index);
     }
 }

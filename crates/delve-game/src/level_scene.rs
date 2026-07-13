@@ -5,6 +5,7 @@ use crate::altars::{self, AltarHandles};
 use crate::barrels::{self, BarrelHandles};
 use crate::blocks::{self, BlockHandles};
 use crate::bookshelves;
+use crate::boulders::{self, BoulderAnimator};
 use crate::chests::{self, ChestHandles};
 use crate::doors::{self, DoorPanels};
 use crate::dungeon;
@@ -19,6 +20,7 @@ use crate::plates::{self, PlateHandles};
 use crate::ramps;
 use crate::sconces::{self, SconceParts};
 use crate::signs;
+use crate::spawners::{self, SpawnerHandles};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
 use crate::tripwires::{self, TripwireHandles};
@@ -71,6 +73,8 @@ pub struct LevelSceneHandles {
     pub altar_handles: AltarHandles,
     pub barrel_handles: BarrelHandles,
     pub pit_floor_handles: dungeon::PitFloorHandles,
+    pub spawner_handles: SpawnerHandles,
+    pub boulder_animator: BoulderAnimator,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -106,6 +110,8 @@ pub fn spawn_level_scene(
     let mut fountain_handles = FountainHandles::default();
     let mut altar_handles = AltarHandles::default();
     let mut barrel_handles = BarrelHandles::default();
+    let mut spawner_handles = SpawnerHandles::default();
+    let mut boulder_animator = BoulderAnimator::default();
 
     // TS builds every layer's geometry and entity meshes simultaneously at
     // load time, each Y-offset by `layer_index * LAYER_HEIGHT` (or an
@@ -385,6 +391,26 @@ pub fn spawn_level_scene(
             layer,
             &layer_spawn,
         );
+
+        let layer_spawners = spawners::spawn_spawner_markers(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        spawner_handles.by_key.extend(layer_spawners.by_key);
+
+        let layer_boulders = boulders::spawn_boulders(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
+        boulder_animator.extend(layer_boulders);
     }
 
     LevelSceneHandles {
@@ -405,5 +431,7 @@ pub fn spawn_level_scene(
         altar_handles,
         barrel_handles,
         pit_floor_handles,
+        spawner_handles,
+        boulder_animator,
     }
 }

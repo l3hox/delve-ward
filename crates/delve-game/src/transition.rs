@@ -5,6 +5,7 @@
 use crate::altars::AltarHandles;
 use crate::barrels::BarrelHandles;
 use crate::blocks::BlockHandles;
+use crate::boulders::BoulderAnimator;
 use crate::chests::ChestHandles;
 use crate::doors::DoorPanels;
 use crate::dungeon::PitFloorHandles;
@@ -24,6 +25,7 @@ use crate::save_load_overlay::save_game_to_slot;
 use crate::save_store::FileSaveStore;
 use crate::sconces::SconceParts;
 use crate::session::{DungeonRes, GameRng, LevelSnapshots, OriginalGrids, Session};
+use crate::spawners::SpawnerHandles;
 use crate::textures::DungeonMaterials;
 use crate::tripwires::TripwireHandles;
 use crate::wall_entities::WallEntityHandles;
@@ -187,6 +189,8 @@ pub struct SwapWorld<'w, 's> {
     altar_handles: ResMut<'w, AltarHandles>,
     barrel_handles: ResMut<'w, BarrelHandles>,
     pit_floor_handles: ResMut<'w, PitFloorHandles>,
+    spawner_handles: ResMut<'w, SpawnerHandles>,
+    boulder_animator: ResMut<'w, BoulderAnimator>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -364,6 +368,8 @@ pub fn perform_level_swap(
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
     *world.pit_floor_handles = handles.pit_floor_handles;
+    *world.spawner_handles = handles.spawner_handles;
+    *world.boulder_animator = handles.boulder_animator;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
@@ -552,6 +558,8 @@ pub fn perform_restart(
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
     *world.pit_floor_handles = handles.pit_floor_handles;
+    *world.spawner_handles = handles.spawner_handles;
+    *world.boulder_animator = handles.boulder_animator;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
@@ -720,6 +728,8 @@ pub fn perform_load(
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
     *world.pit_floor_handles = handles.pit_floor_handles;
+    *world.spawner_handles = handles.spawner_handles;
+    *world.boulder_animator = handles.boulder_animator;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 

@@ -76,6 +76,63 @@ pub(crate) fn sprite_dimensions(def: Option<&delve_core::enemies::EnemyDef>) -> 
     (size, y_offset)
 }
 
+/// An enemy billboard's position and sprite lookup key — bundled so
+/// [`spawn_one_enemy_billboard`] and [`add_single_enemy_billboard`] stay
+/// under the argument-count lint.
+struct EnemyBillboardSpawn<'a> {
+    enemy_type: &'a str,
+    col: i64,
+    row: i64,
+    layer_y_offset: f32,
+}
+
+/// Spawns one enemy billboard and returns its entity, sized and positioned
+/// from `def`/`layer_y_offset` the same way every other billboard in this
+/// module is. Shared by the bulk per-layer spawn and a single runtime
+/// addition (a spawner's enemy).
+fn spawn_one_enemy_billboard(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    database: &EnemyDatabase,
+    spawn: &EnemyBillboardSpawn,
+) -> Entity {
+    let def = database.get_enemy(spawn.enemy_type);
+    let (size, sprite_y_offset) = sprite_dimensions(def);
+    let texture_path = def
+        .map(|def| sprite_asset_path(&def.sprite.path))
+        .unwrap_or_else(|| "sprites/skeleton.png".to_string());
+
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(asset_server.load(texture_path)),
+        perceptual_roughness: 1.0,
+        metallic: 0.0,
+        reflectance: 0.0,
+        alpha_mode: AlphaMode::Mask(0.5),
+        cull_mode: None,
+        ..default()
+    });
+    let center_x = spawn.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+    let center_z = spawn.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+    commands
+        .spawn((
+            LevelEntity,
+            EnemyBillboard,
+            crate::billboard::FacesCamera,
+            crate::enemy_feedback::EnemyDamageFlash::default(),
+            crate::enemy_feedback::EnemyHitShake::default(),
+            Mesh3d(meshes.add(Rectangle::new(size, size))),
+            MeshMaterial3d(material),
+            Transform::from_xyz(
+                center_x,
+                size * 0.5 + sprite_y_offset + spawn.layer_y_offset,
+                center_z,
+            ),
+        ))
+        .id()
+}
+
 pub fn spawn_enemy_billboards(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -85,48 +142,73 @@ pub fn spawn_enemy_billboards(
     layer_spawn: &crate::dungeon::LayerSpawn,
     database: &EnemyDatabase,
 ) -> EnemyBillboards {
-    let layer_index = layer_spawn.index;
-    let layer_y_offset = layer_spawn.y_offset;
     let mut billboards = EnemyBillboards::default();
     for (key, enemy) in &layer_state.enemies {
-        let def = database.get_enemy(&enemy.enemy_type);
-        let (size, sprite_y_offset) = sprite_dimensions(def);
-        let texture_path = def
-            .map(|def| sprite_asset_path(&def.sprite.path))
-            .unwrap_or_else(|| "sprites/skeleton.png".to_string());
-
-        let material = materials.add(StandardMaterial {
-            base_color_texture: Some(asset_server.load(texture_path)),
-            perceptual_roughness: 1.0,
-            metallic: 0.0,
-            reflectance: 0.0,
-            alpha_mode: AlphaMode::Mask(0.5),
-            cull_mode: None,
-            ..default()
-        });
-        let center_x = enemy.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
-        let center_z = enemy.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
-        let entity = commands
-            .spawn((
-                LevelEntity,
-                EnemyBillboard,
-                crate::billboard::FacesCamera,
-                crate::enemy_feedback::EnemyDamageFlash::default(),
-                crate::enemy_feedback::EnemyHitShake::default(),
-                Mesh3d(meshes.add(Rectangle::new(size, size))),
-                MeshMaterial3d(material),
-                Transform::from_xyz(
-                    center_x,
-                    size * 0.5 + sprite_y_offset + layer_y_offset,
-                    center_z,
-                ),
-            ))
-            .id();
+        let entity = spawn_one_enemy_billboard(
+            commands,
+            meshes,
+            materials,
+            asset_server,
+            database,
+            &EnemyBillboardSpawn {
+                enemy_type: &enemy.enemy_type,
+                col: enemy.col,
+                row: enemy.row,
+                layer_y_offset: layer_spawn.y_offset,
+            },
+        );
         billboards
             .by_key
-            .insert(layer_door_key(layer_index, key), entity);
+            .insert(layer_door_key(layer_spawn.index, key), entity);
     }
     billboards
+}
+
+/// A single runtime enemy addition's cell key alongside its billboard spawn
+/// position — bundled so [`add_single_enemy_billboard`] stays under the
+/// argument-count lint.
+pub struct SingleEnemySpawn<'a> {
+    pub layer_index: usize,
+    pub layer_y_offset: f32,
+    pub cell_key: &'a str,
+    pub enemy_type: &'a str,
+    pub col: i64,
+    pub row: i64,
+}
+
+/// Adds one enemy billboard for an enemy spawned mid-game (a spawner's
+/// enemy), matching TS's `createSingleEnemyMesh` — a standalone factory
+/// `spawnerSystem.ts` calls per spawn event rather than reusing the bulk
+/// level-load path, since that path has no per-enemy entry point of its own.
+/// Returns the spawned entity so the caller can also add a health bar as a
+/// child of it, matching TS's immediate `healthBarManager.create(...)` call
+/// after `createSingleEnemyMesh`.
+pub fn add_single_enemy_billboard(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    billboards: &mut EnemyBillboards,
+    database: &EnemyDatabase,
+    spawn: &SingleEnemySpawn,
+) -> Entity {
+    let entity = spawn_one_enemy_billboard(
+        commands,
+        meshes,
+        materials,
+        asset_server,
+        database,
+        &EnemyBillboardSpawn {
+            enemy_type: spawn.enemy_type,
+            col: spawn.col,
+            row: spawn.row,
+            layer_y_offset: spawn.layer_y_offset,
+        },
+    );
+    billboards
+        .by_key
+        .insert(layer_door_key(spawn.layer_index, spawn.cell_key), entity);
+    entity
 }
 
 fn cell_center(col: i64, row: i64) -> (f32, f32) {
@@ -276,6 +358,7 @@ pub fn tick_enemies(
                     row: action.from_row,
                     enemy_type: enemy.enemy_type,
                     drops_override: enemy.drops,
+                    layer_index: game.active_layer_index,
                 };
                 let leveled = handle_kill(
                     game,
@@ -375,6 +458,7 @@ pub fn attack_input(
                     row,
                     enemy_type: result.enemy_type.clone().unwrap_or_default(),
                     drops_override: result.drops_override.clone(),
+                    layer_index: session.game.active_layer_index,
                 };
                 let leveled = handle_kill(
                     &mut session.game,
@@ -400,6 +484,7 @@ pub fn attack_input(
                 // drop comes from the destroy outcome, not the combat
                 // result's drops override.
                 let Session { game, grid, .. } = &mut *session;
+                let wall_layer_index = game.active_layer_index;
                 let outcome =
                     game.damage_breakable_wall(col, row, result.damage.unwrap_or(0.0), grid);
                 if outcome.destroyed {
@@ -407,7 +492,7 @@ pub fn attack_input(
                     wall_entities::reveal_wall_entity(
                         &kill_effects.wall_entities,
                         &mut kill_effects.visibility,
-                        &layer_door_key(game.active_layer_index, &door_key(col, row)),
+                        &layer_door_key(wall_layer_index, &door_key(col, row)),
                         false,
                     );
                     let rng = &mut rng.0;
@@ -418,7 +503,7 @@ pub fn attack_input(
                         &kill_effects.loot_tables.0,
                         "",
                         outcome.drops.as_ref(),
-                        (col, row),
+                        (col, row, wall_layer_index),
                         &mut random,
                     );
                 } else {
@@ -437,10 +522,11 @@ pub fn attack_input(
                 let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
                     continue;
                 };
+                let barrel_layer_index = session.game.active_layer_index;
                 barrels::despawn_barrel(
                     &mut kill_effects.barrels,
                     &mut kill_effects.item_render.commands,
-                    &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
+                    &layer_door_key(barrel_layer_index, &door_key(col, row)),
                 );
                 if result.drops_override.is_some() {
                     let rng = &mut rng.0;
@@ -451,7 +537,7 @@ pub fn attack_input(
                         &kill_effects.loot_tables.0,
                         "",
                         result.drops_override.as_ref(),
-                        (col, row),
+                        (col, row, barrel_layer_index),
                         &mut random,
                     );
                 }
@@ -508,11 +594,17 @@ pub struct KillEffects<'w, 's> {
 /// from an `EnemyInstance` immediately before removing it from the map
 /// (directly via `damage_enemy`, or indirectly via the melee/status-kill
 /// paths), so a live borrow of the enemy can't be threaded through.
+/// `layer_index` names the layer `target` lived on — usually
+/// `game.active_layer_index` (melee/status kills only ever target the
+/// player's own layer), but a boulder can insta-kill or finish off an enemy
+/// on a layer the player isn't currently on, so callers set it explicitly
+/// rather than `handle_kill` assuming the active layer.
 pub(crate) struct KillTarget {
     pub col: i64,
     pub row: i64,
     pub enemy_type: String,
     pub drops_override: Option<DropsOverride>,
+    pub layer_index: usize,
 }
 
 /// XP gain and loot drop on an enemy kill, ported from the TS
@@ -530,7 +622,7 @@ pub(crate) fn handle_kill(
     item_render: &mut GroundItemRender,
     target: &KillTarget,
 ) -> bool {
-    let render_key = layer_door_key(game.active_layer_index, &door_key(target.col, target.row));
+    let render_key = layer_door_key(target.layer_index, &door_key(target.col, target.row));
     if let Some(entity) = billboards.by_key.remove(&render_key) {
         item_render.commands.entity(entity).despawn();
     }
@@ -550,7 +642,7 @@ pub(crate) fn handle_kill(
         loot_tables,
         &target.enemy_type,
         target.drops_override.as_ref(),
-        (target.col, target.row),
+        (target.col, target.row, target.layer_index),
         &mut random,
     );
     leveled

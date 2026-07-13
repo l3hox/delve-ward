@@ -310,10 +310,15 @@ fn falling_boulder_deals_fall_damage_to_a_colocated_enemy_and_resumes_rolling() 
     let events = tick_boulders(&mut game, &ctx, &mut tick_state);
 
     let damaged = events.iter().find_map(|event| match event {
-        BoulderEvent::EnemyDamaged { damage, killed, .. } => Some((*damage, *killed)),
+        BoulderEvent::EnemyDamaged {
+            damage,
+            killed,
+            layer_index,
+            ..
+        } => Some((*damage, *killed, *layer_index)),
         _ => None,
     });
-    assert_eq!(damaged, Some((10.0, false)));
+    assert_eq!(damaged, Some((10.0, false, 1)));
     let enemy = game
         .active_layer()
         .enemies
@@ -490,17 +495,58 @@ fn insta_kill_enemies_removes_the_enemy_with_no_damage_number() {
 
     let events = tick_boulders(&mut game, &ctx, &mut tick_state);
 
-    assert!(
-        events
-            .iter()
-            .any(|event| matches!(event, BoulderEvent::EnemyInstaKilled { .. }))
-    );
+    let insta_killed_layer = events.iter().find_map(|event| match event {
+        BoulderEvent::EnemyInstaKilled { layer_index, .. } => Some(*layer_index),
+        _ => None,
+    });
+    assert_eq!(insta_killed_layer, Some(1));
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, BoulderEvent::EnemyDamaged { .. }))
     );
     assert!(!game.active_layer().enemies.contains_key(&door_key(2, 2)));
+}
+
+/// A three-layer setup with the boulder/enemy on layer 2 (not layer 0 or the
+/// two-layer fixtures' layer 1) — pins `EnemyDamaged`/`EnemyInstaKilled`'s
+/// `layer_index` field to the actual layer the collision happened on,
+/// rather than a value that would coincidentally match a hardcoded 0 or 1.
+#[test]
+fn rolling_into_an_enemy_on_a_non_ground_layer_tags_events_with_that_layer() {
+    let layer_defs = [
+        layer_def(open_support_grid()),
+        layer_def(open_support_grid()),
+        layer_def(open_room_grid()),
+    ];
+    let mut game = GameState::new(
+        &[],
+        None,
+        "test",
+        Some(&layer_defs),
+        GameStateDeps::default(),
+        &mut || 0.5,
+    );
+    game.active_layer_index = 2;
+    game.active_layer_mut().boulders.insert(
+        door_key(1, 2),
+        make_boulder(1, 2, Facing::E, BoulderState::Rolling),
+    );
+    game.active_layer_mut()
+        .enemies
+        .insert(door_key(2, 2), make_enemy(2, 2, 3.0));
+
+    let walkable = walkable_cells();
+    let ctx = context(&layer_defs, &walkable, &always_resting);
+    let mut tick_state = PlayerTickState::default();
+
+    let events = tick_boulders(&mut game, &ctx, &mut tick_state);
+
+    let damaged_layer = events.iter().find_map(|event| match event {
+        BoulderEvent::EnemyDamaged { layer_index, .. } => Some(*layer_index),
+        _ => None,
+    });
+    assert_eq!(damaged_layer, Some(2));
 }
 
 #[test]
