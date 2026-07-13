@@ -12,7 +12,7 @@ use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
-use delve_core::game_state::{door_key, layer_door_key};
+use delve_core::game_state::{SecretWallInstance, door_key, layer_door_key};
 use delve_core::texture_resolver::resolve_textures;
 use delve_core::types::CharDef;
 use std::collections::{HashMap, HashSet};
@@ -80,6 +80,18 @@ fn cell_char(grid: &[Vec<char>], col: i32, row: i32) -> Option<char> {
 /// `cells` is the union of both entity kinds, keyed by `door_key`, since TS
 /// builds them through the same renderer with no texture override for
 /// either kind — a breakable wall looks identical to a plain wall too.
+///
+/// A cell whose `secret_walls` entry is already `opened` (a revisited level
+/// or a loaded save) spawns already revealed: its floor/ceiling/inward-wall
+/// group visible, its outward-facing wall hidden unless `persistent`. This
+/// mirrors TS's post-build "Apply opened secret wall state" sweep
+/// (`levelSceneBuilder.ts:543-560`) by baking the end state directly into
+/// the initial spawn instead of a separate pass, since the entities aren't
+/// queryable until after this command queue is applied. A destroyed
+/// breakable wall never reaches this function in the first place — its
+/// entry is removed from `breakable_walls` on destruction, so it drops out
+/// of `cells` on the next rebuild and renders as plain floor through the
+/// ordinary per-cell dungeon pass instead.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_wall_entities(
     commands: &mut Commands,
@@ -88,6 +100,7 @@ pub fn spawn_wall_entities(
     layer_spawn: &crate::dungeon::LayerSpawn,
     grid: &[String],
     cells: &HashMap<String, (i64, i64)>,
+    secret_walls: &HashMap<String, SecretWallInstance>,
     zones: &LevelZones,
 ) -> WallEntityHandles {
     let mut handles = WallEntityHandles::default();
@@ -137,6 +150,17 @@ pub fn spawn_wall_entities(
 
         let mut cell = WallEntityCell::default();
 
+        let opened_secret_wall = secret_walls.get(key).filter(|wall| wall.opened);
+        let outward_visibility = match opened_secret_wall {
+            Some(wall) if !wall.persistent => Visibility::Hidden,
+            _ => Visibility::Visible,
+        };
+        let hidden_visibility = if opened_secret_wall.is_some() {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+
         // (rotation, neighbor delta, wall plane center offset) — same
         // face table `dungeon::spawn_dungeon` uses.
         let faces = [
@@ -170,6 +194,7 @@ pub fn spawn_wall_entities(
                 let entity = commands
                     .spawn((
                         LevelEntity,
+                        outward_visibility,
                         Mesh3d(wall_mesh.clone()),
                         MeshMaterial3d(materials.wall(&neighbor_textures.wall)),
                         Transform::from_xyz(
@@ -188,7 +213,7 @@ pub fn spawn_wall_entities(
                 let entity = commands
                     .spawn((
                         LevelEntity,
-                        Visibility::Hidden,
+                        hidden_visibility,
                         Mesh3d(wall_mesh.clone()),
                         MeshMaterial3d(materials.wall(&own_textures.wall)),
                         Transform::from_xyz(
@@ -207,7 +232,7 @@ pub fn spawn_wall_entities(
         let floor = commands
             .spawn((
                 LevelEntity,
-                Visibility::Hidden,
+                hidden_visibility,
                 Mesh3d(tile_mesh.clone()),
                 MeshMaterial3d(materials.floor(&own_textures.floor)),
                 Transform::from_xyz(center_x, layer_y_offset, center_z)
@@ -221,7 +246,7 @@ pub fn spawn_wall_entities(
             let ceiling = commands
                 .spawn((
                     LevelEntity,
-                    Visibility::Hidden,
+                    hidden_visibility,
                     Mesh3d(tile_mesh.clone()),
                     MeshMaterial3d(materials.ceiling(&own_textures.ceiling)),
                     Transform::from_xyz(center_x, WALL_HEIGHT + layer_y_offset, center_z)

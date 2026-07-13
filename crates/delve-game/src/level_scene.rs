@@ -405,6 +405,7 @@ pub fn spawn_level_scene(
             &layer_spawn,
             &layer_def.grid,
             &wall_entity_cells,
+            &layer.secret_walls,
             &level_zones,
         );
         wall_entity_handles.extend(layer_wall_entities);
