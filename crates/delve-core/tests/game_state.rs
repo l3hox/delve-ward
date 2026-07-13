@@ -2,12 +2,13 @@
 //! The TS `vi.mock('./itemDatabase')` stubs become an item database fixture;
 //! registrar singletons stay unset exactly like in the TS test module.
 
+use delve_core::boulders::can_boulder_roll_to;
 use delve_core::entities::{EquipSlot, ItemLocation};
 use delve_core::game_state::{
-    ChestState, DoorState, GameState, GameStateDeps, LeverState, PitTrapState, ThinWallSide,
-    UsableState, door_key,
+    BoulderState, ChestState, DoorState, GameState, GameStateDeps, LeverState, PitTrapState,
+    ThinWallSide, UsableState, door_key,
 };
-use delve_core::grid::Facing;
+use delve_core::grid::{Facing, walkable_cells};
 use delve_core::inventory_state::AllocatableStat;
 use delve_core::items::{ItemDatabase, ItemQuality};
 use delve_core::status_effect_state::BuffStat;
@@ -1393,6 +1394,182 @@ fn block_pushing() {
     let checker = gs(json!([{ "col": 2, "row": 2, "type": "block" }]));
     assert!(checker.is_block_at(2, 2));
     assert!(!checker.is_block_at(2, 3));
+}
+
+#[test]
+fn push_boulder_starts_a_pushable_idle_boulder_rolling_in_the_given_direction() {
+    let mut state = gs(json!([{ "col": 3, "row": 3, "type": "boulder", "pushable": true }]));
+    assert!(state.push_boulder(3, 3, Facing::E));
+    let boulder = state
+        .active_layer()
+        .boulders
+        .get(&door_key(3, 3))
+        .expect("boulder still at its cell");
+    assert_eq!(boulder.state, BoulderState::Rolling);
+    assert_eq!(boulder.direction, Facing::E);
+}
+
+#[test]
+fn push_boulder_is_a_no_op_for_a_non_pushable_boulder() {
+    let mut state =
+        gs(json!([{ "col": 3, "row": 3, "type": "boulder", "pushable": false, "direction": "N" }]));
+    assert!(!state.push_boulder(3, 3, Facing::E));
+    let boulder = state
+        .active_layer()
+        .boulders
+        .get(&door_key(3, 3))
+        .expect("boulder unchanged");
+    assert_eq!(boulder.state, BoulderState::Idle);
+    assert_eq!(boulder.direction, Facing::N);
+}
+
+#[test]
+fn push_boulder_is_a_no_op_for_a_boulder_that_is_already_rolling() {
+    let mut state = gs(json!([{
+        "col": 3, "row": 3, "type": "boulder",
+        "pushable": true, "state": "rolling", "direction": "N",
+    }]));
+    assert!(!state.push_boulder(3, 3, Facing::E));
+    let boulder = state
+        .active_layer()
+        .boulders
+        .get(&door_key(3, 3))
+        .expect("boulder unchanged");
+    assert_eq!(boulder.state, BoulderState::Rolling);
+    // Direction stays whatever it was already rolling in — a push doesn't
+    // redirect a boulder that's already moving, matching TS's `state ===
+    // 'idle'` gate on the direct-push branch (main.ts:946).
+    assert_eq!(boulder.direction, Facing::N);
+}
+
+#[test]
+fn push_boulder_returns_false_when_no_boulder_is_at_the_cell() {
+    let mut state = gs(json!([]));
+    assert!(!state.push_boulder(5, 5, Facing::E));
+}
+
+#[test]
+fn can_boulder_roll_to_succeeds_into_a_plain_open_cell() {
+    let state = gs_with_grid(json!([]), &["....."]);
+    assert!(can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_out_of_bounds() {
+    let state = gs_with_grid(json!([]), &["....."]);
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        10,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_into_a_non_walkable_cell() {
+    let state = gs_with_grid(json!([]), &["..#.."]);
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["..#.."].map(str::to_string),
+        &walkable_cells(),
+        1,
+        0,
+        2,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_into_a_closed_door() {
+    let state = gs_with_grid(
+        json!([{ "col": 3, "row": 0, "type": "door", "state": "closed" }]),
+        &["....."],
+    );
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_succeeds_through_an_open_door() {
+    let state = gs_with_grid(
+        json!([{ "col": 3, "row": 0, "type": "door", "state": "open" }]),
+        &["....."],
+    );
+    assert!(can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_into_a_cell_holding_a_block() {
+    let state = gs_with_grid(json!([{ "col": 3, "row": 0, "type": "block" }]), &["....."]);
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_into_a_cell_holding_another_boulder() {
+    let state = gs_with_grid(
+        json!([{ "col": 3, "row": 0, "type": "boulder" }]),
+        &["....."],
+    );
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
+}
+
+#[test]
+fn can_boulder_roll_to_fails_across_a_thin_wall_edge() {
+    let state = gs_with_grid(
+        json!([{ "col": 2, "row": 0, "type": "thin_wall", "wall": "E" }]),
+        &["....."],
+    );
+    assert!(!can_boulder_roll_to(
+        &state,
+        &["....."].map(str::to_string),
+        &walkable_cells(),
+        2,
+        0,
+        3,
+        0,
+    ));
 }
 
 #[test]

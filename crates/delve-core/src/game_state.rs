@@ -2287,6 +2287,27 @@ impl GameState {
             .contains_key(&door_key(col, row))
     }
 
+    /// Starts a boulder rolling in response to a player push — TS's direct
+    /// `boulder.direction = directionFromDelta(dc, dr); boulder.state =
+    /// 'rolling';` field mutation (`main.ts:944-949`), unguarded by any
+    /// destination check. Unlike [`Self::push_block`], this doesn't move the
+    /// boulder itself: `tick_boulders` resolves the actual roll (and
+    /// gracefully bounces/idles it if the destination turns out blocked) on
+    /// the next tick, the same way it already resolves every other
+    /// non-`Idle` boulder regardless of how it became non-`Idle`.
+    pub fn push_boulder(&mut self, col: i64, row: i64, direction: Facing) -> bool {
+        let key = door_key(col, row);
+        let Some(boulder) = self.active_layer_mut().boulders.get_mut(&key) else {
+            return false;
+        };
+        if !boulder.pushable || boulder.state != BoulderState::Idle {
+            return false;
+        }
+        boulder.direction = direction;
+        boulder.state = BoulderState::Rolling;
+        true
+    }
+
     pub fn damage_barrel(&mut self, col: i64, row: i64, damage: f64) -> DamageOutcome {
         let key = door_key(col, row);
         let layer = self.active_layer_mut();

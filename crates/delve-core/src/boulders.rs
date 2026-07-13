@@ -144,6 +144,54 @@ fn compute_landing_layer(
     0
 }
 
+/// TS's `canBoulderRollTo` (`main.ts:826-838`): a narrower upfront
+/// validity check than [`can_boulder_enter`]'s own per-tick resolution
+/// below — that one also classifies what happens if an enemy or the player
+/// is standing in the destination cell (`EnterResult::KillEnemy` /
+/// `DamageEnemy` / `DamagePlayer`), outcomes `canBoulderRollTo` has no
+/// equivalent for. Kept as its own function rather than reusing
+/// `can_boulder_enter` for that reason, not just to avoid a shared-context
+/// dependency.
+///
+/// Used by the move-blocked push handler to decide, before committing to a
+/// block push, whether a boulder sitting one cell beyond the block can
+/// actually roll into the cell beyond *that*. The direct "walk straight
+/// into a boulder" push has no equivalent upfront check at all
+/// (`main.ts:944-949`) — [`tick_boulders`] re-validates every non-idle
+/// boulder on its next tick regardless of how it became non-idle, so an
+/// invalid direct push just bounces or idles the same way any other
+/// blocked roll does.
+#[must_use]
+pub fn can_boulder_roll_to(
+    game: &GameState,
+    grid: &[String],
+    walkable: &HashSet<char>,
+    from_col: i64,
+    from_row: i64,
+    to_col: i64,
+    to_row: i64,
+) -> bool {
+    let (Ok(col), Ok(row)) = (i32::try_from(to_col), i32::try_from(to_row)) else {
+        return false;
+    };
+    let Some(character) = cell_at(grid, col, row) else {
+        return false;
+    };
+    if !walkable.contains(&character) {
+        return false;
+    }
+    if game.get_door(to_col, to_row).is_some() && !game.is_door_open(to_col, to_row) {
+        return false;
+    }
+    if game.is_block_at(to_col, to_row) || game.is_boulder_at(to_col, to_row) {
+        return false;
+    }
+    if game.is_edge_blocked(from_col, from_row, to_col, to_row) {
+        return false;
+    }
+    true
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EnterResult {
     Enter,
