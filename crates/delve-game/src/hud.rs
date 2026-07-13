@@ -182,7 +182,7 @@ fn equip_slot_color(slot: EquipSlot) -> Rgba {
     }
 }
 
-fn paperdoll_path(slot: EquipSlot) -> &'static str {
+pub(crate) fn paperdoll_path(slot: EquipSlot) -> &'static str {
     match slot {
         EquipSlot::Weapon => "sprites/paper/right_hand.png",
         EquipSlot::Shield => "sprites/paper/left_hand.png",
@@ -221,7 +221,7 @@ pub struct IconCache {
 }
 
 impl IconCache {
-    fn get(&mut self, path: &str) -> Option<&RgbaImage> {
+    pub(crate) fn get(&mut self, path: &str) -> Option<&RgbaImage> {
         self.images
             .entry(path.to_string())
             .or_insert_with(|| {

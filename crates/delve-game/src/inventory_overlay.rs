@@ -52,6 +52,13 @@ const BACKPACK_DROP_BORDER: Rgba = Rgba::translucent(0x44, 0xcc, 0x44, 0.4);
 const HINT_TEXT: Rgba = Rgba::opaque(0x66, 0x66, 0x66);
 const ICON_FALLBACK: Rgba = Rgba::opaque(0x88, 0x88, 0x88);
 
+/// Empty equipment slots draw a translucent paperdoll ghost icon —
+/// `inventoryOverlay.ts`'s own `pad`/`globalAlpha` (its mini-panel sibling,
+/// `hud.rs::draw_inventory_panel`, uses a tighter 3px pad for the same
+/// alpha, ported from `inventoryPanel.ts`'s separate constant).
+const PAPERDOLL_PAD: i32 = 4;
+const PAPERDOLL_ALPHA: f32 = 0.3;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
     Equipment,
@@ -775,6 +782,17 @@ pub fn draw_inventory_overlay(
                 &entity.item_id,
                 (sx, sy, SLOT_SIZE),
                 ICON_FALLBACK,
+            );
+        } else if let Some(ghost) = icons.get(crate::hud::paperdoll_path(slot)) {
+            canvas.blit_scaled(
+                ghost,
+                (
+                    sx + PAPERDOLL_PAD,
+                    sy + PAPERDOLL_PAD,
+                    SLOT_SIZE - PAPERDOLL_PAD * 2,
+                    SLOT_SIZE - PAPERDOLL_PAD * 2,
+                ),
+                PAPERDOLL_ALPHA,
             );
         }
     }
