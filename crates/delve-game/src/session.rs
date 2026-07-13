@@ -2,9 +2,11 @@
 //! resources, plus the input/update systems that connect the player
 //! controller, interaction, and world events to rendering.
 
+use crate::altars::{self, AltarHandles};
 use crate::blocks::{self, BlockRender};
 use crate::chests::{self, ChestHandles, ChestLid};
 use crate::doors::{DoorPanel, DoorPanels};
+use crate::fountains::{self, FountainHandles};
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverRender};
@@ -558,6 +560,23 @@ pub struct InteractEffects<'w, 's> {
     pub dialog_state: ResMut<'w, crate::dialog_overlay::DialogOverlayState>,
     pub quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
     pub trading_state: ResMut<'w, crate::trading_overlay::TradingOverlayState>,
+    pub fountain_handles: Res<'w, FountainHandles>,
+    pub altar_handles: Res<'w, AltarHandles>,
+    // Read-only, and filtered `Without<PlateVisual>` so Bevy can prove this
+    // is disjoint from `signal.plate.visuals`'s `Query<&mut
+    // MeshMaterial3d<StandardMaterial>, With<PlateVisual>>` — an
+    // unfiltered query here would conflict with it despite the two never
+    // targeting the same entity, the same class of issue documented on
+    // `enemy_feedback::CombatFeedback::bar_fills`. The emissive mutation
+    // itself goes through `item_render.materials`, already present, rather
+    // than a second `ResMut<Assets<StandardMaterial>>` field (which would
+    // conflict on its own).
+    pub pillar_materials: Query<
+        'w,
+        's,
+        &'static MeshMaterial3d<StandardMaterial>,
+        Without<crate::plates::PlateVisual>,
+    >,
 }
 
 pub fn interact_input(
@@ -698,6 +717,28 @@ pub fn interact_input(
                 );
             }
         }
+        InteractionType::FountainUsed => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                fountains::mark_fountain_used(
+                    &effects.fountain_handles,
+                    &mut sconce_render.visibility,
+                    &door_key(col, row),
+                );
+            }
+        }
+        InteractionType::AltarActivated => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                altars::mark_altar_used(
+                    &effects.altar_handles,
+                    &effects.pillar_materials,
+                    &mut effects.item_render.materials,
+                    &door_key(col, row),
+                );
+            }
+        }
+        // `BookshelfRead` (like `SignRead`) has no dedicated visual state in
+        // TS beyond its own text popup, which the generic message toast
+        // below already substitutes for — no mesh update needed here.
         _ => {}
     }
     // Substitutes for TS's dedicated overlays (sign text, chest-locked

@@ -1,6 +1,7 @@
 //! Enemy billboards and AI ticking: sprites face the camera's view plane,
 //! move with the core AI, and melee the player when adjacent.
 
+use crate::barrels::{self, BarrelHandles};
 use crate::dungeon::CELL_SIZE;
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
@@ -405,6 +406,37 @@ pub fn attack_input(
                     info!("You strike the wall for {}", result.damage.unwrap_or(0.0));
                 }
             }
+            // TS spawns a damage number for both barrel results and has no
+            // HUD/log message for either — `inputSystem.ts`'s barrel arm
+            // never calls `hud.showMessage`, unlike every other combat
+            // result here, so none is added.
+            CombatResultType::BarrelHit => {
+                spawn_hit_number(&mut kill_effects, &result);
+            }
+            CombatResultType::BarrelDestroy => {
+                spawn_hit_number(&mut kill_effects, &result);
+                let (Some(col), Some(row)) = (result.target_col, result.target_row) else {
+                    continue;
+                };
+                barrels::despawn_barrel(
+                    &mut kill_effects.barrels,
+                    &mut kill_effects.item_render.commands,
+                    &door_key(col, row),
+                );
+                if result.drops_override.is_some() {
+                    let rng = &mut rng.0;
+                    let mut random = || rng.next_f64();
+                    ground_items::spawn_loot(
+                        &mut session.game,
+                        &mut kill_effects.item_render,
+                        &kill_effects.loot_tables.0,
+                        "",
+                        result.drops_override.as_ref(),
+                        (col, row),
+                        &mut random,
+                    );
+                }
+            }
             CombatResultType::NoTarget => info!("You swing at nothing."),
             CombatResultType::Cooldown => {}
             other => debug!("attack result: {other:?}"),
@@ -444,6 +476,7 @@ pub struct KillEffects<'w, 's> {
     visibility: Query<'w, 's, &'static mut Visibility>,
     feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
     hud: ResMut<'w, crate::hud::HudState>,
+    barrels: ResMut<'w, BarrelHandles>,
 }
 
 /// The enemy a kill applies to — bundled so `handle_kill` stays under the

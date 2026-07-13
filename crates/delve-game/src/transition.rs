@@ -2,12 +2,15 @@
 //! its fade-to-black overlay: fade out, swap the level scene at the
 //! midpoint, fade back in. Input systems check `Transition::is_active`.
 
+use crate::altars::AltarHandles;
+use crate::barrels::BarrelHandles;
 use crate::blocks::BlockHandles;
 use crate::chests::ChestHandles;
 use crate::doors::DoorPanels;
 use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::enemy_feedback::EnemyHealthBars;
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
+use crate::fountains::FountainHandles;
 use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::keys::KeyBillboards;
 use crate::level_scene::{LevelEntity, SceneAssets, SceneContext, spawn_level_scene};
@@ -179,6 +182,9 @@ pub struct SwapWorld<'w, 's> {
     npc_db: Res<'w, NpcDb>,
     npc_billboards: ResMut<'w, NpcBillboards>,
     quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
+    fountain_handles: ResMut<'w, FountainHandles>,
+    altar_handles: ResMut<'w, AltarHandles>,
+    barrel_handles: ResMut<'w, BarrelHandles>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -355,6 +361,9 @@ pub fn perform_level_swap(
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
+    *world.fountain_handles = handles.fountain_handles;
+    *world.altar_handles = handles.altar_handles;
+    *world.barrel_handles = handles.barrel_handles;
 
     let Session { game, grid, .. } = session;
     // TS reveals with the target stair's facing; only the player's
@@ -540,6 +549,9 @@ pub fn perform_restart(
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
+    *world.fountain_handles = handles.fountain_handles;
+    *world.altar_handles = handles.altar_handles;
+    *world.barrel_handles = handles.barrel_handles;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(
@@ -705,6 +717,9 @@ pub fn perform_load(
     *world.wall_entity_handles = handles.wall_entity_handles;
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
+    *world.fountain_handles = handles.fountain_handles;
+    *world.altar_handles = handles.altar_handles;
+    *world.barrel_handles = handles.barrel_handles;
 
     let Session { game, grid, .. } = session;
     game.reveal_around(

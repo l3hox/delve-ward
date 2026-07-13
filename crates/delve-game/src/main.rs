@@ -1,8 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod altars;
 mod attribute_panel;
+mod barrels;
 mod billboard;
 mod blocks;
+mod bookshelves;
 mod char_creation;
 mod chests;
 mod damage_numbers;
@@ -13,6 +16,7 @@ mod enemies;
 mod enemy_feedback;
 mod environment;
 mod equip_layout;
+mod fountains;
 mod ground_items;
 mod hud;
 mod hud_font;
@@ -240,6 +244,9 @@ fn setup(
     commands.insert_resource(handles.wall_entity_handles);
     commands.insert_resource(handles.health_bars);
     commands.insert_resource(handles.npc_billboards);
+    commands.insert_resource(handles.fountain_handles);
+    commands.insert_resource(handles.altar_handles);
+    commands.insert_resource(handles.barrel_handles);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(npcs::NpcDb(npc_db));
     commands.insert_resource(ItemDb(items));

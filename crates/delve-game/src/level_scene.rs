@@ -1,12 +1,16 @@
 //! Building and tearing down the per-level scene: everything that is
 //! despawned and rebuilt when the player takes stairs to another level.
 
+use crate::altars::{self, AltarHandles};
+use crate::barrels::{self, BarrelHandles};
 use crate::blocks::{self, BlockHandles};
+use crate::bookshelves;
 use crate::chests::{self, ChestHandles};
 use crate::doors::{self, DoorPanels};
 use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
 use crate::enemy_feedback::{self, EnemyHealthBars};
+use crate::fountains::{self, FountainHandles};
 use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
@@ -54,6 +58,9 @@ pub struct LevelSceneHandles {
     pub wall_entity_handles: WallEntityHandles,
     pub health_bars: EnemyHealthBars,
     pub npc_billboards: NpcBillboards,
+    pub fountain_handles: FountainHandles,
+    pub altar_handles: AltarHandles,
+    pub barrel_handles: BarrelHandles,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -202,6 +209,12 @@ pub fn spawn_level_scene(
         scene.game,
         scene.npc_db,
     );
+    let fountain_handles =
+        fountains::spawn_fountains(commands, assets.meshes, assets.materials, scene.game);
+    let altar_handles = altars::spawn_altars(commands, assets.meshes, assets.materials, scene.game);
+    let barrel_handles =
+        barrels::spawn_barrels(commands, assets.meshes, assets.materials, scene.game);
+    bookshelves::spawn_bookshelves(commands, assets.meshes, assets.materials, scene.game);
     LevelSceneHandles {
         door_panels,
         enemy_billboards: billboards,
@@ -216,5 +229,8 @@ pub fn spawn_level_scene(
         wall_entity_handles,
         health_bars,
         npc_billboards,
+        fountain_handles,
+        altar_handles,
+        barrel_handles,
     }
 }
