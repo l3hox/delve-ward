@@ -6,47 +6,41 @@ Audit of `../DelveWard` (TS, parity target `main` at `9476c6526ef98b636992a2dfba
 
 ## Top findings
 
-**A whole category of Phase-2-adjacent HUD/interaction affordances has no home in any PORT-PLAN.md phase.** Attribute allocation (KeyL), the read-only stats panel (KeyT), the interactive full-screen inventory overlay (equip/unequip/drop via drag-and-drop or click, not just walk-over pickup), compass rose, minimap, torch-fuel indicator, the real level-up toast, item tooltips, the sword-swing visual, enemy hit-shake/move-lerp, and the floating enemy health bar are all absent from TS `main`'s Phase 2 milestone as `PORT-PLAN.md` describes it, yet every one of them shipped in the TS build before or during that milestone. Two independent audits (core/game coverage and the COMPLETED.md cross-reference) converged on the same list from different angles. Concretely, this already produces a dead end in the merged code: `game_state.rs` grants `attribute_points` on level-up and `hud.rs` draws "PRESS 'L' TO LEVEL UP", but no `KeyL` handler exists anywhere — points can be earned but never spent. Equipment can currently only be equipped by walking over a ground item; there is no way to unequip, drop, or rearrange items from the UI.
+**Every HUD overlay, the full player-controller tick, and the quest/dialog runtime wiring landed in Phases 3-5.** Attribute allocation (`attribute_panel.rs`, `KeyL`), the read-only stats panel (`stats_panel.rs`, `KeyT`), the full-screen interactive inventory overlay with drag-and-drop equip/unequip/drop (`inventory_overlay.rs`, `KeyI`), item tooltips (`item_tooltip.rs`), the quest log (`quest_log_overlay.rs`, `KeyJ`), trading (`trading_overlay.rs`), dialog (`dialog_overlay.rs`), save/load with a unified death-and-restart flow (`save_load_overlay.rs`, `KeyR` restarts from death mode), and the level-up toast (`draw_level_up_toast` in `hud.rs`) are all built and wired. `QuestManagerRes` and `DialogManager` are real Bevy resources threaded through `dialog_overlay.rs`, `quest_log_overlay.rs`, and `save_load_overlay.rs` (which calls `quests.0.restore_state(...)` on load); `status_effects.rs`'s `tick_player_vitals` (hunger drain, starvation, damage-over-time, damage-flash timer) is registered in `main.rs`'s Update schedule and `apply_effect` is called for `HitType::Player` in `projectiles.rs`, so the player can be poisoned/slowed/burning same as an enemy. Quick-slot digit keys 1-8 and every overlay-toggle key are bound (see the keyboard map below). What used to be the majority of this document's open items is now closed; the pockets that remain are itemized in `src/hud/`/`src/core/`/`src/game/` row notes rather than called out here.
 
-**Core logic is frequently complete and tested while sitting completely disconnected from the game.** `quest_manager.rs` is a full, unit-tested port of `questManager.ts` with zero production call sites anywhere in the workspace — `game_state.rs` has no `QuestManager` field, so nothing can start or advance a quest. `dialog_manager.rs` is likewise a complete port, but its `questStage` condition is stuck on the TS module's own pre-override placeholder since nothing wires `quest_manager`'s evaluator into it, and nothing in `delve-game` ever opens a dialog session. `projectiles.rs` has a full parity-tested `ProjectileManager` port but is never referenced from `crates/delve-game/src` at all — no projectile ever spawns or renders. `status_effects.rs`/`status_effect_state.rs` tick correctly for enemies (via `enemy_ai.rs`) but are never applied to the player, because `playerController.ts` — the file that would call them — has no Rust port whatsoever, not even the tick orchestration. `save_system.rs`'s data model is complete but `apply_save_data` never calls `QuestManager::restore_state`, and its own doc comment claiming "no runtime quest manager exists" is now stale.
+**Genuinely still open, verified against code**: the sign popup (`SignRead`'s text is logged via `info!`, no `SignOverlay`/popup exists — `signs.rs`'s own module doc confirms this); and `drop_item` (`game_state.rs`) recalculating `max_hp` after a drop where TS's `dropItem` does not (low risk, dropping rarely changes VIT-affecting gear, but a real behavior difference). Both remaining PORT-PLAN phase 6 tool items are implemented and wired: the camera's asymmetric frustum crop (`zones.rs`'s `camera_view_crop`/`apply_camera_view_crop`, registered in `main.rs`'s Update schedule, with unit tests pinning the exact TS `setViewOffset` math including its floor-toward-negative-infinity rounding) and debug tooling (`debug.rs` — `KeyM` fullbright with coupled noclip, `KeyY`/`KeyH` layer fly, attack-key auto-kill, registered at `main.rs`'s Update schedule head; `DebugFlags::fullbright` consulted at every `!debugFullbright` site TS has). The multi-zone fullbright hold (TS `main.ts:1443` skipping per-zone fog/ambient reapply while fullbright is on) is the one debug sub-item still in flight.
 
-**`playerController.ts` is entirely unported**, not partially. Beyond the status-effect and quest gaps above, this means: hunger never drains, starvation never triggers, torch fuel never depletes despite being fully modeled in `game_state.rs`/`torch.rs`, and there is no dispatcher for HUD-driven inventory actions (equip/unequip/use/drop/swap) even though every one of those `GameState` methods already exists and is unit-tested.
-
-**A rendering correctness bug already shipped in merged Phase 2 code**: `dungeon.rs`'s `spawn_dungeon` has no concept of a stair cell, so it renders a normal flat floor/ceiling/wall tile at every stair position in addition to `stairs.rs`'s stepped geometry drawn on top — TS's `buildDungeon` explicitly excludes stair cells from the flat pass. Separately, every billboard (enemies, items, keys, NPCs, forest) uses a standard PBR `StandardMaterial` in Rust versus TS's custom unlit distance-only shader (`billboardMaterial.ts`) — a systematic, cross-cutting visual difference worth a note for the Phase 6 side-by-side audit rather than a per-entity one. The specific front/back-face sidedness mismatch this caused (missing `double_sided` on lit billboard materials, and `cull_mode: None` applied where TS is single-sided) was audited and fixed across forest/enemy/item/key/NPC/fireball materials in Phase 5 (`fix: forest billboards light back faces correctly`, `fix: billboard material sidedness parity`); the deeper shader-technique difference itself remains open for Phase 6.
-
-**Input gaps mirror the HUD gaps exactly**: quick-slot digit keys (1-8) are unbound despite full core support (`use_consumable_from_registry`, `backpack_item_at`); KeyI/KeyT/KeyL/KeyJ and the overlay-context Escape are all unbound because the overlays themselves don't exist yet.
-
-**One faithfulness deviation worth flagging for the Phase 6 audit**: Rust's `drop_item` (`game_state.rs`) recalculates `max_hp` after dropping an item; the TS `dropItem` does not. Low risk (dropping items rarely changes VIT-affecting equipment), but a real behavior difference, not just a missing feature.
+**One rendering claim from the Phase 2-era audit is also stale**: `dungeon.rs`'s `spawn_dungeon` now skips stair cells (`if stair_cells.contains(&key) || wall_entity_cells.contains(&key) { continue; }`), matching TS's `buildDungeon` exclusion — the flat-floor-under-stepped-stairs bug is fixed. What's still a real, disclosed difference: every billboard (enemies, items, keys, NPCs, forest) uses a standard PBR `StandardMaterial` versus TS's custom unlit distance-only shader (`billboardMaterial.ts`) — the front/back-face sidedness mismatch this caused was audited and fixed in Phase 5 (`fix: forest billboards light back faces correctly`, `fix: billboard material sidedness parity`); the deeper shader-technique difference itself remains open for Phase 6.
 
 ---
 
 ## `src/core/` coverage
 
-`PROGRESS.md`'s claim that "everything phase 2 (and much of phases 3-5) needs from `delve-core` exists" holds for all but `playerController.ts`, which has no Rust equivalent at all.
+`PROGRESS.md`'s claim that "everything phase 2 (and much of phases 3-5) needs from `delve-core` exists" now holds without exception — `playerController.ts` landed as `player_controller.rs` in Phase 3/4.
 
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
 | combat.ts | Ported | `combat.rs` | — | `calculate_damage`, `resolve_weapon_effect`, `player_attack`, `enemy_attack_player` all match; randomness injected via closure. |
 | combatState.ts | Ported | `game_state.rs` | — | See deep dive. |
-| dialogManager.ts | Ported (logic only) | `dialog_manager.rs` | 4 | Every export ported; not wired into `delve-game` — no NPC interaction opens a session, nothing renders dialog text. `questStage` condition still the hardcoded TS default placeholder. |
+| dialogManager.ts | Ported and wired | `dialog_manager.rs` + `dialog_overlay.rs` | 4 | Every export ported and wired — NPC interaction opens a session, `dialog_overlay.rs` renders text/choices. |
 | entities.ts | Ported | `entities.rs` | — | `EntityRegistry`, `ItemLocation`, `EquipSlot`, CRUD/snapshot/restore all match. |
 | gameState.ts | Ported | `game_state.rs` | — | Near-exhaustive: entity defs, signal wiring (now `WorldEvent`s instead of callbacks), level snapshots, lever/plate/trigger/tripwire/launcher, chest/fountain/altar/sconce interactions. |
 | grid.ts | Ported | `grid.rs` | — | `Facing`, `is_walkable`, `PlayerState` (move/strafe/turn via `MoveRules` closures) all match. |
 | inventoryState.ts | Ported | `inventory_state.rs` + `game_state.rs` | — | See deep dive. |
 | itemDatabase.ts | Ported | `items.rs` | — | Synchronous load instead of `fetch`, correct for a non-browser runtime. |
 | lootTable.ts | Ported | `loot.rs` | — | `roll_quality`/`roll_gold`/`roll_loot`/enchanted-modifier table with injected randomness. |
-| playerController.ts | **Unported** | none | 2 (inventory dispatch) / 3 (status-effect tick) / 4 (hunger/starvation) | No Rust equivalent anywhere. `tickPlayerController`, `shouldDrainTorch`, `processInventoryAction` all missing; the `GameState` methods they'd call already exist and are unused. |
+| playerController.ts | Ported | `player_controller.rs` (`tick_player_controller`, `should_drain_torch`, `process_inventory_action` — same three names as TS) + `status_effects.rs`/`session.rs` shell wiring | — | `tick_player_controller` runs status damage-over-time, damage-flash timer, temp-buff tick, `HUNGER_DRAIN_INTERVAL = 10.0`/`STARVATION_INTERVAL = 3.0` (byte-identical to TS's 10s/3s), called from `status_effects.rs` in `main.rs`'s Update schedule. `should_drain_torch`/`process_inventory_action` called from `session.rs`. `apply_effect` is called for `HitType::Player` in `projectiles.rs`, so the player takes poison/slow/burning same as enemies. |
 | projectileManager.ts | Ported | `projectiles.rs` | — | Includes `cellsOnPath` boundary walking and thin-wall/entity collision priority; hits returned as events. |
-| questManager.ts | Ported (logic only) | `quest_manager.rs` | 4 | Complete and tested; zero production call sites. See deep dive. |
+| questManager.ts | Ported and wired | `quest_manager.rs` | 4 | Complete and tested; `dialog_overlay::QuestManagerRes` is a live Bevy resource threaded through `dialog_overlay.rs`, `quest_log_overlay.rs`, and `save_load_overlay.rs`/`transition.rs` (`restore_state` on load). See deep dive. |
 | random.ts | Ported | `random.rs` | — | Mulberry32 verified bit-exact against captured JS output. |
-| saveSystem.ts | Partial | `save_system.rs` | 3 (data model done) / 4 (quest wiring) | `apply_save_data` doesn't call `QuestManager::restore_state`; the "no runtime quest manager exists" doc comment is stale. `export`/`importSaveFile` correctly excluded (browser DOM). |
+| saveSystem.ts | Ported and wired | `save_system.rs` (data model) + `transition.rs` (quest restore) | — | `apply_save_data` itself still doesn't touch quest state — by design, `QuestManager` is a delve-game-side resource, not owned by delve-core's pure save/load functions — but `transition.rs`'s `perform_load` calls `world.quests.0.restore_state(quest_data)` immediately after, so a loaded save's quest progress is restored end to end. `save_system.rs:384`'s doc comment ("no runtime quest manager exists") is stale and should be corrected in delve-core to describe the current split, not deleted outright. `export`/`importSaveFile` correctly excluded (browser DOM). |
 | signalManager.ts | Ported | `signal_manager.rs` | — | Topological sort, delay/pulse gates, timed-source scheduling, save/load state. |
 | statusEffects.ts | Ported | `status_effects.rs` | — | Tick/refresh/expiry semantics match. |
 | statusEffectState.ts | Ported | `status_effect_state.rs` | — | Temp-buff replace-not-stack behavior matches. |
 | textureNames.ts | Ported | `texture_names.rs` | — | `Set` membership replaced by helper functions. |
 | textureResolver.ts | Ported | `texture_resolver.rs` | — | Four-layer resolution order matches, including boundary-inclusive area checks. |
 | types.ts | Ported | `types.rs` | — | TS index-signature entity bag becomes a typed `props: Map<String, Value>`. |
-| worldEntityState.ts | Ported | `game_state.rs` ("World entity facade") | — | Every accessor/mutator and both `parse*Entity` dispatch heuristics match; several tracked entity types (chests, thin walls, ramps, NPCs, fountains, altars, barrels, boulders) aren't rendered yet, which is the pending Phase 3-5 shell work, not a core gap. |
+| worldEntityState.ts | Ported | `game_state.rs` ("World entity facade") | — | Every accessor/mutator and both `parse*Entity` dispatch heuristics match; every tracked entity type (chests, thin walls, ramps, NPCs, fountains, altars, barrels, boulders) now renders too, as of the Phase 3-5 shell work. |
 
 ### Deep dive: `combatState.ts` vs `game_state.rs`
 
@@ -56,13 +50,13 @@ Every member landed as an inherent method on `GameState`, not on `combat.rs` (wh
 
 `inventory_state.rs` holds the pure character-sheet primitives with no entity-registry/item-database dependency (`InventoryState` struct, `add_key`/`has_key`/`picked_up_keys`/`restore_picked_up_keys`, `xp_for_level`). Everything that needs the entity registry or item database landed on `GameState`: `pickupKeyAt`→`pickup_key_at`, `addXp`→`add_xp` (identical level-cap-15 loop, +3 points/level), `allocatePoint`→`allocate_point` (identical VIT full-HP preservation), `applyCharacterSetup`→`apply_character_setup`, `equipFromBackpack`/`unequipToBackpack`, `dropItem`→`drop_item` (see the max_hp deviation noted above), `pickupEquipmentAt`/`pickupConsumableAt`, `getPlayerState`/`restorePlayerState`. No missing behavior.
 
-### Deep dive: `playerController.ts` vs `grid.rs`'s `PlayerState` / `delve-game/src/player.rs`
+### Deep dive: `playerController.ts` vs `grid.rs`'s `PlayerState` / `player_controller.rs` / `delve-game/src/player.rs`
 
-`grid.ts`'s `PlayerState` class (movement, `canMoveTo`, `getFacingCell`) is fully ported into `grid.rs`; `delve-game/src/player.rs`'s `Player` component correctly layers camera-tween/animation on top, matching the TS rendering-layer `Player` class. But `playerController.ts` is a *separate* TS file that is entirely unported in either crate: `tickPlayerController` (player status-effect damage-over-time, damage-flash timer, temp-buff tick, hunger drain every 10s, starvation damage every 3s), `shouldDrainTorch`, and `processInventoryAction` (HUD dispatch for equip/unequip/use/drop/swap) have no Rust call sites at all, though every underlying `GameState` method they'd call already exists.
+`grid.ts`'s `PlayerState` class (movement, `canMoveTo`, `getFacingCell`) is fully ported into `grid.rs`; `delve-game/src/player.rs`'s `Player` component correctly layers camera-tween/animation on top, matching the TS rendering-layer `Player` class. `playerController.ts` itself is now `player_controller.rs`, using the same three function names as TS: `tick_player_controller` (status damage-over-time, damage-flash timer, temp-buff tick, hunger drain via `HUNGER_DRAIN_INTERVAL = 10.0`, starvation via `STARVATION_INTERVAL = 3.0`, `PlayerTickState`'s accumulators matching TS's — called from `status_effects.rs` in `main.rs`'s Update schedule), `should_drain_torch` (environment-gated, called from `session.rs`), and `process_inventory_action` (equip/unequip/use/drop dispatch for the `InventoryAction` enum, called from `session.rs`, consumed by `inventory_overlay.rs`'s cursor/drag state). `debug_fullbright` suppresses status-effect and starvation damage matching the TS debug flag's intent, though the debug toggle itself (`KeyM`) is still unbound (see Top Findings).
 
 ### Deep dive: `questManager.rs` / `dialog_manager.rs` real state
 
-`quest_manager.rs` is not a stub: every `QuestManager` method (`register_quest_def`, `getStatus`, `startQuest`, `advanceQuest` with reward application, `getStageIndex`, `getActiveQuests`/`getCompletedQuests`, serialize/restore, `installConditionEvaluator`) is present, correct, and covered by its own test file — it even improves on TS by returning `Result` instead of an unchecked cast on restore. The gap is integration: grep across `crates/` confirms zero production call sites outside its own tests and `dialog_manager.rs`'s test file. `game_state.rs` has no `QuestManager` field; `dialog_manager.rs`'s `QuestStage` evaluator arm is still the hardcoded placeholder; `save_system.rs` doesn't restore quest state; `delve-game` never constructs a `QuestManager`, loads a dialog tree, or opens a session. Both modules are correctly Phase 4 work — the only needed correction is `PROGRESS.md`'s stale claim that no runtime quest manager exists.
+`quest_manager.rs` is not a stub and is now fully wired: every `QuestManager` method (`register_quest_def`, `getStatus`, `startQuest`, `advanceQuest` with reward application, `getStageIndex`, `getActiveQuests`/`getCompletedQuests`, serialize/restore) is present, correct, and covered by its own test file — it even improves on TS by returning `Result` instead of an unchecked cast on restore. `dialog_overlay::QuestManagerRes` wraps it as a Bevy resource; `dialog_overlay.rs` passes a live `Some(quests)` into `get_available_choices` (`delve-core/src/dialog_manager.rs`'s `evaluate_condition`), so `questStage` dialog conditions read real quest progress, not the TS default evaluator's undiscovered-only placeholder; `quest_log_overlay.rs` and `save_load_overlay.rs` read the same resource; `transition.rs`'s `perform_load` calls `quests.0.restore_state(...)` after `apply_save_data` so a loaded save's quest progress survives (see the `saveSystem.ts` row above for why that's a separate call, not inside `apply_save_data` itself). Both modules were Phase 4 work and landed as described.
 
 ---
 
@@ -78,45 +72,45 @@ Every member landed as an inherent method on `GameState`, not on `combat.rs` (wh
 | lootSpawner.ts | Ported, for its one reachable call site | `ground_items.rs::spawn_loot` ← `loot.rs::roll_loot`, called from `enemies.rs::handle_kill` | New call sites land with Phase 3 | The function itself is a complete, faithful port. TS calls it from four sites (kill, chest, breakable-wall destroy, barrel destroy); Rust only has the kill site since the other three entity types don't exist yet. |
 | projectileSystem.ts | Core logic ported, wired | `projectiles.rs` (`ProjectileManager::update`, 23 parity tests) + `delve-game/src/projectiles.rs` (render shell, `tick_projectiles` in `main.rs`'s Update schedule) | — | Trap launchers (`tickTrapLaunchers`) remain unwired (see `gameLoop.ts` row). |
 | spawnerSystem.ts | Ported | `spawners.rs` (delve-core: `tick_spawners`) + `spawners.rs` (delve-game: marker render shell) | Phase 5 | BFS candidate search, interval/max-active gating, spawn flow landed; wired via `tick_spawners_system` in `main.rs`'s Update schedule. |
-| statusEffectSystem.ts | Partial (enemy-side only) | `status_effects.rs`/`status_effect_state.rs`, consumed by `enemy_ai.rs` for enemies | Player ticking + tints/icons: Phase 3. Hunger/starvation: Phase 4. | Wraps `core/playerController.ts::tickPlayerController` — see the core deep dive; player can never actually become poisoned/slowed/burning since nothing calls `apply_effect` on the player. |
-| transitionSystem.ts | Partially ported | `transition.rs` (`Transition`, `tick_transition`, `perform_level_swap`) | `restartLevel`/`loadGame`: Phase 3 (save/load overlay). Particle/ember rewiring on swap: Phase 5. Autosave-on-arrival: Phase 3. | Stair transitions are faithfully covered (fade, mid-fade swap, snapshot save/restore, stair-facing spawn offset, `reveal_around`). `restartLevel` (death fallback) and `loadGame` are entirely missing; `enemies.rs::tick_enemies` just logs "You died." with no restart trigger. |
+| statusEffectSystem.ts | Ported, both sides | `status_effects.rs`/`status_effect_state.rs`, consumed by `enemy_ai.rs` for enemies and `player_controller.rs`'s `tick_player_controller` for the player | — | Wraps `core/playerController.ts::tickPlayerController` — see the core deep dive. `apply_effect` is called for `HitType::Player` in `projectiles.rs`, so the player is poisoned/slowed/burned same as enemies; screen-tint overlays and status icons render from `status_fx`. |
+| transitionSystem.ts | Ported | `transition.rs` (`Transition`, `tick_transition`, `perform_level_swap`, `perform_restart`, `perform_load`) | — | Stair transitions, `restartLevel` (death fallback, `KeyR` in `save_load_overlay.rs`'s death mode), and `loadGame` are all wired. `save_load_overlay::check_player_death` is what now logs "You died." and opens the save/load overlay in death mode — not a dead end in `enemies.rs::tick_enemies` anymore. |
 
 ---
 
 ## `src/rendering/`, `src/hud/`, `src/npcs/`, `src/enemies/`, `src/level/` coverage
 
-Cross-cutting notes (apply across many rows below, not repeated per-row): every TS billboard uses a custom unlit distance-only shader (`billboardMaterial.ts`); Rust substitutes standard PBR `StandardMaterial` everywhere. `dungeon.rs` has no stair-cell awareness (see Top Findings). Attribute points are earned but unspendable (no `attributePanel.ts` port, no `KeyL` handler). Torch fuel is fully modeled in `game_state.rs` but never drained or displayed.
+Cross-cutting note (applies across many rows below, not repeated per-row): every TS billboard uses a custom unlit distance-only shader (`billboardMaterial.ts`); Rust substitutes standard PBR `StandardMaterial` everywhere (sidedness parity fixed in Phase 5, the shader technique itself is still a Phase 6 item — see Top Findings). `dungeon.rs`'s stair-cell awareness, attribute-point spending, and torch-fuel drain/display are all implemented now — see Top Findings for what's genuinely still open (torch fuel doesn't scale light intensity, sign popup, debug tooling, camera frustum crop, the `drop_item` max_hp deviation).
 
 ### `src/rendering/`
 
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
-| altarRenderer.ts | Unported | — | Phase 4 | `use_altar`/`get_altar` core logic exists, no mesh. |
-| barrelRenderer.ts | Unported | — | Phase 4 | |
+| altarRenderer.ts | Ported | `altars.rs` (`spawn_altars`, `mark_altar_used`) | — | Zone-tagged (Phase 5). |
+| barrelRenderer.ts | Ported | `barrels.rs` (`spawn_barrels`, `despawn_barrel`) | — | Zone-tagged (Phase 5). |
 | billboardMaterial.ts | Partial | ad-hoc `StandardMaterial` per spawn site | Phase 6 | See cross-cutting note. |
-| blockRenderer.ts | Unported | — | Phase 3 | `push_block`/`get_block` core logic exists, no mesh/tween. |
-| bookshelfRenderer.ts | Unported | — | Phase 4 | |
+| blockRenderer.ts | Ported | `blocks.rs` (`spawn_blocks`, `animate_block_push`, `animate_blocks`) | — | Zone-tagged (Phase 5). |
+| bookshelfRenderer.ts | Ported | `bookshelves.rs` (`spawn_bookshelves`) | — | Zone-tagged (Phase 5). |
 | boulderAnimator.ts | Ported | `boulders.rs` (`BoulderAnimator`, `animate_boulders`) | Phase 5 | Roll/descend/fall tween landed. |
 | boulderRenderer.ts | Ported | `boulders.rs` (`spawn_boulders`) | Phase 5 | Boulders render and animate; no longer invisible obstacles. |
 | damageNumbers.ts | Ported | `damage_numbers.rs` | — | Float speed, lifetime, fade, outline all match. |
 | doorAnimator.ts | Partial | `doors.rs` (`animate_door_panels`) | Phase 5 | Y-slide+bounce matches; x/z slide axes and `getOpenFraction()` (zone-boundary lights) unported. |
 | doorRenderer.ts | Partial | `doors.rs` (`spawn_doors`) | Phase 5 | Frame/panel match; multi-pass zone splitting and boundary entrance lights unported. |
 | dungeon.ts | Partial | `dungeon.rs` | Phase 3/5 | See Top Findings stair bug. Per-cell zone tagging, ramp wall/floor suppression, and pit-trap floor toggling landed in Phase 5; the zone-boundary half-tile split and hollow-layer (`openBottom`/`openTop`) detection are still unported (half-tile split has its own disclosed-gap note below). |
-| enemyAnimator.ts | Unported | — | Unscoped — see Top Findings | Move lerp, hit-shake, lunge attack; `enemies.rs` snaps `Transform` with no interpolation. |
-| enemyHealthBar.ts | Unported | — | Unscoped — see Top Findings | Floating HP bar above damaged enemies. |
+| enemyAnimator.ts | Partial | `enemy_feedback.rs` (`EnemyHitShake`, `tick_enemy_hit_shake`) | — | Hit-shake and lunge-attack landed (module doc: "ported from `rendering/enemyAnimator.ts`'s hit-shake fields"). Smooth move lerp did not — `enemies.rs` still snaps `Transform` to the new grid position with no interpolation between cells. |
+| enemyHealthBar.ts | Ported | `enemy_feedback.rs` (`spawn_health_bars`, `add_single_health_bar`) | — | Floating HP bar above damaged enemies, hidden at full HP. |
 | enemyRenderer.ts | Partial | `enemies.rs` (`spawn_enemy_billboards`) | — | Spawn/position/size match; see billboard-material note. |
 | environment.ts | Partial | `environment.rs` + `zones.rs` | Phase 5 | Static fog/ambient presets match; multi-pass zone maps (multi-camera architecture, `zones.rs`) landed. Smooth lerp between environments on transition is still unported. |
 | forestRenderer.ts | Ported | `forest.rs` (rendering) + `delve-core/src/forest_placement.rs` (seeded placement math) | Phase 5 | Billboard-per-tree instead of TS's one-`InstancedMesh`-per-variant (disclosed mechanism deviation in `forest.rs`'s module doc); variant sizes, zone tagging (`tag_forest`), and camera-yaw facing all match. |
-| fountainRenderer.ts | Unported | — | Phase 4 | `use_fountain` core logic exists, no mesh. |
+| fountainRenderer.ts | Ported | `fountains.rs` (`spawn_fountains`, `mark_fountain_used`) | — | Water-disc material is single-sided (`cull_mode` default, matching TS `FrontSide`) after the Phase 5 sidedness audit. |
 | groundItemRenderer.ts | Ported | `ground_items.rs` | — | Spread offsets, spawn/hide/reshow-remaining all match. |
-| chestRenderer.ts | Unported | — | Phase 3 | `open_chest`/`get_chest` core logic exists, no mesh/tween. |
+| chestRenderer.ts | Ported | `chests.rs` (`spawn_chests`, `open_chest_mesh`, `animate_chest_lids`) | — | Zone-tagged (Phase 5). |
 | itemSprites.ts | Ported (via Bevy AssetServer) | `ground_items.rs`, `hud.rs` (`IconCache`) | — | Manual TS caching replaced by Bevy asset caching. |
 | keyRenderer.ts | Ported | `keys.rs` | — | Procedural gold-key drawing reproduced pixel-for-pixel. |
-| leverAnimator.ts | Unported | — | Phase 3 | Pivot rotation tween. |
-| leverRenderer.ts | Unported | — | Phase 3 | `activate_lever` already dispatches and `session.rs` reacts for doors, but the lever has no mesh. |
+| leverAnimator.ts | Ported | `levers.rs` (`animate_levers`) | — | Pivot rotation tween. |
+| leverRenderer.ts | Ported | `levers.rs` (`spawn_levers`, `set_lever_target`) | — | Zone-tagged (Phase 5). |
 | npcRenderer.ts | Unported | — | Phase 4 | `npcs.rs` is data-only. |
 | particles.ts | Ported | `particles.rs` | Phase 5 | All four systems (dust motes, sconce embers, water drips, fireflies) plus light-distance culling landed and wired into `main.rs`'s Update schedule. |
-| plateRenderer.ts | Unported | — | Phase 3 | Pressed/released texture swap. |
+| plateRenderer.ts | Ported | `plates.rs` (`spawn_plates`) | — | Zone-tagged (Phase 5). |
 | player.ts | Partial | `player.rs` | Phase 5 | Movement/tween/queue/stair-pitch match. Falling physics (kinematic Y-channel, `is_falling`) and per-layer `y_offset` landed in Phase 5. `debugNoClip` and the `onMoveBlocked` retry hook (see the walk-into-block/boulder-push note below the rendering table) remain unported. |
 | projectileRenderer.ts | Unported | — | Phase 3 | `projectiles.rs` core logic fully implemented and tested, nothing renders. |
 | propRenderer.ts | Ported | `props.rs` | Phase 5 | |
@@ -127,41 +121,41 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | skybox.ts | Ported | `skybox.rs` | Phase 5 | Sphere geometry/texture generation, zone tagging, camera-follow all landed and wired. |
 | spawnerRenderer.ts | Ported | `spawners.rs` | Phase 5 | Marker decal render shell landed and wired via `tick_spawners_system`. |
 | stairRenderer.ts | Ported | `stairs.rs` | — | Stepped geometry, depth fade, side walls match; see dungeon.ts stair-cell note. |
-| swordSwing.ts | Unported | — | Unscoped — see Top Findings | Combat feedback is log lines + damage numbers only. |
+| swordSwing.ts | Ported | `hud.rs` (`trigger_sword_swing`, `draw_sword_swing`) | — | Triggered on player attack (`enemies.rs::kill_effects.hud.trigger_sword_swing`). |
 | textures.ts | Partial | `textures.rs` + `thin_walls.rs` | Phase 5 | Wall/floor/ceiling/door sets match exactly; thin-wall textures (`stone_thin`/`iron_fence`/`wood_fence`/`railing`) landed in `thin_walls.rs` rather than `textures.rs::DungeonMaterials` (disclosed ownership tradeoff in `thin_walls.rs`'s module doc). |
-| thinWallRenderer.ts | Ported | `thin_walls.rs` | Phase 5 | Geometry/orientation, same-texture-vs-mixed material split, and zone tagging all landed and wired. Edge blocking is wired for player movement/interaction/projectiles; enemy pathfinding's edge-blocked wiring is in progress (uncommitted as of this writing). |
+| thinWallRenderer.ts | Ported | `thin_walls.rs` | Phase 5 | Geometry/orientation, same-texture-vs-mixed material split, and zone tagging all landed and wired. Edge blocking is wired for player movement, interaction, projectiles, and enemy pathfinding (`fix: enemy tick parity across layers, holes, thin walls, and attacks`). |
 | transitionOverlay.ts | Ported | `transition.rs` | — | Fade phase machine, speed, `isActive` gating match. |
 | trapLauncherRenderer.ts | Unported | — | Phase 3 | |
-| tripwireRenderer.ts | Unported | — | Phase 3 | |
-| wallEntityRenderer.ts | Unported | — | Phase 3 | Breakable/secret wall reveal-on-open. |
+| tripwireRenderer.ts | Ported | `tripwires.rs` (`spawn_tripwires`) | — | Zone-tagged (Phase 5). |
+| wallEntityRenderer.ts | Ported | `wall_entities.rs` (`spawn_wall_entities`, `reveal_wall_entity`) | — | Zone-tagged (Phase 5). |
 
 ### `src/hud/`
 
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
-| attributePanel.ts | Unported | — | Unscoped — see Top Findings | Points earned but unspendable. |
+| attributePanel.ts | Ported | `attribute_panel.rs` (`KeyL`) | — | Points earned via level-up are spendable — allocation, levelup/stats mode auto-select, close gated on all points spent in levelup mode. |
 | compassRose.ts | Ported | `hud.rs` (`draw_compass`) | — | |
-| dialogOverlay.ts | Unported | — | Phase 4 | |
+| dialogOverlay.ts | Ported | `dialog_overlay.rs` | — | Session state, choice highlight/select (arrows/Enter/digits/mouse), Escape dismiss. |
 | healthBar.ts | Ported | `hud.rs` (`draw_health_bar`) | — | Bar, low-HP pulse, heart icon, HP text match. |
-| hudCanvas.ts | Partial | `hud.rs` (`draw_hud`) | — | TS orchestrator wires compass/torch/hunger/status-icons/minimap/stats-panel/inventory-overlay/attribute-panel/level-up-toast/sword-swing plus mouse drag-drop; `draw_hud` calls health/inventory/XP/level-up-hint/message only. |
-| hudColors.ts | Partial | `hud.rs` (const palette) | — | Torch/hunger/compass/minimap colors unported. |
+| hudCanvas.ts | Ported | `hud.rs` (`draw_hud`) | — | `draw_hud` now orchestrates the full TS list: compass, torch, hunger, status tints/icons, minimap, inventory panel, XP bar, level-up hint/toast, sword swing, message, damage flash, plus every overlay (save/load, dialog, inventory, attribute, stats, quest log, trading) drawn on top per `ActiveOverlay`. |
+| hudColors.ts | Ported | `hud.rs` (const palette) | — | Torch/hunger/compass/minimap colors all in use by the now-wired panels. |
 | hudFont.ts | Ported (superset) | `hud_font.rs` | — | Identical glyphs; Rust adds `-`/`+`/`:`/`(`/`)`. |
-| hudLayout.ts | Partial | `hud.rs` (const layout) | — | COMPASS/MINIMAP/TORCH_BAR/HUNGER_BAR/STATUS_ICONS/INVENTORY_OVERLAY unported. |
-| hungerBar.ts | Unported | — | Phase 4 | |
+| hudLayout.ts | Ported | `hud.rs` (const layout) | — | COMPASS/MINIMAP/TORCH_BAR/HUNGER_BAR/STATUS_ICONS/INVENTORY_OVERLAY layout constants all backing real draw calls now. |
+| hungerBar.ts | Ported | `hud.rs` (`draw_hunger_bar`) | — | |
 | characterCreation.ts | Ported | `char_creation.rs` | — | Same points budget/min-stat/panel geometry; pixel font substitutes native canvas text. |
-| inventoryOverlay.ts | Unported | — | Unscoped — see Top Findings | Full-screen interactive inventory (cursor, drag-drop, tooltips); equip is walk-over-only in Rust. |
-| inventoryPanel.ts | Partially ported | `hud.rs` (`draw_inventory_panel`) | Phase 4 | Drawing matches (key count, gold, equipment + paperdoll ghosts, cooldown overlay, backpack grid). The TS panel is additionally mouse-interactive (hover, drag-to-equip, double-click use, right-click drop); those land with the phase 4 overlay/mouse work. |
-| itemTooltip.ts | Unported | — | Unscoped — see Top Findings | Depends on inventoryOverlay.ts's cursor state. |
-| levelUpNotification.ts | Unported | — | Unscoped — see Top Findings | Not the same thing as `draw_level_up_hint` (a different, persistent prompt). |
+| inventoryOverlay.ts | Ported | `inventory_overlay.rs` (`KeyI`) | — | Full-screen interactive inventory: cursor, drag-and-drop equip/unequip/rearrange, double-click use, right-click drop, tooltips (`item_tooltip.rs`). Deliberate deviation from Phase 4 review: clears drag state on close (TS keeps a stale drag across close/reopen) — see the note below the rendering table. |
+| inventoryPanel.ts | Partially ported | `hud.rs` (`draw_inventory_panel`) | — | Drawing matches (key count, gold, equipment + paperdoll ghosts, cooldown overlay, backpack grid). Mouse interaction on the mini-panel itself (hover, drag-to-equip, double-click use, right-click drop) is superseded by the full-screen `inventoryOverlay.ts` port rather than duplicated on the mini-panel, a reasonable scope choice not yet explicitly disclosed as such. |
+| itemTooltip.ts | Ported | `item_tooltip.rs` | — | Quality-colored name, stat lines, comparison deltas, requirements, wrapped description — drawn by the inventory overlay next to the cursor-selected slot. |
+| levelUpNotification.ts | Ported | `hud.rs` (`draw_level_up_toast`) | — | Distinct from `draw_level_up_hint` (the persistent "press L" prompt), matching TS's own `LevelUpNotification` vs a separate hint. |
 | minimapRenderer.ts | Ported | `hud.rs` (`draw_minimap`) | — | |
 | paperdollIcons.ts | Ported | `hud.rs` (`paperdoll_path`, `IconCache`) | — | Identical slot→path mapping. |
-| questLogOverlay.ts | Unported | — | Phase 4 | |
-| saveLoadOverlay.ts | Unported | — | Phase 3 | `save_system.rs` core fully implemented, no UI/keybinding. |
-| signOverlay.ts | Unported | — | Phase 3 | `SignRead`/`BookshelfRead` results computed and logged, no popup. |
-| statsPanel.ts | Unported | — | Unscoped — see Top Findings | |
-| statusEffectIcons.ts | Unported | — | Phase 3 | |
-| torchIndicator.ts | Ported | `hud.rs` (`draw_torch_indicator`) | — | Fuel drain itself is phase 3 (player controller wiring). |
-| tradingOverlay.ts | Unported | — | Phase 4 | |
+| questLogOverlay.ts | Ported | `quest_log_overlay.rs` (`KeyJ`) | — | |
+| saveLoadOverlay.ts | Ported | `save_load_overlay.rs` (`Escape` to open, unified death mode with `KeyR` restart) | — | Save/Load/Delete/Export/Import/Restart bound to arrow-navigable rows in Rust rather than TS's click-only buttons — a UI adaptation, not a gap; see the keyboard map below. |
+| signOverlay.ts | Unported | — | — | `SignRead`/`BookshelfRead` results computed and logged via `info!`, no popup — `signs.rs`'s own module doc confirms no dedicated visual state exists yet. |
+| statsPanel.ts | Ported | `stats_panel.rs` (`KeyT`) | — | |
+| statusEffectIcons.ts | Ported | `hud.rs` (`draw_status_icons`) | — | Active effect icons above the health bar, deduplicated by type. |
+| torchIndicator.ts | Ported | `hud.rs` (`draw_torch_indicator`) | — | Fuel drain wired via `player_controller.rs`'s `should_drain_torch` + `session.rs`. |
+| tradingOverlay.ts | Ported | `trading_overlay.rs` | — | Deliberate deviation from Phase 4 review: click region is the whole row (TS binds only the small button) — see the note below the rendering table. |
 | xpBar.ts | Ported | `hud.rs` (`draw_xp_bar`) | — | LV label, MAX-at-cap, fill ratio, progress text match. |
 
 Upstream content bug, inherited faithfully: `questgiver_hilda.json`'s "The spider queen is dead." choice requires the `spider_queen_killed` flag, but nothing in the TS reference sets it either (no kill-time flag mechanism exists in TS src/ or its data) — the bounty quest is uncompletable in both implementations. Report upstream rather than inventing a kill-flag hook here.
@@ -184,12 +178,12 @@ Deferred half-tile infrastructure (shared by two disclosed gaps): TS splits geom
 
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
-| npcDatabase.ts | Ported | `npcs.rs` | — | Data-loading/query layer matches; dialog linking and runtime interaction land with Phase 4's shell. |
+| npcDatabase.ts | Ported | `npcs.rs` | — | Data-loading/query layer matches; dialog linking and runtime interaction are wired via `dialog_overlay.rs`. |
 | enemyAI.ts | Ported | `enemy_ai.rs` | — | Regen/status ticking, flee/chase/attack state machine, deaggro buffer, erratic movement match line-for-line. The game-side tick loops every layer with per-layer hole/edge-blocking snapshots, gates attacks to the player's layer, and rolls onHit status effects (`enemies.rs::tick_enemies`). |
 | enemyDatabase.ts | Ported | `enemies.rs` | — | Struct model and queries match. |
 | enemyTypes.ts | Ported | `enemies.rs` (`create_enemy_instance`) | — | Field-for-field, including conditional regen-timer init. |
 | pathfinding.ts | Ported | `pathfinding.rs` | — | `manhattanDistance` and BFS `findPath` match exactly. |
-| interaction.ts | Ported | `interaction.rs` | — | Every branch matches including message text; `session.rs` only acts on door/sconce/lever results today (see rendering table for chest/NPC/fountain/altar/sign/bookshelf). |
+| interaction.ts | Ported | `interaction.rs` | — | Every branch matches including message text; `session.rs::interact_input` reacts to door/sconce/lever/block/chest/NPC/fountain/altar results with real mesh/state updates (see the `Space` row in the keyboard map). Only `SignRead`/`BookshelfRead` have no dedicated visual state beyond the generic HUD toast, matching TS. |
 | levelLoader.ts | Ported | `level_loader.rs` | — | Full parity test suite. |
 
 ---
@@ -200,11 +194,11 @@ Cross-reference of shipped TS milestones against this repo's phase prose. Rows a
 
 | Feature | Covered by PORT-PLAN.md? | Already in Rust? | Notes |
 |---|---|---|---|
-| Compass rose + minimap + exploration/fog-of-war reveal | NO — PLAN GAP | Partial (`explored_cells`/`reveal_around` in `game_state.rs`, no rendering) | `hud.rs` states its own scope as health/XP/mini-inventory/messages only. |
-| Torch fuel HUD indicator + fuel-scaled light range/flicker + outdoor/mist fuel-skip rule | NO — PLAN GAP | Partial (`torch_fuel`/`drain_torch_fuel` in `game_state.rs`; `torch.rs` never reads it) | Phase 1's "player torch point light" bullet never mentions fuel. |
-| Full-screen Inventory overlay (drag-and-drop equip/unequip/rearrange) | NO — PLAN GAP | NO | Phase 2's HUD bullet names only "mini inventory panel." |
-| Debug commands: noclip, fullbright, auto-kill, layer-fly | NO — PLAN GAP | NO | No phase bullet anywhere mentions debug/QA tooling. |
-| Camera asymmetric frustum crop / telephoto back-offset | NO — PLAN GAP | Partial (stair pitch-tilt done; view-offset crop absent) | Self-tracked in `PROGRESS.md`'s "Deliberately deferred" note, never promoted into a phase bullet. |
+| Compass rose + minimap + exploration/fog-of-war reveal | NO — PLAN GAP | Implemented | `session.rs` calls `game.reveal_around` on movement; `hud.rs`'s minimap reads `explored_cells` for fog-of-war. Never promoted into a PORT-PLAN.md phase bullet despite being done. |
+| Torch fuel HUD indicator + fuel-scaled light range/flicker + outdoor/mist fuel-skip rule | NO — PLAN GAP | Partial | Fuel drains (`player_controller.rs::should_drain_torch`, correctly skips outdoor/mist), and `hud.rs::draw_torch_indicator` displays it. `torch.rs`'s light intensity/flicker is still a flat constant (`FLICKER_BASE_INTENSITY`) — it does not read `torch_fuel` at all, so TS's fuel-scaled light distance (3-8) and flicker intensity is still missing. |
+| Full-screen Inventory overlay (drag-and-drop equip/unequip/rearrange) | NO — PLAN GAP | Implemented | `inventory_overlay.rs`. Never promoted into a PORT-PLAN.md phase bullet despite being done. |
+| Debug commands: noclip, fullbright, auto-kill, layer-fly | NO — PLAN GAP | NO | Still nothing — no `KeyM`/`KeyY`/`KeyH` binding anywhere; `boulders.rs`'s `debug_fullbright` field is a hardcoded stub. No phase bullet anywhere mentions debug/QA tooling. |
+| Camera asymmetric frustum crop / telephoto back-offset | NO — PLAN GAP | Implemented | `zones.rs`'s `camera_view_crop`/`apply_camera_view_crop` (Bevy `SubCameraView`), wired into `main.rs`'s Update schedule, with unit tests pinning the exact TS `setViewOffset` math. Landed during this Phase 6 audit session — never promoted into a phase bullet despite being done. |
 | Multi-layer dungeons, hollow areas, cross-layer signals | Phase 5 | Mostly implemented (`level_scene.rs` per-layer spawn loop, all entity types) | Hollow-area (`openBottom`/`openTop`) detection is not in `dungeon.rs` yet; everything else runtime-live. |
 | Thin walls with edge blocking | Phase 5 | Implemented (`thin_walls.rs` renders, zone-tags; edge blocking consulted by player movement, interaction, projectiles, and enemy pathfinding) | |
 | Ramps/stairs geometry, layer transitions, falling | Phase 5 | Implemented (`ramps.rs` geometry/movement, `player.rs` falling with kinematic Y-channel, pit traps) | |
@@ -213,14 +207,14 @@ Cross-reference of shipped TS milestones against this repo's phase prose. Rows a
 | Decorative props | Phase 5 | Implemented (`props.rs`, zone-tagged) | |
 | Outdoor environment, skybox variants, multi-pass RenderLayers | Phase 5 | Implemented (`zones.rs` multi-camera architecture, `skybox.rs`) | Zone-boundary half-tile splitting (doors, ramp landings) is a separate, still-open gap. |
 | Forest billboards; particles | Phase 5 | Implemented (`forest.rs` + `forest_placement.rs`; `particles.rs` — all four systems plus light culling) | |
-| Signal system + lever/plate/trigger/tripwire/gate entities | Phase 3 | Core done (`signal_manager.rs`) | `delve-game` only renders doors so far. |
-| Projectiles + trap launchers | Phase 3 | Core done (`projectiles.rs`) | No rendering. |
-| Status effects (poison/slow/burning, tints, icons) | Phase 3 | Core done | No tint/icon rendering. |
-| Environment entities (breakable/secret walls, blocks, chests, signs) | Phase 3 | Core done | No rendering. |
-| Save/load (slots, autosave, export/import, overlay) | Phase 3 | Core done | File-backed store + overlay UI deferred to the Phase 3 shell. |
-| NPCs (billboard, interaction, flags) | Phase 4 | Core done (`npcs.rs`) | No shell rendering. |
-| Dialog system | Phase 4 | Core done | No overlay UI. |
-| Quest system | Phase 4 | Core done | No overlay UI. |
+| Signal system + lever/plate/trigger/tripwire/gate entities | Phase 3 | Implemented (`signal_manager.rs` + `doors.rs`/`levers.rs`/`plates.rs`/`tripwires.rs`) | Doors/levers/plates/tripwires all render; triggers and gates are logic-only invisible entities in TS too, so nothing to render there. |
+| Projectiles + trap launchers | Phase 3 | Partial (`projectiles.rs` core + render shell implemented) | Projectiles render and are wired (`tick_projectiles` in `main.rs`). Trap launchers remain unwired — no mesh, no tick call site. |
+| Status effects (poison/slow/burning, tints, icons) | Phase 3 | Implemented | Screen-tint overlays and status icons render (`draw_status_screen_tints`, `draw_status_icons` in `hud.rs`); applies to both player and enemies. |
+| Environment entities (breakable/secret walls, blocks, chests, signs) | Phase 3 | Implemented | All four render (`wall_entities.rs`/`blocks.rs`/`chests.rs`/`signs.rs`). Sign read text still has no popup overlay (logged + HUD toast only). |
+| Save/load (slots, autosave, export/import, overlay) | Phase 3 | Implemented | `save_load_overlay.rs` — slots, death mode with `KeyR` restart, arrow-navigable rows. |
+| NPCs (billboard, interaction, flags) | Phase 4 | Implemented (`npcs.rs`) | Billboard rendering, interaction opening a dialog session, and flags all wired. |
+| Dialog system | Phase 4 | Implemented | `dialog_overlay.rs` — full overlay UI, keyboard + mouse choice selection. |
+| Quest system | Phase 4 | Implemented | `quest_log_overlay.rs` — full overlay UI; `QuestManagerRes` wired end to end including save/load restore. |
 | Doors/keys/locked doors/stairs, cross-level transitions | Phase 2 | Implemented | Matches `PROGRESS.md`'s claims. |
 | Enemies: AI, special behaviors, melee, XP, death, loot | Phase 2 | Implemented | Regen/flee/erratic behaviors fully ported despite the plan bullet only naming "AI movement" generically. |
 
@@ -228,32 +222,33 @@ Cross-reference of shipped TS milestones against this repo's phase prose. Rows a
 
 ## Keyboard input map
 
-TS dispatcher: `src/game/inputSystem.ts`. Nine other TS files register independent context-gated `keydown` listeners (`dialogOverlay.ts`, `saveLoadOverlay.ts`, `signOverlay.ts`, `questLogOverlay.ts`, `tradingOverlay.ts`, `characterCreation.ts`, plus editor-only files — out of scope per `DECISIONS.md` D2). On the Rust side every `KeyCode::` reference lives in `session.rs`, `enemies.rs`, and `char_creation.rs`; `hud.rs`/`main.rs` handle none.
+TS dispatcher: `src/game/inputSystem.ts`. Nine other TS files register independent context-gated `keydown` listeners (`dialogOverlay.ts`, `saveLoadOverlay.ts`, `signOverlay.ts`, `questLogOverlay.ts`, `tradingOverlay.ts`, `characterCreation.ts`, plus editor-only files — out of scope per `DECISIONS.md` D2). On the Rust side the same context-gated split holds: `session.rs`/`enemies.rs`/`char_creation.rs` handle dungeon/attack/character-creation input, and each overlay owns its own `KeyCode::` checks (`attribute_panel.rs`, `inventory_overlay.rs`, `quest_log_overlay.rs`, `save_load_overlay.rs`, `dialog_overlay.rs`, `stats_panel.rs`, `trading_overlay.rs`) rather than `hud.rs`/`main.rs` centralizing them.
 
 | Key | TS action (context) | Rust status | Phase | Notes |
 |---|---|---|---|---|
 | W/↑, S/↓, A, D, Q/←, E/→ | Move/strafe/turn (dungeon) | Bound — same action | Phase 1 | `session.rs::player_input`, identical key set. |
-| Space | Interact (doors, levers, sconces, chests, signs, bookshelves, fountains, altars, blocks, NPCs) | Bound to the same core call, incomplete response handling | Core done / Phase 3-4 rendering | `interaction::interact` covers all 14 result types; `interact_input` only reacts to door/sconce/lever results — the rest fall into the catch-all `_ => {}` since those entities aren't rendered yet. Messages go to `info!()`, not `HudState::show_message`. |
+| Space | Interact (doors, levers, sconces, chests, signs, bookshelves, fountains, altars, blocks, NPCs) | Bound — same action | — | `interaction::interact` covers all 14 result types; `interact_input` (`session.rs`) now reacts to door/sconce/lever/block/chest/NPC/fountain/altar results with real mesh/state updates, including opening a live dialog session on `NpcInteracted`. Only `SignRead`/`BookshelfRead` fall into the catch-all (no dedicated mesh update needed — see the `signOverlay.ts` row), and every message (including those) now also shows as a HUD toast via `effects.hud.show_message`, not just `info!()`. |
 | F | Attack | Bound — same action | Phase 2 | |
-| Digit1-Digit8 | Use backpack consumable at quick-slot N | **Unbound** | Phase 2 | Pure wiring gap — `use_consumable_from_registry`/`backpack_item_at` already exist. |
-| KeyI | Toggle inventory overlay | **Unbound** | Unscoped — see Top Findings | No overlay state machine exists at all. |
-| KeyL | Open attribute panel | **Unbound** | Unscoped — see Top Findings | The HUD hint is currently dead. |
-| KeyT | Toggle stats panel | **Unbound** | Unscoped — see Top Findings | |
-| Arrows/Enter/KeyD (inventory-overlay context) | Cursor, equip/unequip/use, drop | **Unbound** | Unscoped | Dead — overlay doesn't exist. |
-| Arrows/Enter/KeyL/Escape (attribute-panel context) | Select stat, allocate, confirm/close | **Unbound** | Unscoped | Dead — panel doesn't exist. |
-| KeyJ | Toggle quest log | **Unbound** | Phase 4 | |
-| Escape (no overlay) | Open save/load overlay | **Unbound** | Phase 3 | Core ported, no UI/binding. |
-| Escape (any panel context) | Close that panel | **Unbound** | Matches the panel's own phase | |
-| Any key (sign overlay) | Dismiss sign text | **Unbound** | Phase 3 | |
-| Escape (dialog overlay) | Dismiss dialog | **Unbound** | Phase 4 | |
-| Arrows/Enter/Digit1-9 (dialog, has choices) | Highlight/select/confirm choice | **Unbound** | Phase 4 | |
-| Any key (dialog, no choices) | Advance dialog | **Unbound** | Phase 4 | |
-| KeyJ/Escape (quest log open) | Hide quest log | **Unbound** | Phase 4 | |
-| Escape (trading overlay) | Hide trading overlay | **Unbound** | Phase 4 | Buy/sell itself is mouse-only in TS. |
-| Escape (save/load overlay) | Hide overlay | **Unbound** | Phase 3 | Rest of the UI is mouse-only in TS. |
-| Arrows/Enter (character creation) | Select/adjust/confirm | Bound — same action | Phase 2 | `char_creation.rs` matches the TS `handleKey` 1:1, including the points-spent gate on Enter. |
-| KeyM | Debug: fullbright + noclip | **Unbound** | Unscoped — see Top Findings | Dev tooling, not in any phase. |
-| KeyY / KeyH | Debug: fly to next/prev layer | **Unbound** | Phase 5 (layers) / dev tooling | |
+| Digit1-Digit8 | Use backpack consumable at quick-slot N | Bound — same action | — | `session.rs`, `Digit1`-`Digit8` mapped to backpack slots 0-7. |
+| KeyI | Toggle inventory overlay | Bound — same action | — | `inventory_overlay.rs`. |
+| KeyL | Open attribute panel | Bound — same action | — | `attribute_panel.rs`; the HUD hint now leads somewhere. |
+| KeyT | Toggle stats panel | Bound — same action | — | `stats_panel.rs`. |
+| Arrows/Enter/KeyD (inventory-overlay context) | Cursor, equip/unequip/use, drop | Bound — same action | — | `inventory_overlay.rs`: arrow-key cursor, Enter equip/unequip/use, `KeyD` drop, plus full mouse drag-and-drop. |
+| Arrows/Enter/KeyL/Escape (attribute-panel context) | Select stat, allocate, confirm/close | Bound — same action | — | `attribute_panel.rs`. |
+| KeyJ | Toggle quest log | Bound — same action | — | `quest_log_overlay.rs`. |
+| Escape (no overlay) | Open save/load overlay | Bound — same action | — | `save_load_overlay.rs`. |
+| Escape (any panel context) | Close that panel | Bound — same action | — | Every overlay module (`attribute_panel.rs`, `stats_panel.rs`, `inventory_overlay.rs`, `quest_log_overlay.rs`, `trading_overlay.rs`, `dialog_overlay.rs`, `save_load_overlay.rs`) closes on Escape. |
+| Any key (sign overlay) | Dismiss sign text | **Unbound** | — | No sign popup exists yet — see the `signOverlay.ts`/`signRenderer.ts` rows. |
+| Escape (dialog overlay) | Dismiss dialog | Bound — same action | — | `dialog_overlay.rs`. |
+| Arrows/Enter/Digit1-9 (dialog, has choices) | Highlight/select/confirm choice | Bound — same action | — | `dialog_overlay.rs`: `ArrowUp`/`ArrowDown` highlight, `Enter` confirms, digit keys select directly, mouse hover/click also supported. |
+| Any key (dialog, no choices) | Advance dialog | Bound — same action | — | `dialog_overlay.rs`'s `any_key_just_pressed`. |
+| KeyJ/Escape (quest log open) | Hide quest log | Bound — same action | — | |
+| Escape (trading overlay) | Hide trading overlay | Bound — same action | — | Buy/sell itself is mouse-only in both. |
+| Escape (save/load overlay) | Hide overlay | Bound — same action | — | Slot rows are additionally arrow-navigable in Rust (TS is click-only for the whole overlay) — a superset, not a gap. |
+| Arrows/Enter (character creation) | Select/adjust/confirm | Bound — same action | — | `char_creation.rs` matches the TS `handleKey` 1:1, including the points-spent gate on Enter. |
+| KeyR (save/load overlay, death mode) | Restart current level | Bound, no TS keyboard equivalent | — | `save_load_overlay.rs`'s death-mode restart; TS only exposes Restart as a click-only button (see the mouse-driven section below), so this is a Rust-side keyboard superset, not a divergence to fix. |
+| KeyM | Debug: fullbright + noclip | **Unbound** | — | No `KeyM` binding anywhere; `boulders.rs`'s `debug_fullbright` field is a hardcoded `false` stub, not a real toggle. Dev tooling, not in any phase. |
+| KeyY / KeyH | Debug: fly to next/prev layer | **Unbound** | — | Dev tooling, not in any phase. |
 
 ### Mouse-driven TS input (tracked separately)
 
