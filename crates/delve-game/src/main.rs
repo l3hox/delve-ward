@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod attribute_panel;
 mod billboard;
 mod blocks;
 mod char_creation;
@@ -11,9 +12,12 @@ mod dungeon;
 mod enemies;
 mod enemy_feedback;
 mod environment;
+mod equip_layout;
 mod ground_items;
 mod hud;
 mod hud_font;
+mod inventory_overlay;
+mod item_tooltip;
 mod keys;
 mod level_scene;
 mod levers;
@@ -30,6 +34,7 @@ mod sconces;
 mod session;
 mod signs;
 mod stairs;
+mod stats_panel;
 mod status_effects;
 mod textures;
 mod torch;
@@ -397,6 +402,9 @@ fn main() {
         // afterward, so this is an explicit initial value, not a `Default`.
         .insert_resource(ActiveOverlay::CharCreation)
         .init_resource::<mouse::MouseState>()
+        .init_resource::<hud::MiniPanelState>()
+        .init_resource::<inventory_overlay::InventoryOverlayState>()
+        .init_resource::<attribute_panel::AttributePanelState>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
@@ -409,8 +417,13 @@ fn main() {
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
                     dialog_overlay::dialog_input,
+                    inventory_overlay::inventory_overlay_input,
+                    attribute_panel::attribute_panel_input,
+                    stats_panel::stats_panel_input,
+                    hud::mini_panel_input,
                     session::player_input,
                     session::interact_input,
+                    session::quick_slot_input,
                     enemies::attack_input,
                     session::player_update,
                     session::on_player_moved,

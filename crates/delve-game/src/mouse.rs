@@ -1,10 +1,23 @@
-//! Mouse position and button-edge tracking — foundation for the
-//! mouse-driven overlays landing in later phase-4 slices (inventory drag,
-//! trading, dialog choice clicks). No consumer yet; `track_mouse` updates
-//! [`MouseState`] and traces button edges so the plumbing is provably
-//! correct ahead of anything depending on it.
+//! Mouse position and button-edge tracking, consumed by the inventory
+//! overlay and the mini inventory panel's mouse interactions.
+//!
+//! `left_double_clicked` reimplements the browser's native `dblclick`
+//! event, which Bevy's `ButtonInput<MouseButton>` has no equivalent for:
+//! `hudCanvas.ts`'s `attach()` wires drag start/end on every raw
+//! mousedown/mouseup *and* a separate `dblclick` listener for the
+//! equip/unequip/use action — the two fire independently per browser
+//! semantics (a double-click also produces two same-slot drag attempts,
+//! which the overlay's own "same slot — no-op" check absorbs). This module
+//! reproduces just the timing: two `left_just_released` edges within
+//! `DOUBLE_CLICK_WINDOW` seconds and `DOUBLE_CLICK_DISTANCE` HUD pixels of
+//! each other. Neither constant has a TS source of truth — the browser's
+//! own double-click detection is OS/UA-controlled, not a value in this
+//! codebase — so these are reasonable defaults, not ported numbers.
 
 use bevy::prelude::*;
+
+const DOUBLE_CLICK_WINDOW: f32 = 0.4;
+const DOUBLE_CLICK_DISTANCE: f32 = 4.0;
 
 /// Cursor position in HUD-canvas space (`hud::screen_to_hud`'s 640x360
 /// coordinate system, not window pixels) plus this-frame button edges —
@@ -24,9 +37,16 @@ pub struct MouseState {
     pub left_just_released: bool,
     pub right_just_pressed: bool,
     pub right_just_released: bool,
+    /// True on the exact frame a second left-click lands within the
+    /// double-click window/distance of the previous one — see the module
+    /// doc comment.
+    pub left_double_clicked: bool,
+    last_click_at: Option<f32>,
+    last_click_pos: Vec2,
 }
 
 pub fn track_mouse(
+    time: Res<Time>,
     windows: Query<&Window>,
     buttons: Res<ButtonInput<MouseButton>>,
     mut state: ResMut<MouseState>,
@@ -38,6 +58,7 @@ pub fn track_mouse(
     state.left_just_released = buttons.just_released(MouseButton::Left);
     state.right_just_pressed = buttons.just_pressed(MouseButton::Right);
     state.right_just_released = buttons.just_released(MouseButton::Right);
+    state.left_double_clicked = false;
 
     match window.cursor_position() {
         Some(cursor) => {
@@ -49,10 +70,32 @@ pub fn track_mouse(
         None => state.in_window = false,
     }
 
-    if state.left_just_pressed || state.right_just_pressed {
+    if state.left_just_released && state.in_window {
+        let now = time.elapsed_secs();
+        let pos = Vec2::new(state.hud_x, state.hud_y);
+        let is_double = state.last_click_at.is_some_and(|last_at| {
+            now - last_at <= DOUBLE_CLICK_WINDOW
+                && pos.distance(state.last_click_pos) <= DOUBLE_CLICK_DISTANCE
+        });
+        if is_double {
+            state.left_double_clicked = true;
+            // Consumed — a third rapid click starts a fresh pair rather
+            // than chaining into a second double-click.
+            state.last_click_at = None;
+        } else {
+            state.last_click_at = Some(now);
+            state.last_click_pos = pos;
+        }
+    }
+
+    if state.left_just_pressed || state.right_just_pressed || state.left_double_clicked {
         debug!(
-            "mouse: hud=({:.1},{:.1}) left={} right={}",
-            state.hud_x, state.hud_y, state.left_just_pressed, state.right_just_pressed
+            "mouse: hud=({:.1},{:.1}) left={} right={} dbl={}",
+            state.hud_x,
+            state.hud_y,
+            state.left_just_pressed,
+            state.right_just_pressed,
+            state.left_double_clicked
         );
     }
 }

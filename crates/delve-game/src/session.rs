@@ -21,6 +21,7 @@ use delve_core::game_state::{
 };
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
+use delve_core::player_controller::{InventoryAction, process_inventory_action};
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment, TextureArea};
 use std::collections::{HashMap, HashSet};
@@ -713,4 +714,86 @@ pub fn interact_input(
     let player_cell = (i64::from(player_state.col), i64::from(player_state.row));
     let events = session.game.take_events();
     apply_world_events(events, &mut session.game, player_cell, &mut signal);
+}
+
+/// Dispatches one `InventoryAction` through `process_inventory_action`,
+/// showing `Message` actions as a HUD toast (matching TS's inventory
+/// overlay's own switch on the action's `type`, which never reaches
+/// `processInventoryAction` for that variant) and respawning a dropped
+/// item's world billboard on success. Shared by the full inventory overlay,
+/// the mini panel's mouse interactions, and quick-slot digit keys.
+///
+/// `on_drop` only *records* the drop (it can't call back into `game`/
+/// `item_render` itself — `process_inventory_action` already holds `game`
+/// exclusively for the whole call, and the closure has no independent path
+/// to either); the actual billboard respawn happens afterward, once that
+/// borrow has ended, by re-reading the now-dropped item straight from the
+/// registry.
+pub(crate) fn apply_inventory_action(
+    game: &mut GameState,
+    item_render: &mut GroundItemRender,
+    hud: &mut crate::hud::HudState,
+    action: &InventoryAction,
+) {
+    if let InventoryAction::Message { text } = action {
+        hud.show_message(text);
+        return;
+    }
+
+    let mut dropped: Option<(String, i64, i64)> = None;
+    {
+        let mut on_drop = |instance_id: &str, col: i64, row: i64| {
+            dropped = Some((instance_id.to_string(), col, row));
+        };
+        process_inventory_action(action, game, &mut on_drop);
+    }
+    if let Some((instance_id, ..)) = dropped
+        && let Some(entity) = game.entity_registry.get_item(&instance_id).cloned()
+        && let Some(def) = item_render.items.0.get_item(&entity.item_id)
+    {
+        let kind = ground_items::ItemKind::of(def.item_type);
+        ground_items::add_single_item_mesh(item_render, kind, &entity);
+    }
+}
+
+/// `Digit1`-`Digit8` use the consumable in that backpack slot directly —
+/// ported from `inputSystem.ts`'s quick-slot case, which calls
+/// `useConsumableFromRegistry` straight from the keyboard handler rather
+/// than going through `processInventoryAction`'s `Use` arm (that arm exists
+/// for the inventory overlay/mini panel's own Enter/double-click actions,
+/// which resolve to a *sorted-list* position; quick slots key directly off
+/// the physical backpack slot number instead, matching TS's
+/// `getBackpackItemAt(slotNum)` call).
+pub fn quick_slot_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut session: ResMut<Session>,
+    gate: crate::overlay::InputGate,
+) {
+    if gate.blocked() {
+        return;
+    }
+    const DIGIT_SLOTS: [(KeyCode, u32); 8] = [
+        (KeyCode::Digit1, 0),
+        (KeyCode::Digit2, 1),
+        (KeyCode::Digit3, 2),
+        (KeyCode::Digit4, 3),
+        (KeyCode::Digit5, 4),
+        (KeyCode::Digit6, 5),
+        (KeyCode::Digit7, 6),
+        (KeyCode::Digit8, 7),
+    ];
+    for (key, slot) in DIGIT_SLOTS {
+        if !keys.just_pressed(key) {
+            continue;
+        }
+        let instance_id = session
+            .game
+            .entity_registry
+            .backpack_item_at(slot)
+            .map(|entity| entity.instance_id.clone());
+        if let Some(instance_id) = instance_id {
+            session.game.use_consumable_from_registry(&instance_id);
+        }
+        break;
+    }
 }

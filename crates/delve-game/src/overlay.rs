@@ -10,14 +10,28 @@
 //! separate dispatcher system: each overlay's own input system is still the
 //! sole owner of what Escape does while it's the active variant (close, for
 //! everything except character creation, which has no Escape binding in TS
-//! at all — only Enter-with-points-spent closes it). A shared dispatcher
-//! that also reacted to `just_pressed(Escape)` would risk a close-then-
-//! reopen double-fire in the same frame (`just_pressed` stays true for
-//! every system that runs before the next frame clears it), and with only
-//! one Escape-consuming overlay today there's no actual routing ambiguity
-//! to resolve yet — `ActiveOverlay`'s mutual exclusivity already *is* the
-//! routing mechanism. Promote to a real dispatcher once a second overlay
-//! (dialog, trading, quest log) also wants "Escape closes me."
+//! at all — only Enter-with-points-spent closes it).
+//!
+//! Five overlays now handle their own Escape (save/load, dialog, inventory,
+//! attribute panel, stats panel) — past the "once a second overlay also
+//! wants it" point `PHASE4-PLAN.md` set as the revisit trigger. A real
+//! dispatcher was considered and rejected here: `ActiveOverlay`'s mutual
+//! exclusivity already gives every overlay's own `if *overlay != Self {
+//! return }` guard at Escape-check time, so no two systems can ever race to
+//! consume the same keypress — a shared dispatcher wouldn't remove that
+//! guard, it would just relocate it. And unlike the other four, closing the
+//! attribute panel isn't unconditional (`try_close` blocks it while
+//! levelup-mode points are unspent) and closing dialog clears session
+//! state — a dispatcher would need `ResMut` access to every overlay's own
+//! resource to replicate that, which is the same coupling this design
+//! avoided by keeping each overlay's data in its own resource in the first
+//! place. Consolidating N systems' worth of close logic into one function
+//! with N resources in its `SystemParam` trades five small, independently
+//! reviewable diffs for one large one, without eliminating any actual
+//! risk — the double-fire hazard a dispatcher exists to avoid was never
+//! about needing more overlays, it was about two systems reacting to the
+//! same edge in the same frame, which distributed ownership already rules
+//! out by construction.
 
 use crate::transition::Transition;
 use bevy::ecs::system::SystemParam;
@@ -41,6 +55,17 @@ pub enum ActiveOverlay {
     /// Escape, reaching a dialog-ending node, or `DialogEvent::OpenShop`
     /// handing off to the (not yet landed) trading overlay.
     Dialog,
+    /// The full-screen interactive inventory — opened by `KeyI`, closed by
+    /// `KeyI` or Escape.
+    Inventory,
+    /// The attribute-allocation panel — opened by `KeyL` (auto-selecting
+    /// levelup or read-only stats mode based on unspent points), closed by
+    /// `KeyL` or Escape, though close is blocked while levelup-mode points
+    /// remain unspent.
+    AttributePanel,
+    /// The read-only character stats panel — opened and closed by `KeyT`
+    /// (an unconditional toggle) or closed by Escape.
+    StatsPanel,
     /// No overlay open; gameplay input reaches the dungeon.
     None,
 }

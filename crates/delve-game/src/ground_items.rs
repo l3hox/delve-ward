@@ -29,7 +29,7 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
-    fn of(item_type: ItemType) -> Self {
+    pub(crate) fn of(item_type: ItemType) -> Self {
         if item_type == ItemType::Consumable {
             ItemKind::Consumable
         } else {
@@ -235,8 +235,14 @@ fn hide_item_meshes(map: &mut HashMap<String, Entity>, commands: &mut Commands, 
 }
 
 /// Add one billboard for an item, picking the next free spread slot at its
-/// cell (mirrors the TS `addSingleGroundItemMesh`).
-fn add_single_item_mesh(render: &mut GroundItemRender, kind: ItemKind, entity: &ItemEntity) {
+/// cell (mirrors the TS `addSingleGroundItemMesh`). `pub(crate)` so
+/// `session::apply_inventory_action` can respawn a dropped item's world
+/// billboard after `InventoryAction::Drop` succeeds.
+pub(crate) fn add_single_item_mesh(
+    render: &mut GroundItemRender,
+    kind: ItemKind,
+    entity: &ItemEntity,
+) {
     let Some(def) = render.items.0.get_item(&entity.item_id) else {
         return;
     };
