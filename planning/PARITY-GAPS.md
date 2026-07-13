@@ -12,7 +12,7 @@ Audit of `../DelveWard` (TS, parity target `main` at `9476c6526ef98b636992a2dfba
 
 **`playerController.ts` is entirely unported**, not partially. Beyond the status-effect and quest gaps above, this means: hunger never drains, starvation never triggers, torch fuel never depletes despite being fully modeled in `game_state.rs`/`torch.rs`, and there is no dispatcher for HUD-driven inventory actions (equip/unequip/use/drop/swap) even though every one of those `GameState` methods already exists and is unit-tested.
 
-**A rendering correctness bug already shipped in merged Phase 2 code**: `dungeon.rs`'s `spawn_dungeon` has no concept of a stair cell, so it renders a normal flat floor/ceiling/wall tile at every stair position in addition to `stairs.rs`'s stepped geometry drawn on top — TS's `buildDungeon` explicitly excludes stair cells from the flat pass. Separately, every billboard (enemies, items, keys, NPCs, forest) uses a standard PBR `StandardMaterial` in Rust versus TS's custom unlit distance-only shader (`billboardMaterial.ts`) — a systematic, cross-cutting visual difference worth a note for the Phase 6 side-by-side audit rather than a per-entity one.
+**A rendering correctness bug already shipped in merged Phase 2 code**: `dungeon.rs`'s `spawn_dungeon` has no concept of a stair cell, so it renders a normal flat floor/ceiling/wall tile at every stair position in addition to `stairs.rs`'s stepped geometry drawn on top — TS's `buildDungeon` explicitly excludes stair cells from the flat pass. Separately, every billboard (enemies, items, keys, NPCs, forest) uses a standard PBR `StandardMaterial` in Rust versus TS's custom unlit distance-only shader (`billboardMaterial.ts`) — a systematic, cross-cutting visual difference worth a note for the Phase 6 side-by-side audit rather than a per-entity one. The specific front/back-face sidedness mismatch this caused (missing `double_sided` on lit billboard materials, and `cull_mode: None` applied where TS is single-sided) was audited and fixed across forest/enemy/item/key/NPC/fireball materials in Phase 5 (`fix: forest billboards light back faces correctly`, `fix: billboard material sidedness parity`); the deeper shader-technique difference itself remains open for Phase 6.
 
 **Input gaps mirror the HUD gaps exactly**: quick-slot digit keys (1-8) are unbound despite full core support (`use_consumable_from_registry`, `backpack_item_at`); KeyI/KeyT/KeyL/KeyJ and the overlay-context Escape are all unbound because the overlays themselves don't exist yet.
 
@@ -71,13 +71,13 @@ Every member landed as an inherent method on `GameState`, not on `combat.rs` (wh
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
 | assetCheck.ts | Unported | none (`assets_gate.rs` validates schema/parsing only, not PNG existence) | Phase 6 (closest fit; not named explicitly) | No proactive sweep over enemy sprite paths / item icon paths; Bevy's `asset_server.load` fails silently at runtime instead. |
-| boulderSystem.ts | Unported | `game_state.rs` has `BoulderInstance`/`BoulderSpawnerInstance` data + signal wiring; no movement logic | Phase 3 (closest fit; boulders never named directly) | Roll/fall/idle state machine, hole detection, ramp descent, chest-crash-on-landing, chain-reaction pushing: all missing. |
-| gameLoop.ts | Unported | none | Phase 3 (boulders) / Phase 5 (spawners) | `main.rs`'s Update chain already covers the TS per-frame loop's other pieces (`tick_game` ~ `signalManager.tick`, `tick_enemies` ~ `updateEnemies`); the boulder/spawner tick block plus `tickProjectiles`/`tickStatusEffects`/per-layer trap-launcher ticking (called directly by `main.ts`, not through `gameLoop.ts`) are all missing. |
+| boulderSystem.ts | Ported | `boulders.rs` (delve-core: `tick_boulders`/`tick_boulder_spawners`) + `boulders.rs` (delve-game: render shell, `BoulderAnimator`/`animate_boulders`) | Phase 5 | Roll/fall/idle state machine, hole detection, ramp descent, chain-reaction pushing landed; wired into `main.rs`'s Update schedule (`tick_boulders_system`, `tick_boulder_spawners_system`). |
+| gameLoop.ts | Partially ported | none (dispatch stays inline in `main.rs`) | Phase 3 (remaining pieces) | `main.rs`'s Update chain covers `tick_game` (~`signalManager.tick`), `tick_enemies` (~`updateEnemies`), and now the boulder/spawner tick block (`tick_boulders_system`, `tick_boulder_spawners_system`, `tick_spawners_system`) and `projectiles::tick_projectiles`. Per-layer trap-launcher ticking (`GameState::tick_trap_launchers` exists but has no call site) and player-side `tickStatusEffects` remain unwired. |
 | inputSystem.ts | Partially ported | `session.rs`, `enemies.rs`, `char_creation.rs` | Overlays: Phase 3. NPC dialog/quest log: Phase 4. Debug layer-fly: Phase 5. | See the keyboard map section below for the full breakdown. |
-| levelSceneBuilder.ts | Partially ported | `level_scene.rs` + `dungeon.rs`/`doors.rs`/`stairs.rs`/`enemies.rs`/`ground_items.rs`/`keys.rs`/`sconces.rs` | Signal/environment entities: Phase 3. NPCs/dungeon objects: Phase 4. Layers/thin walls/ramps/props/spawners/boulders/forest/skybox/zones: Phase 5. | `dungeon.rs` never references `layers[...]` — multi-layer scene building hasn't started. Every other builder TS's `sceneUtils.ts`/`levelSceneBuilder.ts` wires together (plates, tripwires, levers, breakable/secret walls, blocks, chests, signs, fountains, bookshelves, altars, barrels, thin walls, ramps, props, spawners, boulders, NPCs, forest, trap launchers, skybox) is unwired. |
+| levelSceneBuilder.ts | Mostly ported | `level_scene.rs` + `dungeon.rs`/`doors.rs`/`stairs.rs`/`enemies.rs`/`ground_items.rs`/`keys.rs`/`sconces.rs`/`levers.rs`/`plates.rs`/`tripwires.rs`/`wall_entities.rs`/`chests.rs`/`blocks.rs`/`signs.rs`/`npcs.rs`/`fountains.rs`/`altars.rs`/`barrels.rs`/`bookshelves.rs`/`spawners.rs`/`boulders.rs`/`props.rs`/`thin_walls.rs`/`forest.rs`/`skybox.rs`/`ramps.rs`/`zones.rs` | Phase 5 (layers/zones) landed. | Multi-layer scene building is live — `spawn_level_scene` loops every layer and wires every entity type TS's builder does, each zone-tagged via `zones::tag_cell`/`tag_by_key`/`tag_forest`. Trap launchers still have no mesh/tick call site (see `gameLoop.ts` row above); hollow-layer (`openBottom`/`openTop`) detection is not in `dungeon.rs`. |
 | lootSpawner.ts | Ported, for its one reachable call site | `ground_items.rs::spawn_loot` ← `loot.rs::roll_loot`, called from `enemies.rs::handle_kill` | New call sites land with Phase 3 | The function itself is a complete, faithful port. TS calls it from four sites (kill, chest, breakable-wall destroy, barrel destroy); Rust only has the kill site since the other three entity types don't exist yet. |
-| projectileSystem.ts | Core logic ported, zero Bevy wiring | `projectiles.rs` (`ProjectileManager::update`, 23 parity tests) | Phase 3 | No file under `delve-game/src` mentions "projectile." Trap launchers (`tickTrapLaunchers`) are also unwired. |
-| spawnerSystem.ts | Unported | `game_state.rs` has `SpawnerInstance` data + signal wiring only | Phase 5 (exact match: "enemy spawners with BFS spawn placement") | BFS candidate search, interval/max-active gating, spawn-then-register-mesh flow all missing. `create_enemy_instance`/`EnemyRegistrar` already exist, so the gap is specifically placement + timer. |
+| projectileSystem.ts | Core logic ported, wired | `projectiles.rs` (`ProjectileManager::update`, 23 parity tests) + `delve-game/src/projectiles.rs` (render shell, `tick_projectiles` in `main.rs`'s Update schedule) | — | Trap launchers (`tickTrapLaunchers`) remain unwired (see `gameLoop.ts` row). |
+| spawnerSystem.ts | Ported | `spawners.rs` (delve-core: `tick_spawners`) + `spawners.rs` (delve-game: marker render shell) | Phase 5 | BFS candidate search, interval/max-active gating, spawn flow landed; wired via `tick_spawners_system` in `main.rs`'s Update schedule. |
 | statusEffectSystem.ts | Partial (enemy-side only) | `status_effects.rs`/`status_effect_state.rs`, consumed by `enemy_ai.rs` for enemies | Player ticking + tints/icons: Phase 3. Hunger/starvation: Phase 4. | Wraps `core/playerController.ts::tickPlayerController` — see the core deep dive; player can never actually become poisoned/slowed/burning since nothing calls `apply_effect` on the player. |
 | transitionSystem.ts | Partially ported | `transition.rs` (`Transition`, `tick_transition`, `perform_level_swap`) | `restartLevel`/`loadGame`: Phase 3 (save/load overlay). Particle/ember rewiring on swap: Phase 5. Autosave-on-arrival: Phase 3. | Stair transitions are faithfully covered (fade, mid-fade swap, snapshot save/restore, stair-facing spawn offset, `reveal_around`). `restartLevel` (death fallback) and `loadGame` are entirely missing; `enemies.rs::tick_enemies` just logs "You died." with no restart trigger. |
 
@@ -96,17 +96,17 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | billboardMaterial.ts | Partial | ad-hoc `StandardMaterial` per spawn site | Phase 6 | See cross-cutting note. |
 | blockRenderer.ts | Unported | — | Phase 3 | `push_block`/`get_block` core logic exists, no mesh/tween. |
 | bookshelfRenderer.ts | Unported | — | Phase 4 | |
-| boulderAnimator.ts | Unported | — | Phase 3/5 | Roll/descend/fall tween. |
-| boulderRenderer.ts | Unported | — | Phase 3/5 | `is_boulder_at` already blocks movement in `session.rs` — boulders are invisible obstacles today. |
+| boulderAnimator.ts | Ported | `boulders.rs` (`BoulderAnimator`, `animate_boulders`) | Phase 5 | Roll/descend/fall tween landed. |
+| boulderRenderer.ts | Ported | `boulders.rs` (`spawn_boulders`) | Phase 5 | Boulders render and animate; no longer invisible obstacles. |
 | damageNumbers.ts | Ported | `damage_numbers.rs` | — | Float speed, lifetime, fade, outline all match. |
 | doorAnimator.ts | Partial | `doors.rs` (`animate_door_panels`) | Phase 5 | Y-slide+bounce matches; x/z slide axes and `getOpenFraction()` (zone-boundary lights) unported. |
 | doorRenderer.ts | Partial | `doors.rs` (`spawn_doors`) | Phase 5 | Frame/panel match; multi-pass zone splitting and boundary entrance lights unported. |
-| dungeon.ts | Partial | `dungeon.rs` | Phase 3/5 | See Top Findings stair bug. Zone splitting, ramp wall/floor suppression, pit-trap toggling, hollow-layer detection unported. |
+| dungeon.ts | Partial | `dungeon.rs` | Phase 3/5 | See Top Findings stair bug. Per-cell zone tagging, ramp wall/floor suppression, and pit-trap floor toggling landed in Phase 5; the zone-boundary half-tile split and hollow-layer (`openBottom`/`openTop`) detection are still unported (half-tile split has its own disclosed-gap note below). |
 | enemyAnimator.ts | Unported | — | Unscoped — see Top Findings | Move lerp, hit-shake, lunge attack; `enemies.rs` snaps `Transform` with no interpolation. |
 | enemyHealthBar.ts | Unported | — | Unscoped — see Top Findings | Floating HP bar above damaged enemies. |
 | enemyRenderer.ts | Partial | `enemies.rs` (`spawn_enemy_billboards`) | — | Spawn/position/size match; see billboard-material note. |
-| environment.ts | Partial | `environment.rs` | Phase 5 | Static fog/ambient presets match; per-area override, smooth lerp, multi-pass zone maps unported. |
-| forestRenderer.ts | Unported | — | Phase 5 | |
+| environment.ts | Partial | `environment.rs` + `zones.rs` | Phase 5 | Static fog/ambient presets match; multi-pass zone maps (multi-camera architecture, `zones.rs`) landed. Smooth lerp between environments on transition is still unported. |
+| forestRenderer.ts | Ported | `forest.rs` (rendering) + `delve-core/src/forest_placement.rs` (seeded placement math) | Phase 5 | Billboard-per-tree instead of TS's one-`InstancedMesh`-per-variant (disclosed mechanism deviation in `forest.rs`'s module doc); variant sizes, zone tagging (`tag_forest`), and camera-yaw facing all match. |
 | fountainRenderer.ts | Unported | — | Phase 4 | `use_fountain` core logic exists, no mesh. |
 | groundItemRenderer.ts | Ported | `ground_items.rs` | — | Spread offsets, spawn/hide/reshow-remaining all match. |
 | chestRenderer.ts | Unported | — | Phase 3 | `open_chest`/`get_chest` core logic exists, no mesh/tween. |
@@ -115,21 +115,21 @@ Cross-cutting notes (apply across many rows below, not repeated per-row): every 
 | leverAnimator.ts | Unported | — | Phase 3 | Pivot rotation tween. |
 | leverRenderer.ts | Unported | — | Phase 3 | `activate_lever` already dispatches and `session.rs` reacts for doors, but the lever has no mesh. |
 | npcRenderer.ts | Unported | — | Phase 4 | `npcs.rs` is data-only. |
-| particles.ts | Unported | — | Phase 5 | Dust motes + sconce embers. |
+| particles.ts | Ported | `particles.rs` | Phase 5 | All four systems (dust motes, sconce embers, water drips, fireflies) plus light-distance culling landed and wired into `main.rs`'s Update schedule. |
 | plateRenderer.ts | Unported | — | Phase 3 | Pressed/released texture swap. |
-| player.ts | Partial | `player.rs` | Phase 5 | Movement/tween/queue/stair-pitch match. Falling physics, `debugNoClip`, per-layer `yOffset`, `onMoveBlocked` retry unported. |
+| player.ts | Partial | `player.rs` | Phase 5 | Movement/tween/queue/stair-pitch match. Falling physics (kinematic Y-channel, `is_falling`) and per-layer `y_offset` landed in Phase 5. `debugNoClip` and the `onMoveBlocked` retry hook (see the walk-into-block/boulder-push note below the rendering table) remain unported. |
 | projectileRenderer.ts | Unported | — | Phase 3 | `projectiles.rs` core logic fully implemented and tested, nothing renders. |
-| propRenderer.ts | Unported | — | Phase 5 | |
-| rampRenderer.ts | Unported | — | Phase 5 | |
-| sceneUtils.ts | Partial | `level_scene.rs` | Phase 3-5 | TS's master scene assembler; `spawn_level_scene` wires dungeon/stairs/doors/enemies/ground-items/keys/sconces only. |
+| propRenderer.ts | Ported | `props.rs` | Phase 5 | |
+| rampRenderer.ts | Ported | `ramps.rs` | Phase 5 | Geometry, movement rules, same-scene layer crossing landed. |
+| sceneUtils.ts | Mostly ported | `level_scene.rs` | Phase 3-5 | TS's master scene assembler; `spawn_level_scene` now wires dungeon/stairs/doors/enemies/ground-items/keys/sconces/levers/plates/tripwires/wall-entities/chests/blocks/signs/npcs/fountains/altars/barrels/bookshelves/spawners/boulders/props/thin-walls/forest/skybox/particles per layer. Trap launchers are the remaining unwired entity type. |
 | sconceRenderer.ts | Ported | `sconces.rs` | — | Meshes, material, light, extinguish, flicker constant all match. |
-| signRenderer.ts | Unported | — | Phase 3 | `get_sign_on_wall`/`SignRead` return text (logged via `info!`), no mesh/popup. |
-| skybox.ts | Unported | — | Phase 5 | |
-| spawnerRenderer.ts | Unported | — | Phase 5 | |
+| signRenderer.ts | Partial | `signs.rs` | Phase 3 (popup)/5 (mesh) | Mesh, texture, wall-mounted orientation, and zone tagging landed in Phase 5 (`spawn_signs`, wired into `level_scene.rs`). `get_sign_on_wall`/`SignRead` still just return text (logged via `info!`) — no read popup/overlay. |
+| skybox.ts | Ported | `skybox.rs` | Phase 5 | Sphere geometry/texture generation, zone tagging, camera-follow all landed and wired. |
+| spawnerRenderer.ts | Ported | `spawners.rs` | Phase 5 | Marker decal render shell landed and wired via `tick_spawners_system`. |
 | stairRenderer.ts | Ported | `stairs.rs` | — | Stepped geometry, depth fade, side walls match; see dungeon.ts stair-cell note. |
 | swordSwing.ts | Unported | — | Unscoped — see Top Findings | Combat feedback is log lines + damage numbers only. |
-| textures.ts | Partial | `textures.rs` | Phase 5 | Wall/floor/ceiling/door sets match exactly; thin-wall textures unported. |
-| thinWallRenderer.ts | Unported | — | Phase 5 | |
+| textures.ts | Partial | `textures.rs` + `thin_walls.rs` | Phase 5 | Wall/floor/ceiling/door sets match exactly; thin-wall textures (`stone_thin`/`iron_fence`/`wood_fence`/`railing`) landed in `thin_walls.rs` rather than `textures.rs::DungeonMaterials` (disclosed ownership tradeoff in `thin_walls.rs`'s module doc). |
+| thinWallRenderer.ts | Ported | `thin_walls.rs` | Phase 5 | Geometry/orientation, same-texture-vs-mixed material split, and zone tagging all landed and wired. Edge blocking is wired for player movement/interaction/projectiles; enemy pathfinding's edge-blocked wiring is in progress (uncommitted as of this writing). |
 | transitionOverlay.ts | Ported | `transition.rs` | — | Fade phase machine, speed, `isActive` gating match. |
 | trapLauncherRenderer.ts | Unported | — | Phase 3 | |
 | tripwireRenderer.ts | Unported | — | Phase 3 | |
@@ -176,7 +176,7 @@ Benign warning, TS parity: loading a multi-layer level whose layer-0 signal enti
 
 Phase 5 note: TS has a latent ground-item key-format bug (initial meshes keyed unprefixed, pickup hides with a layer-prefixed key — level-authored items leave a ghost billboard after pickup). `ground_items.rs` keys consistently and does not reproduce it. When layer-aware keying lands in phase 5, decide whether to preserve that incidental correctness or match TS bit-for-bit.
 
-Zone-tagging gap (multi-zone levels only, queued for the phase 5 integration pass): TS's tagByKey loop (levelSceneBuilder.ts:502-531) zone-tags signs, fountains, bookshelves, altars, barrels, ramps, props, boulders, and wall entities, plus every sconce child via `.traverse()` — the Rust port leaves those untagged, so they render in every zone's camera pass instead of confining to their cell's zone (Bevy's untagged default is shared layer 0, and RenderLayers does not propagate to children). TS's actual enableAll set is only stairs, trap launchers, sconce lights, health bars, and projectiles. Sconce brackets and arms have the same issue in miniature: only handle+head live in SconceParts.torches, so only they get tagged. Fix shape: spawn-time `zones::tag_cell` inside each spawn function (col/row are in scope there), not handle-map surgery.
+Zone tagging (multi-zone levels): every cell-positioned entity type — signs, fountains, altars, barrels, bookshelves, boulders, ramps, props, and wall entities — is tagged to its own cell's zone via a spawn-time `zones::tag_cell` call inside each entity's own spawn function (col/row are in scope there). Sconces tag all four mesh children (bracket, arm, handle, head), not just the handle+head pair `SconceParts.torches` tracks for the extinguish-on-take toggle. TS's `enableAll` (shared-across-every-pass) set — stairs, trap launchers, sconce lights, health bars, and projectiles — stays untagged on the Rust side too, matching Bevy's default-layer-0 behavior. The zone-boundary half-tile split (doors, ramp landings) is a separate, still-open gap — see the note below.
 
 Deferred half-tile infrastructure (shared by two disclosed gaps): TS splits geometry into half-size zone-tagged quads at zone-boundary door cells (`dungeon.ts` halfTile/halfWall + `doorRenderer.ts` Z-split frame/panel with a boundary PointLight) and carves half tiles at ramp landings. Neither exists in this port — zone-boundary doors render whole and tagged to their own cell's zone (visible seam only at that exact boundary; disclosed in `dungeon.rs`/`doors.rs` module docs), and ramp landings keep whole tiles (`ramps.rs` module doc). One shared mesh-splitting facility unlocks both.
 
@@ -185,7 +185,7 @@ Deferred half-tile infrastructure (shared by two disclosed gaps): TS splits geom
 | File | Status | Rust location | Phase | Notes |
 |---|---|---|---|---|
 | npcDatabase.ts | Ported | `npcs.rs` | — | Data-loading/query layer matches; dialog linking and runtime interaction land with Phase 4's shell. |
-| enemyAI.ts | Ported | `enemy_ai.rs` | — | Regen/status ticking, flee/chase/attack state machine, deaggro buffer, erratic movement match line-for-line. |
+| enemyAI.ts | Ported | `enemy_ai.rs` | — | Regen/status ticking, flee/chase/attack state machine, deaggro buffer, erratic movement match line-for-line. The game-side tick loops every layer with per-layer hole/edge-blocking snapshots, gates attacks to the player's layer, and rolls onHit status effects (`enemies.rs::tick_enemies`). |
 | enemyDatabase.ts | Ported | `enemies.rs` | — | Struct model and queries match. |
 | enemyTypes.ts | Ported | `enemies.rs` (`create_enemy_instance`) | — | Field-for-field, including conditional regen-timer init. |
 | pathfinding.ts | Ported | `pathfinding.rs` | — | `manhattanDistance` and BFS `findPath` match exactly. |
@@ -205,14 +205,14 @@ Cross-reference of shipped TS milestones against this repo's phase prose. Rows a
 | Full-screen Inventory overlay (drag-and-drop equip/unequip/rearrange) | NO — PLAN GAP | NO | Phase 2's HUD bullet names only "mini inventory panel." |
 | Debug commands: noclip, fullbright, auto-kill, layer-fly | NO — PLAN GAP | NO | No phase bullet anywhere mentions debug/QA tooling. |
 | Camera asymmetric frustum crop / telephoto back-offset | NO — PLAN GAP | Partial (stair pitch-tilt done; view-offset crop absent) | Self-tracked in `PROGRESS.md`'s "Deliberately deferred" note, never promoted into a phase bullet. |
-| Multi-layer dungeons, hollow areas, cross-layer signals | Phase 5 | Schema only (`LayerDef` in `types.rs`) | Runtime cross-layer logic not built. |
-| Thin walls with edge blocking | Phase 5 | Partial (validated, `thin_wall_key` lookup exists) | No renderer. |
-| Ramps/stairs geometry, layer transitions, falling | Phase 5 | Partial (ramp entity validated; `stairs.rs` only builds flat entity-paired stairs) | No ramp geometry or falling physics. |
-| Pit traps (signal-driven) | Phase 5 | Validated in `level_loader.rs` only | No runtime state in `game_state.rs`. |
-| Enemy spawners (BFS placement) | Phase 5 | Validated in `level_loader.rs` only | A `boulder_spawner` entity type is already validated too, absent from COMPLETED.md — COMPLETED.md itself lags current TS `main`. |
-| Decorative props | Phase 5 | Validated in `level_loader.rs` only | No rendering. |
-| Outdoor environment, skybox variants, multi-pass RenderLayers | Phase 5 | Schema only (`Environment`/`Skybox` enums) | No RenderLayers/skybox code yet. |
-| Forest billboards; particles | Phase 5 | NO | Not started. |
+| Multi-layer dungeons, hollow areas, cross-layer signals | Phase 5 | Mostly implemented (`level_scene.rs` per-layer spawn loop, all entity types) | Hollow-area (`openBottom`/`openTop`) detection is not in `dungeon.rs` yet; everything else runtime-live. |
+| Thin walls with edge blocking | Phase 5 | Implemented (`thin_walls.rs` renders, zone-tags; edge blocking consulted by player movement, interaction, projectiles, and enemy pathfinding) | |
+| Ramps/stairs geometry, layer transitions, falling | Phase 5 | Implemented (`ramps.rs` geometry/movement, `player.rs` falling with kinematic Y-channel, pit traps) | |
+| Pit traps (signal-driven) | Phase 5 | Implemented (`PitTrapState` runtime + floor visibility toggle in `dungeon.rs`) | |
+| Enemy spawners (BFS placement) | Phase 5 | Implemented (`spawners.rs` core `tick_spawners` + render shell, wired) | Boulder spawners (`boulders.rs`) landed alongside. |
+| Decorative props | Phase 5 | Implemented (`props.rs`, zone-tagged) | |
+| Outdoor environment, skybox variants, multi-pass RenderLayers | Phase 5 | Implemented (`zones.rs` multi-camera architecture, `skybox.rs`) | Zone-boundary half-tile splitting (doors, ramp landings) is a separate, still-open gap. |
+| Forest billboards; particles | Phase 5 | Implemented (`forest.rs` + `forest_placement.rs`; `particles.rs` — all four systems plus light culling) | |
 | Signal system + lever/plate/trigger/tripwire/gate entities | Phase 3 | Core done (`signal_manager.rs`) | `delve-game` only renders doors so far. |
 | Projectiles + trap launchers | Phase 3 | Core done (`projectiles.rs`) | No rendering. |
 | Status effects (poison/slow/burning, tints, icons) | Phase 3 | Core done | No tint/icon rendering. |
