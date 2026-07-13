@@ -26,6 +26,7 @@ use crate::skybox;
 use crate::spawners::{self, SpawnerHandles};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
+use crate::thin_walls;
 use crate::tripwires::{self, TripwireHandles};
 use crate::wall_entities::{self, WallEntityHandles};
 use crate::zones::{self, LevelZones};
@@ -545,6 +546,16 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+        );
+
+        thin_walls::spawn_thin_walls(
+            commands,
+            assets.meshes,
+            assets.images,
+            assets.materials,
+            layer,
+            &layer_spawn,
+            &level_zones,
         );
     }
 

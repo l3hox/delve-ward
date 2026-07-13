@@ -27,9 +27,6 @@ use std::collections::HashMap;
 
 const THIN_SIZE: usize = 128;
 
-// The level_scene call site lands with the slice's integration; the allow
-// comes off with it.
-#[allow(dead_code)]
 pub fn spawn_thin_walls(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
