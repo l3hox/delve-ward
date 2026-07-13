@@ -118,3 +118,11 @@ Slices 0, 2a, 3, 4 have zero rendering dependencies and should run first/in-para
 ## Slice 1 landing notes (fold into later slices)
 
 The "gameplay systems need zero changes" claim held for `GameState` itself but NOT for render-side handle-map consumers: any system resolving a `WorldEvent`/interaction `(col,row)` back to a spawned entity needs the `layer_door_key` prefix derived from `active_layer_index` at lookup time (session.rs interaction arms, enemies.rs tick/attack, enemy_feedback.rs, status_effects.rs tint, projectiles.rs hits — all migrated in slice 1). Lever targets use `resolve_entity_position().layer_index` instead, since a target door can be on another layer. Remaining single-active-layer render paths (chests/blocks/wall entities/signs/npcs/fountains/altars/barrels/bookshelves), `openBottom`/`openTop` hollow rendering, and non-default `yOffset` for gameplay-spawned items are tracked as later-slice work.
+
+## Multi-layer completion slice (pulled forward by the slice-1 review)
+
+Shipped levels place NPCs, chests, blocks, and breakable/secret walls on non-zero layers (dungeon_m1-layered layer 1; m4g2-test layer 2; both ruins sub-levels), so the "later slice" for the remaining single-active-layer spawns is next after falling/pits, not optional polish:
+- Move chests/blocks/wall-entities/signs/npcs/fountains/altars/barrels/bookshelves into the per-layer spawn loop with layer-keyed handle maps (TS levelSceneBuilder builds all of them per layer).
+- Enemy health bars per layer too (billboards already are; bars still only spawn for the active layer — visible inconsistency with shipped enemy placements on layers 1-2).
+- Blocked-door retry closes write through active_layer_mut with an unprefixed key: latent until same-level layer switching (falling) lands, then live. Needs a delve-core `layer_mut(index)` companion to `layer(index)` and the entry to record its layer.
+
