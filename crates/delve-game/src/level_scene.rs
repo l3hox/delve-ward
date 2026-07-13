@@ -27,6 +27,7 @@ use crate::stairs;
 use crate::textures::DungeonMaterials;
 use crate::tripwires::{self, TripwireHandles};
 use crate::wall_entities::{self, WallEntityHandles};
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::{GameState, door_key};
@@ -77,6 +78,7 @@ pub struct LevelSceneHandles {
     pub pit_floor_handles: dungeon::PitFloorHandles,
     pub spawner_handles: SpawnerHandles,
     pub boulder_animator: BoulderAnimator,
+    pub level_zones: LevelZones,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -114,6 +116,11 @@ pub fn spawn_level_scene(
     let mut barrel_handles = BarrelHandles::default();
     let mut spawner_handles = SpawnerHandles::default();
     let mut boulder_animator = BoulderAnimator::default();
+
+    // Computed once, from whichever layer is active at scene-build time —
+    // same-scene layer switches (falling, ramps) never rebuild the scene, so
+    // this stays correct for the scene's whole lifetime. See `zones.rs`.
+    let level_zones = zones::compute_level_zones(scene.level, scene.game.active_layer_index);
 
     // TS builds every layer's geometry and entity meshes simultaneously at
     // load time, each Y-offset by `layer_index * LAYER_HEIGHT` (or an
@@ -175,6 +182,7 @@ pub fn spawn_level_scene(
             &wall_entity_keys,
             &pit_trap_cells,
             &ramp_base_cells,
+            &level_zones,
         );
         ramps::spawn_ramps(
             commands,
@@ -189,6 +197,12 @@ pub fn spawn_level_scene(
             scene.dungeon_materials,
             &layer_spawn,
             layer,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_pit_floors.by_key.iter(),
         );
         pit_floor_handles.by_key.extend(layer_pit_floors.by_key);
         stairs::spawn_stairs(
@@ -208,6 +222,7 @@ pub fn spawn_level_scene(
             &layer_spawn,
             &layer_def.grid,
             scene.walkable,
+            &level_zones,
         );
         door_panels.by_key.extend(layer_door_panels.by_key);
 
@@ -232,7 +247,17 @@ pub fn spawn_level_scene(
             &layer_billboards,
             scene.enemy_db,
         );
+        // Health bars are TS's own `enableAll()` (`if (multiZone)
+        // healthBarManager.getGroup().traverse(...)`) — left untagged here
+        // too, which is the same result: Bevy's default RenderLayers is
+        // layer 0, already inside every zone camera's `[0, zone]` set.
         health_bars.extend(layer_health_bars);
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_billboards.by_key.iter(),
+        );
         enemy_billboards.by_key.extend(layer_billboards.by_key);
 
         let layer_ground_items = ground_items::spawn_ground_items(
@@ -243,6 +268,18 @@ pub fn spawn_level_scene(
             scene.game,
             scene.items,
             &layer_spawn,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_ground_items.equipment.iter(),
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_ground_items.consumables.iter(),
         );
         ground_items.equipment.extend(layer_ground_items.equipment);
         ground_items
@@ -258,6 +295,12 @@ pub fn spawn_level_scene(
             layer_index,
             y_offset,
         );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_keys.by_key.iter(),
+        );
         key_billboards.by_key.extend(layer_keys.by_key);
 
         let layer_sconces = sconces::spawn_sconces(
@@ -267,6 +310,19 @@ pub fn spawn_level_scene(
             layer,
             layer_index,
             y_offset,
+        );
+        // Torch meshes (handle + head) get their own cell's zone; the
+        // flicker lights stay untagged (TS's `light.layers.enableAll()`) so
+        // they illuminate across a zone boundary the same way an untagged
+        // light already does under the shared-layer-0 default.
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_sconces
+                .torches
+                .iter()
+                .flat_map(|(key, handles)| handles.iter().map(move |entity| (key, entity))),
         );
         sconce_parts.torches.extend(layer_sconces.torches);
         sconce_parts.lights.extend(layer_sconces.lights);
@@ -278,6 +334,12 @@ pub fn spawn_level_scene(
             layer,
             layer_index,
             y_offset,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_levers.by_key.iter(),
         );
         lever_handles.by_key.extend(layer_levers.by_key);
 
@@ -297,6 +359,12 @@ pub fn spawn_level_scene(
             plate_handles.normal_material = layer_plates.normal_material;
             plate_handles.pressed_material = layer_plates.pressed_material;
         }
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_plates.by_key.iter(),
+        );
         plate_handles.by_key.extend(layer_plates.by_key);
 
         let layer_tripwires = tripwires::spawn_tripwires(
@@ -306,6 +374,12 @@ pub fn spawn_level_scene(
             layer,
             layer_index,
             y_offset,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_tripwires.by_key.iter(),
         );
         tripwire_handles.by_key.extend(layer_tripwires.by_key);
 
@@ -317,6 +391,10 @@ pub fn spawn_level_scene(
             &layer_def.grid,
             &wall_entity_cells,
         );
+        // Breakable/secret wall entities (`wall_entities.rs`) are outside
+        // this slice's touchable files and keep private handle types, so
+        // they're left untagged like the rest of the default-shared set —
+        // see the module doc at the top of `zones.rs`.
         wall_entity_handles.extend(layer_wall_entities);
 
         let layer_chests = chests::spawn_chests(
@@ -327,6 +405,12 @@ pub fn spawn_level_scene(
             layer,
             &layer_spawn,
         );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_chests.by_key.iter(),
+        );
         chest_handles.by_key.extend(layer_chests.by_key);
 
         let layer_blocks = blocks::spawn_blocks(
@@ -336,6 +420,12 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_blocks.by_key.iter(),
         );
         block_handles.by_key.extend(layer_blocks.by_key);
 
@@ -357,8 +447,18 @@ pub fn spawn_level_scene(
             &layer_spawn,
             scene.npc_db,
         );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_npcs.by_key.iter(),
+        );
         npc_billboards.by_key.extend(layer_npcs.by_key);
 
+        // Fountains, altars, barrels, bookshelves, boulders, ramps, and
+        // props keep private handle types or live outside this slice's
+        // touchable files — left untagged, same default-shared fallback as
+        // wall entities above.
         let layer_fountains = fountains::spawn_fountains(
             commands,
             assets.meshes,
@@ -401,6 +501,12 @@ pub fn spawn_level_scene(
             assets.materials,
             layer,
             &layer_spawn,
+        );
+        zones::tag_by_key(
+            commands,
+            &level_zones,
+            layer_index,
+            layer_spawners.by_key.iter(),
         );
         spawner_handles.by_key.extend(layer_spawners.by_key);
 
@@ -451,5 +557,6 @@ pub fn spawn_level_scene(
         pit_floor_handles,
         spawner_handles,
         boulder_animator,
+        level_zones,
     }
 }

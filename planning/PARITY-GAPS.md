@@ -176,6 +176,8 @@ Benign warning, TS parity: loading a multi-layer level whose layer-0 signal enti
 
 Phase 5 note: TS has a latent ground-item key-format bug (initial meshes keyed unprefixed, pickup hides with a layer-prefixed key — level-authored items leave a ghost billboard after pickup). `ground_items.rs` keys consistently and does not reproduce it. When layer-aware keying lands in phase 5, decide whether to preserve that incidental correctness or match TS bit-for-bit.
 
+Deferred half-tile infrastructure (shared by two disclosed gaps): TS splits geometry into half-size zone-tagged quads at zone-boundary door cells (`dungeon.ts` halfTile/halfWall + `doorRenderer.ts` Z-split frame/panel with a boundary PointLight) and carves half tiles at ramp landings. Neither exists in this port — zone-boundary doors render whole and tagged to their own cell's zone (visible seam only at that exact boundary; disclosed in `dungeon.rs`/`doors.rs` module docs), and ramp landings keep whole tiles (`ramps.rs` module doc). One shared mesh-splitting facility unlocks both.
+
 ### `src/npcs/`, `src/enemies/`, `src/level/`
 
 | File | Status | Rust location | Phase | Notes |

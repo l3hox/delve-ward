@@ -1,0 +1,368 @@
+//! Environment-zone multi-camera rendering, ported from TS's single-camera
+//! N-pass render loop (`main.ts`'s `!ls.multiZone` branch vs its per-zone
+//! `camera.layers.enable(zoneLayer)` loop). This port uses N camera
+//! *entities* instead of N passes through one camera: each zone camera is
+//! tagged `RenderLayers::from_layers(&[0, zone])`, so it draws both its own
+//! zone's per-cell content and everything left on the shared layer (0).
+//!
+//! That shared layer is what makes most of TS's `layers.enableAll()` list
+//! (stairs, trap launcher meshes, sconce lights, damage numbers, fireball
+//! particles, health bars, projectiles) and every entity type this slice's
+//! file allowlist doesn't reach (signs, fountains, altars, barrels,
+//! bookshelves, wall entities, ramps, boulders, props) need no tagging code
+//! at all: Bevy's default `RenderLayers` is layer 0, which already
+//! intersects every zone camera's set. An untagged entity renders in every
+//! zone pass for free — the same visual result as TS's `enableAll()`
+//! through a different mechanism, and a safer failure mode than TS's own
+//! (default-layer-0 THREE.Object3Ds are invisible in every pass but zone 0,
+//! which no camera pass ever enables) for anything this slice doesn't reach.
+//!
+//! Single-zone levels never touch any of this: [`spawn_player_cameras`]
+//! keeps today's one-entity camera (Camera3d + Projection + DistanceFog +
+//! AmbientLight bundled directly on the player) untouched, matching TS's
+//! `!multiZone` fast path exactly.
+
+use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
+use bevy::camera::Camera3dDepthLoadOp;
+use bevy::camera::visibility::RenderLayers;
+use bevy::pbr::{DistanceFog, FogFalloff};
+use bevy::prelude::*;
+use delve_core::env_zones::{build_env_zone_map, build_env_zone_map_with_existing_zones};
+use delve_core::game_state::door_key;
+use delve_core::types::{DungeonLevel, Environment, TextureArea};
+use std::collections::HashMap;
+
+/// Per-layer zone assignment for a level, computed once when its scene is
+/// built. Ported from `buildLevelScene`'s split between the active layer's
+/// own `buildEnvZoneMap` call (which decides the level's zone list and
+/// multi-zone-ness) and every other layer's `buildEnvZoneMapWithExistingZones`
+/// call (which reuses that same zone indexing, so a zone number means the
+/// same environment on every layer of the level).
+#[derive(Resource, Clone, Default)]
+pub struct LevelZones {
+    pub zones: Vec<Environment>,
+    pub multi_zone: bool,
+    by_layer: Vec<HashMap<String, usize>>,
+}
+
+impl LevelZones {
+    #[must_use]
+    pub fn zone_at(&self, layer_index: usize, col: i64, row: i64) -> Option<usize> {
+        self.by_layer
+            .get(layer_index)?
+            .get(&door_key(col, row))
+            .copied()
+    }
+}
+
+fn layer_areas(level: &DungeonLevel, layer_index: usize) -> &[TextureArea] {
+    level.layers[layer_index]
+        .areas
+        .as_deref()
+        .or(level.areas.as_deref())
+        .unwrap_or(&[])
+}
+
+/// Ported from the `buildEnvZoneMap`/`buildEnvZoneMapWithExistingZones` split
+/// in `buildLevelScene`: `active_layer_index` is `gameState.activeLayerIndex`
+/// at scene-build time, captured once and unaffected by later same-scene
+/// layer switches (falling, ramps) since those never rebuild the scene.
+#[must_use]
+pub fn compute_level_zones(level: &DungeonLevel, active_layer_index: usize) -> LevelZones {
+    let level_environment = level.environment.unwrap_or(Environment::Dungeon);
+    let active_grid = &level.layers[active_layer_index].grid;
+    let active_areas = layer_areas(level, active_layer_index);
+    let primary = build_env_zone_map(active_grid, level_environment, active_areas);
+
+    let mut by_layer = vec![HashMap::new(); level.layers.len()];
+    if primary.multi_zone {
+        by_layer[active_layer_index] = primary.zone_by_cell;
+        for (layer_index, layer_def) in level.layers.iter().enumerate() {
+            if layer_index == active_layer_index {
+                continue;
+            }
+            let areas = layer_areas(level, layer_index);
+            by_layer[layer_index] = build_env_zone_map_with_existing_zones(
+                &layer_def.grid,
+                level_environment,
+                areas,
+                &primary.zones,
+            );
+        }
+    }
+
+    LevelZones {
+        zones: primary.zones,
+        multi_zone: primary.multi_zone,
+        by_layer,
+    }
+}
+
+/// Tags a single cell-positioned entity with its own cell's zone. A no-op
+/// when the level isn't multi-zone, matching TS's `if (ldZoneMap)` gate —
+/// under which the whole tagging pass is skipped and every mesh keeps
+/// three.js's default (layer-0-only) mask.
+pub fn tag_cell(
+    commands: &mut Commands,
+    zones: &LevelZones,
+    layer_index: usize,
+    entity: Entity,
+    col: i64,
+    row: i64,
+) {
+    if let Some(zone) = zones.zone_at(layer_index, col, row) {
+        commands
+            .entity(entity)
+            .insert(RenderLayers::from_layers(&[zone]));
+    }
+}
+
+/// Tags every entity in a layer-prefixed handle map (`layer_door_key`
+/// format, e.g. `"0:12,7"`) with its cell's zone — the central counterpart
+/// to TS's per-builder `tagByKey` closure in `buildLevelScene`. Callers pass
+/// the layer-local map (before it's merged into the level-wide accumulator)
+/// so the `"{layer_index}:"` prefix strip below is unambiguous.
+pub fn tag_by_key<'a>(
+    commands: &mut Commands,
+    zones: &LevelZones,
+    layer_index: usize,
+    entities: impl IntoIterator<Item = (&'a String, &'a Entity)>,
+) {
+    if !zones.multi_zone {
+        return;
+    }
+    let Some(zone_by_cell) = zones.by_layer.get(layer_index) else {
+        return;
+    };
+    let prefix = format!("{layer_index}:");
+    for (key, entity) in entities {
+        let Some(stripped) = key.strip_prefix(prefix.as_str()) else {
+            continue;
+        };
+        // Multi-item cell spreads suffix the cell key with `#index`
+        // (`ground_items.rs`'s `store_key`) — the zone map only knows plain
+        // `"col,row"` keys, so look up the cell portion before that suffix.
+        let cell_key = stripped.split('#').next().unwrap_or(stripped);
+        if let Some(&zone) = zone_by_cell.get(cell_key) {
+            commands
+                .entity(*entity)
+                .insert(RenderLayers::from_layers(&[zone]));
+        }
+    }
+}
+
+/// Marks a camera entity spawned as one of a multi-zone level's per-zone
+/// passes, so the next level swap can find and despawn every one of them
+/// before respawning for the new level's own zone count.
+#[derive(Component)]
+pub struct ZoneCamera;
+
+fn default_projection() -> Projection {
+    Projection::Perspective(PerspectiveProjection {
+        fov: 75_f32.to_radians(),
+        near: 0.1,
+        far: 200.0,
+        ..default()
+    })
+}
+
+fn fog_for(environment: Environment) -> DistanceFog {
+    let config = environment_config(environment);
+    DistanceFog {
+        color: config.fog_color,
+        falloff: FogFalloff::Linear {
+            start: config.fog_near,
+            end: config.fog_far,
+        },
+        ..default()
+    }
+}
+
+fn ambient_for(environment: Environment) -> AmbientLight {
+    let config = environment_config(environment);
+    AmbientLight {
+        color: config.ambient_color,
+        brightness: AMBIENT_BRIGHTNESS,
+        affects_lightmapped_meshes: true,
+    }
+}
+
+/// Removes every zone camera left from a prior level (if any) plus any
+/// single-camera components left on `player` (if the prior level was
+/// single-zone), then attaches the camera setup this level's zone count
+/// needs. Called once per level swap, right after `spawn_level_scene` — safe
+/// to call unconditionally regardless of what the *previous* level's zone
+/// architecture was, since it always tears down before rebuilding.
+///
+/// Single-zone levels (`!zones.multi_zone`) get TS's `!multiZone` fast path:
+/// one camera, bundled directly on `player`, byte-identical to the
+/// pre-multi-zone setup — `level` here (not `zones.zones`) is the same
+/// `level.environment` source of truth `setup`/the transition swaps already
+/// used, so this fast path is not just equivalent but literally unchanged.
+///
+/// Multi-zone levels get one child camera per zone: `RenderLayers` including
+/// shared layer 0 so untagged content still renders, `Camera.order` equal to
+/// the zone index (matching TS's pass order 1..=zones.len()), and
+/// `ClearColorConfig::Custom` on only the first zone — TS's
+/// `scene.background = i === 0 ? new THREE.Color(cfg.fogColor) : null`.
+pub fn spawn_player_cameras(
+    commands: &mut Commands,
+    player: Entity,
+    zone_cameras: &Query<Entity, With<ZoneCamera>>,
+    clear_color: &mut ClearColor,
+    level: &DungeonLevel,
+    zones: &LevelZones,
+) {
+    for entity in zone_cameras {
+        commands.entity(entity).despawn();
+    }
+    commands.entity(player).remove::<(
+        Camera3d,
+        Projection,
+        DistanceFog,
+        AmbientLight,
+        RenderLayers,
+    )>();
+
+    if !zones.multi_zone {
+        let environment = level.environment.unwrap_or(Environment::Dungeon);
+        clear_color.0 = environment_config(environment).fog_color;
+        commands.entity(player).insert((
+            Camera3d::default(),
+            default_projection(),
+            fog_for(environment),
+            ambient_for(environment),
+        ));
+        return;
+    }
+
+    commands.entity(player).with_children(|parent| {
+        for (index, &environment) in zones.zones.iter().enumerate() {
+            let zone = index + 1;
+            parent.spawn((
+                ZoneCamera,
+                Camera3d {
+                    // TS disables autoClear and clears once up front, so all
+                    // N passes share one persistent depth buffer — cameras
+                    // targeting the same window share one depth texture too
+                    // (keyed by (target, msaa)), so only the first zone
+                    // clears it; every later zone must load what the first
+                    // one wrote or it paints over nearer geometry from
+                    // earlier passes regardless of actual depth.
+                    depth_load_op: if index == 0 {
+                        Camera3dDepthLoadOp::Clear(0.0)
+                    } else {
+                        Camera3dDepthLoadOp::Load
+                    },
+                    ..default()
+                },
+                default_projection(),
+                Camera {
+                    order: zone as isize,
+                    clear_color: if index == 0 {
+                        ClearColorConfig::Custom(environment_config(environment).fog_color)
+                    } else {
+                        ClearColorConfig::None
+                    },
+                    ..default()
+                },
+                RenderLayers::from_layers(&[0, zone]),
+                Transform::IDENTITY,
+                fog_for(environment),
+                ambient_for(environment),
+            ));
+        }
+    });
+}
+
+/// `RenderLayers` for content meant to render in every zone pass — exposed
+/// so other slices (the skybox, per the phase 5 environment-zones scope
+/// note) can opt an entity into the same shared layer this module's
+/// untagged-entities-are-shared default already relies on, without
+/// depending on this module's other, cell-tagging-specific internals.
+///
+/// Unused within this crate until that skybox integration lands (verified by
+/// this module's own test, not a call site here) — `delve-game` is a binary
+/// crate, so a `pub` item with no in-crate caller yet reads as dead code to
+/// the bin target's own lint pass even though a sibling module will pick it
+/// up.
+#[must_use]
+#[allow(dead_code)]
+pub fn shared_layers() -> RenderLayers {
+    RenderLayers::layer(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use delve_core::level_loader::{ValidationContext, validate_dungeon_str};
+
+    #[test]
+    fn shared_layers_intersects_only_layer_zero() {
+        let layers = shared_layers();
+        assert!(layers.intersects(&RenderLayers::layer(0)));
+        assert!(!layers.intersects(&RenderLayers::layer(1)));
+    }
+
+    fn layered_level() -> DungeonLevel {
+        let path = crate::assets_dir().join("levels/dungeon_m1-layered.json");
+        let json = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let mut warnings = Vec::new();
+        let dungeon = validate_dungeon_str(
+            &json,
+            "dungeon_m1-layered.json",
+            &ValidationContext::default(),
+            &mut warnings,
+        )
+        .expect("shipped dungeon_m1-layered.json validates");
+        dungeon
+            .levels
+            .into_iter()
+            .find(|level| level.id.as_deref() == Some("level_1"))
+            .expect("dungeon_m1-layered.json has level_1")
+    }
+
+    #[test]
+    fn compute_level_zones_finds_the_dungeon_area_override_over_outdoor_default() {
+        let level = layered_level();
+        // Layer 1's area override only covers rows 4-16 of its 17-row grid
+        // (layer 0's covers every row, making layer 0 alone single-zone) —
+        // rows 0-3 stay the level's outdoor default, so layer 1 is the
+        // layer whose own grid genuinely spans two zones.
+        let zones = compute_level_zones(&level, 1);
+        assert!(zones.multi_zone);
+        assert_eq!(zones.zones.len(), 2);
+        assert!(zones.zones.contains(&Environment::Outdoor));
+        assert!(zones.zones.contains(&Environment::Dungeon));
+    }
+
+    #[test]
+    fn compute_level_zones_reuses_the_active_layers_zone_index_on_other_layers() {
+        let level = layered_level();
+        let zones = compute_level_zones(&level, 1);
+        // Layer 3 has no area override, so (0,0) is the level's outdoor
+        // default on every layer — its zone index must match whichever
+        // index the active layer (1) assigned to `Environment::Outdoor`,
+        // not a fresh first-encountered index of its own.
+        let outdoor_zone = zones
+            .zones
+            .iter()
+            .position(|&environment| environment == Environment::Outdoor)
+            .map(|index| index + 1)
+            .expect("outdoor is one of the level's zones");
+        assert_eq!(zones.zone_at(3, 0, 0), Some(outdoor_zone));
+    }
+
+    #[test]
+    fn compute_level_zones_is_not_multi_zone_for_a_single_environment_level() {
+        let level = layered_level();
+        // level_2/level_3 in the same dungeon are single-environment; reuse
+        // this level's own layer 3 (no area override) in isolation by
+        // treating it as the active layer — every cell resolves to the same
+        // outdoor default, so there is exactly one zone.
+        let zones = compute_level_zones(&level, 3);
+        assert!(!zones.multi_zone);
+        assert_eq!(zones.zones, vec![Environment::Outdoor]);
+    }
+}

@@ -1,10 +1,16 @@
 //! Door rendering: a stone frame per door cell plus a sliding panel that
 //! animates open/closed, ported from the TS door renderer and animator.
-//! Environment-zone splitting arrives with phase 5.
-
+//!
+//! A door whose cell sits at a zone boundary is tagged whole to its own
+//! cell's zone (`buildDoorFrame`'s unsplit-case fallback in `doorRenderer.ts`)
+//! rather than Z-split into two zone-tagged halves with a boundary
+//! `PointLight` — that split needs the same half-tile infrastructure
+//! `dungeon.rs`'s zone-boundary simplification also defers, so it's the same
+//! disclosed, bounded gap rather than a new one.
 use crate::dungeon::{CELL_SIZE, WALL_HEIGHT};
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
+use crate::zones::{self, LevelZones};
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use delve_core::game_state::{DoorState, LayerState, door_key, layer_door_key};
@@ -149,6 +155,7 @@ pub fn detect_door_orientation(
     DoorOrientation::NS
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_doors(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -157,6 +164,7 @@ pub fn spawn_doors(
     layer_spawn: &crate::dungeon::LayerSpawn,
     grid: &[String],
     walkable: &HashSet<char>,
+    zones: &LevelZones,
 ) -> DoorPanels {
     let mut panels = DoorPanels::default();
     let layer_index = layer_spawn.index;
@@ -198,6 +206,7 @@ pub fn spawn_doors(
                 ))
                 .id();
             commands.entity(frame).add_child(pillar);
+            zones::tag_cell(commands, zones, layer_index, pillar, door.col, door.row);
         }
         let lintel = commands
             .spawn((
@@ -207,6 +216,7 @@ pub fn spawn_doors(
             ))
             .id();
         commands.entity(frame).add_child(lintel);
+        zones::tag_cell(commands, zones, layer_index, lintel, door.col, door.row);
 
         if !door.mechanical {
             for z in [
@@ -221,6 +231,7 @@ pub fn spawn_doors(
                     ))
                     .id();
                 commands.entity(frame).add_child(button);
+                zones::tag_cell(commands, zones, layer_index, button, door.col, door.row);
             }
         }
 
@@ -248,6 +259,7 @@ pub fn spawn_doors(
                 },
             ))
             .id();
+        zones::tag_cell(commands, zones, layer_index, panel, door.col, door.row);
         panels.by_key.insert(
             layer_door_key(layer_index, &door_key(door.col, door.row)),
             panel,

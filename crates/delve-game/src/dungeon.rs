@@ -4,6 +4,7 @@
 
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
+use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, PitTrapState, door_key, layer_door_key};
 use delve_core::grid::Facing;
@@ -90,6 +91,15 @@ fn wall_material_for_face(
     fallback.to_string()
 }
 
+/// Every cell's floor, ceiling, and walls are tagged as one unit to that
+/// cell's own environment zone (`zones::tag_cell`, a no-op when `zones`
+/// isn't multi-zone). TS additionally splits geometry into zone-tagged
+/// half-tiles/half-walls at door cells whose neighbor is in a different zone
+/// (`dungeon.ts`'s `halfTileNS`/`halfTileEW`/`halfWallGeo`); that half-tile
+/// infrastructure doesn't exist in this port yet, so a door cell straddling
+/// two zones renders whole and tagged to its own cell's zone rather than
+/// split — a visible seam only at that specific boundary, not a missing- or
+/// wrong-zone entity anywhere else.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_dungeon(
     commands: &mut Commands,
@@ -100,6 +110,7 @@ pub fn spawn_dungeon(
     wall_entity_cells: &HashSet<String>,
     pit_trap_cells: &HashSet<String>,
     ramp_base_cells: &HashMap<String, Facing>,
+    zones: &LevelZones,
 ) {
     let grid: Vec<Vec<char>> = layer
         .layer_def
@@ -168,13 +179,23 @@ pub fn spawn_dungeon(
             // toggles the floor mesh's visibility, never the surrounding
             // ceiling/walls for that cell.
             if !pit_trap_cells.contains(&key) {
-                commands.spawn((
-                    LevelEntity,
-                    Mesh3d(tile_mesh.clone()),
-                    MeshMaterial3d(materials.floor(&textures.floor)),
-                    Transform::from_xyz(center_x, layer_y_offset, center_z)
-                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-                ));
+                let floor = commands
+                    .spawn((
+                        LevelEntity,
+                        Mesh3d(tile_mesh.clone()),
+                        MeshMaterial3d(materials.floor(&textures.floor)),
+                        Transform::from_xyz(center_x, layer_y_offset, center_z)
+                            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+                    ))
+                    .id();
+                zones::tag_cell(
+                    commands,
+                    zones,
+                    layer.index,
+                    floor,
+                    i64::from(col),
+                    i64::from(row),
+                );
             }
 
             // A ramp based at this cell rises up through where the ceiling
@@ -182,13 +203,23 @@ pub fn spawn_dungeon(
             // `skipCeiling: true` unconditionally.
             let ramp_facing = ramp_base_cells.get(&key).copied();
             if ceiling_enabled && ramp_facing.is_none() {
-                commands.spawn((
-                    LevelEntity,
-                    Mesh3d(tile_mesh.clone()),
-                    MeshMaterial3d(materials.ceiling(&textures.ceiling)),
-                    Transform::from_xyz(center_x, WALL_HEIGHT + layer_y_offset, center_z)
-                        .with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
-                ));
+                let ceiling = commands
+                    .spawn((
+                        LevelEntity,
+                        Mesh3d(tile_mesh.clone()),
+                        MeshMaterial3d(materials.ceiling(&textures.ceiling)),
+                        Transform::from_xyz(center_x, WALL_HEIGHT + layer_y_offset, center_z)
+                            .with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
+                    ))
+                    .id();
+                zones::tag_cell(
+                    commands,
+                    zones,
+                    layer.index,
+                    ceiling,
+                    i64::from(col),
+                    i64::from(row),
+                );
             }
 
             // (rotation, neighbor delta, wall plane center offset)
@@ -214,17 +245,27 @@ pub fn spawn_dungeon(
                     &textures.wall,
                     char_defs,
                 );
-                commands.spawn((
-                    LevelEntity,
-                    Mesh3d(wall_mesh.clone()),
-                    MeshMaterial3d(materials.wall(&wall_texture)),
-                    Transform::from_xyz(
-                        center_x + offset_x,
-                        WALL_HEIGHT / 2.0 + layer_y_offset,
-                        center_z + offset_z,
-                    )
-                    .with_rotation(Quat::from_rotation_y(rotation_y)),
-                ));
+                let wall = commands
+                    .spawn((
+                        LevelEntity,
+                        Mesh3d(wall_mesh.clone()),
+                        MeshMaterial3d(materials.wall(&wall_texture)),
+                        Transform::from_xyz(
+                            center_x + offset_x,
+                            WALL_HEIGHT / 2.0 + layer_y_offset,
+                            center_z + offset_z,
+                        )
+                        .with_rotation(Quat::from_rotation_y(rotation_y)),
+                    ))
+                    .id();
+                zones::tag_cell(
+                    commands,
+                    zones,
+                    layer.index,
+                    wall,
+                    i64::from(col),
+                    i64::from(row),
+                );
             }
         }
     }

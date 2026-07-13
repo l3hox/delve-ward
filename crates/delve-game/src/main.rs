@@ -29,6 +29,7 @@ mod levers;
 mod mouse;
 mod npcs;
 mod overlay;
+mod particles;
 mod pixel_canvas;
 mod plates;
 mod player;
@@ -52,9 +53,9 @@ mod trading_overlay;
 mod transition;
 mod tripwires;
 mod wall_entities;
+mod zones;
 
 use bevy::input::keyboard::KeyboardInput;
-use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::window::WindowFocused;
 use delve_core::enemies::EnemyDatabase;
@@ -67,8 +68,7 @@ use delve_core::npcs::NpcDatabase;
 use delve_core::quest_manager::QuestManager;
 use delve_core::quests::QuestDef;
 use delve_core::random::Mulberry32;
-use delve_core::types::{Dungeon, Environment};
-use environment::{AMBIENT_BRIGHTNESS, environment_config};
+use delve_core::types::Dungeon;
 use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
 use overlay::ActiveOverlay;
@@ -147,6 +147,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut standard_materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
+    zone_cameras: Query<Entity, With<zones::ZoneCamera>>,
 ) {
     let loaded = load_dungeon(&dungeon_path());
     // Captured before any gameplay mutation (breakable walls, secret walls,
@@ -285,39 +286,34 @@ fn setup(
     commands.insert_resource(ProjectileManagerRes::default());
     commands.insert_resource(ProjectileBillboards::default());
 
-    let config = environment_config(level.environment.unwrap_or(Environment::Dungeon));
-    commands.insert_resource(ClearColor(config.fog_color));
-    commands.spawn((
-        Camera3d::default(),
-        Projection::Perspective(PerspectiveProjection {
-            fov: 75_f32.to_radians(),
-            near: 0.1,
-            far: 200.0,
-            ..default()
-        }),
-        Transform::default(),
-        DistanceFog {
-            color: config.fog_color,
-            falloff: FogFalloff::Linear {
-                start: config.fog_near,
-                end: config.fog_far,
-            },
-            ..default()
-        },
-        AmbientLight {
-            color: config.ambient_color,
-            brightness: AMBIENT_BRIGHTNESS,
-            affects_lightmapped_meshes: true,
-        },
-        Player::new(
-            grid,
-            start.col,
-            start.row,
-            start.facing,
-            walkable,
-            stairs_map,
-        ),
-    ));
+    let player_entity = commands
+        .spawn((
+            Transform::default(),
+            // `Camera` requires `Visibility`, so a multi-zone level's zone
+            // camera children need it on this parent too — otherwise Bevy's
+            // hierarchy-consistency check (B0004) finds children with a
+            // component this entity lacks.
+            Visibility::Inherited,
+            Player::new(
+                grid,
+                start.col,
+                start.row,
+                start.facing,
+                walkable,
+                stairs_map,
+            ),
+        ))
+        .id();
+    let mut clear_color = ClearColor::default();
+    zones::spawn_player_cameras(
+        &mut commands,
+        player_entity,
+        &zone_cameras,
+        &mut clear_color,
+        &level,
+        &handles.level_zones,
+    );
+    commands.insert_resource(clear_color);
 
     torch::spawn_torch(&mut commands);
     commands.insert_resource(DungeonRes(loaded));

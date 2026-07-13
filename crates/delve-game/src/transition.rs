@@ -11,7 +11,6 @@ use crate::doors::DoorPanels;
 use crate::dungeon::PitFloorHandles;
 use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::enemy_feedback::EnemyHealthBars;
-use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
 use crate::fountains::FountainHandles;
 use crate::ground_items::{GroundItemBillboards, ItemDb};
 use crate::keys::KeyBillboards;
@@ -29,8 +28,8 @@ use crate::spawners::SpawnerHandles;
 use crate::textures::DungeonMaterials;
 use crate::tripwires::TripwireHandles;
 use crate::wall_entities::WallEntityHandles;
+use crate::zones;
 use bevy::ecs::system::SystemParam;
-use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use delve_core::game_state::door_key;
 use delve_core::grid::build_walkable_set;
@@ -191,6 +190,7 @@ pub struct SwapWorld<'w, 's> {
     pit_floor_handles: ResMut<'w, PitFloorHandles>,
     spawner_handles: ResMut<'w, SpawnerHandles>,
     boulder_animator: ResMut<'w, BoulderAnimator>,
+    zone_cameras: Query<'w, 's, Entity, With<zones::ZoneCamera>>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -233,7 +233,7 @@ pub fn perform_level_swap(
     mut assets: SwapAssets,
     mut world: SwapWorld,
     mut save_store: ResMut<FileSaveStore>,
-    mut players: Query<(Entity, &Player, &mut DistanceFog, &mut AmbientLight)>,
+    mut players: Query<(Entity, &Player)>,
 ) {
     if transition.phase != Phase::Swap {
         return;
@@ -245,7 +245,7 @@ pub fn perform_level_swap(
         return;
     };
     transition.phase = Phase::FadeIn;
-    let Ok((player_entity, player, mut fog, mut ambient)) = players.single_mut() else {
+    let Ok((player_entity, player)) = players.single_mut() else {
         return;
     };
     let facing_before = player.grid_state().facing;
@@ -311,16 +311,6 @@ pub fn perform_level_swap(
     );
     session.last_player_pose = (spawn_col, spawn_row, facing_before);
 
-    let config = environment_config(target_level.environment.unwrap_or(Environment::Dungeon));
-    world.clear_color.0 = config.fog_color;
-    fog.color = config.fog_color;
-    fog.falloff = FogFalloff::Linear {
-        start: config.fog_near,
-        end: config.fog_far,
-    };
-    ambient.color = config.ambient_color;
-    ambient.brightness = AMBIENT_BRIGHTNESS;
-
     let stairs_map = session
         .game
         .active_layer()
@@ -373,6 +363,15 @@ pub fn perform_level_swap(
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
+    zones::spawn_player_cameras(
+        &mut commands,
+        player_entity,
+        &world.zone_cameras,
+        &mut world.clear_color,
+        target_level,
+        &handles.level_zones,
+    );
+
     let Session { game, grid, .. } = session;
     // TS reveals with the target stair's facing; only the player's
     // orientation keeps the pre-transition facing.
@@ -419,7 +418,7 @@ pub fn perform_restart(
     mut assets: SwapAssets,
     mut world: SwapWorld,
     original_grids: Res<OriginalGrids>,
-    mut players: Query<(Entity, &Player, &mut DistanceFog, &mut AmbientLight)>,
+    mut players: Query<(Entity, &Player)>,
 ) {
     if transition.phase != Phase::Swap {
         return;
@@ -429,7 +428,7 @@ pub fn perform_restart(
     }
     transition.pending = None;
     transition.phase = Phase::FadeIn;
-    let Ok((player_entity, _player, mut fog, mut ambient)) = players.single_mut() else {
+    let Ok((player_entity, _player)) = players.single_mut() else {
         return;
     };
 
@@ -501,16 +500,6 @@ pub fn perform_restart(
     );
     session.last_player_pose = (start.col, start.row, start.facing);
 
-    let config = environment_config(session.environment);
-    world.clear_color.0 = config.fog_color;
-    fog.color = config.fog_color;
-    fog.falloff = FogFalloff::Linear {
-        start: config.fog_near,
-        end: config.fog_far,
-    };
-    ambient.color = config.ambient_color;
-    ambient.brightness = AMBIENT_BRIGHTNESS;
-
     let stairs_map = session
         .game
         .active_layer()
@@ -563,6 +552,15 @@ pub fn perform_restart(
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
+    zones::spawn_player_cameras(
+        &mut commands,
+        player_entity,
+        &world.zone_cameras,
+        &mut world.clear_color,
+        &start_level,
+        &handles.level_zones,
+    );
+
     let Session { game, grid, .. } = session;
     game.reveal_around(
         i64::from(start.col),
@@ -582,7 +580,7 @@ pub fn perform_load(
     mut assets: SwapAssets,
     mut world: SwapWorld,
     original_grids: Res<OriginalGrids>,
-    mut players: Query<(Entity, &Player, &mut DistanceFog, &mut AmbientLight)>,
+    mut players: Query<(Entity, &Player)>,
 ) {
     if transition.phase != Phase::Swap {
         return;
@@ -594,7 +592,7 @@ pub fn perform_load(
         return;
     };
     transition.phase = Phase::FadeIn;
-    let Ok((player_entity, _player, mut fog, mut ambient)) = players.single_mut() else {
+    let Ok((player_entity, _player)) = players.single_mut() else {
         return;
     };
 
@@ -671,16 +669,6 @@ pub fn perform_load(
     let player_facing = result.player_facing;
     session.last_player_pose = (player_col, player_row, player_facing);
 
-    let config = environment_config(session.environment);
-    world.clear_color.0 = config.fog_color;
-    fog.color = config.fog_color;
-    fog.falloff = FogFalloff::Linear {
-        start: config.fog_near,
-        end: config.fog_far,
-    };
-    ambient.color = config.ambient_color;
-    ambient.brightness = AMBIENT_BRIGHTNESS;
-
     let stairs_map = session
         .game
         .active_layer()
@@ -732,6 +720,15 @@ pub fn perform_load(
     *world.boulder_animator = handles.boulder_animator;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
+
+    zones::spawn_player_cameras(
+        &mut commands,
+        player_entity,
+        &world.zone_cameras,
+        &mut world.clear_color,
+        &target_level,
+        &handles.level_zones,
+    );
 
     let Session { game, grid, .. } = session;
     game.reveal_around(
