@@ -117,6 +117,43 @@ pub fn tag_cell(
     }
 }
 
+/// Ported from `buildLevelScene`'s `zones.indexOf(levelEnv) + 1 || 1`: the
+/// zone index the level's own default environment landed at when `zones`
+/// (the active layer's first-encountered-order environment list) was built,
+/// falling back to zone 1 if that environment isn't present in `zones` at
+/// all (`indexOf` returns -1, so `-1 + 1 = 0`, and JS's `0 || 1` coerces the
+/// falsy zero to 1). Pulled out of [`tag_forest`] as a pure function so the
+/// index math is unit-testable without spinning up `Commands`.
+#[must_use]
+fn forest_zone_index(zones: &[Environment], level_environment: Environment) -> usize {
+    zones
+        .iter()
+        .position(|&environment| environment == level_environment)
+        .map_or(1, |index| index + 1)
+}
+
+/// Tags a layer's whole forest batch to ONE zone (see [`forest_zone_index`])
+/// — forest trees don't carry a per-cell zone the way other cell-positioned
+/// content does; TS tags the entire layer's `ForestMeshes` group as a single
+/// unit. A no-op when the level isn't multi-zone, matching every other
+/// tagging call's `if (ldZoneMap)` gate.
+pub fn tag_forest(
+    commands: &mut Commands,
+    zones: &LevelZones,
+    level_environment: Environment,
+    entities: impl IntoIterator<Item = Entity>,
+) {
+    if !zones.multi_zone {
+        return;
+    }
+    let zone = forest_zone_index(&zones.zones, level_environment);
+    for entity in entities {
+        commands
+            .entity(entity)
+            .insert(RenderLayers::from_layers(&[zone]));
+    }
+}
+
 /// Tags every entity in a layer-prefixed handle map (`layer_door_key`
 /// format, e.g. `"0:12,7"`) with its cell's zone — the central counterpart
 /// to TS's per-builder `tagByKey` closure in `buildLevelScene`. Callers pass
@@ -340,5 +377,17 @@ mod tests {
         let zones = compute_level_zones(&level, 3);
         assert!(!zones.multi_zone);
         assert_eq!(zones.zones, vec![Environment::Outdoor]);
+    }
+
+    #[test]
+    fn forest_zone_index_finds_the_levels_default_environment() {
+        let zones = [Environment::Dungeon, Environment::Outdoor];
+        assert_eq!(forest_zone_index(&zones, Environment::Outdoor), 2);
+    }
+
+    #[test]
+    fn forest_zone_index_falls_back_to_one_when_the_default_environment_is_absent() {
+        let zones = [Environment::Dungeon, Environment::Mist];
+        assert_eq!(forest_zone_index(&zones, Environment::Outdoor), 1);
     }
 }

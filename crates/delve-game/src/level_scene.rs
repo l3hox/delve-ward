@@ -11,6 +11,7 @@ use crate::doors::{self, DoorPanels};
 use crate::dungeon;
 use crate::enemies::{self, EnemyBillboards};
 use crate::enemy_feedback::{self, EnemyHealthBars};
+use crate::forest;
 use crate::fountains::{self, FountainHandles};
 use crate::ground_items::{self, GroundItemBillboards};
 use crate::keys::{self, KeyBillboards};
@@ -33,7 +34,7 @@ use delve_core::enemies::EnemyDatabase;
 use delve_core::game_state::{GameState, door_key};
 use delve_core::items::ItemDatabase;
 use delve_core::npcs::NpcDatabase;
-use delve_core::types::DungeonLevel;
+use delve_core::types::{DungeonLevel, Environment};
 use std::collections::{HashMap, HashSet};
 
 /// Every layer's default Y offset, absent an explicit `LayerDef.y_offset`
@@ -214,6 +215,24 @@ pub fn spawn_level_scene(
             &layer_def.grid,
             scene.walkable,
         );
+
+        // Forest: only produces entities when this layer's grid has
+        // forest-fill chars — `spawn_forest` returns an empty Vec otherwise,
+        // and `tag_forest` iterating an empty Vec is a no-op either way.
+        let layer_forest = forest::spawn_forest(
+            commands,
+            assets.meshes,
+            assets.materials,
+            assets.asset_server,
+            &layer_spawn,
+        );
+        zones::tag_forest(
+            commands,
+            &level_zones,
+            scene.level.environment.unwrap_or(Environment::Dungeon),
+            layer_forest,
+        );
+
         let layer_door_panels = doors::spawn_doors(
             commands,
             assets.meshes,
