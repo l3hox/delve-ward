@@ -34,8 +34,8 @@
 //! `tag_forest` call is a no-op when the level isn't multi-zone.
 
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
-use bevy::camera::Camera3dDepthLoadOp;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{Camera3dDepthLoadOp, SubCameraView};
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use delve_core::env_zones::{build_env_zone_map, build_env_zone_map_with_existing_zones};
@@ -323,6 +323,84 @@ pub fn spawn_player_cameras(
     });
 }
 
+/// TS's `main.ts:82-84` (comments verbatim): cut 15% from the top of the
+/// frustum for a claustrophobic feel, expand 20% beyond the bottom to
+/// reveal more floor. `CAMERA_CROP_SIDE` is the average of the two,
+/// applied symmetrically left/right so the resulting frustum is uniformly
+/// scaled rather than stretched — undoing the aspect-ratio distortion the
+/// asymmetric vertical crop would otherwise introduce.
+const CAMERA_CROP_TOP: f32 = 0.15;
+const CAMERA_CROP_BOTTOM: f32 = -0.2;
+const CAMERA_CROP_SIDE: f32 = (CAMERA_CROP_TOP + CAMERA_CROP_BOTTOM) / 2.0;
+
+/// Ported from TS's `applyCameraViewCrop` (`main.ts:118-125`):
+/// `camera.setViewOffset(w, h, cropX, cropTop, w - cropX*2, h - cropTop -
+/// cropBottom)`. Bevy's `SubCameraView` is the same mechanism — a camera
+/// pretends it's one sub-rectangle of a larger `full_size` frame, which
+/// asymmetrically shifts and scales the frustum exactly like `setViewOffset`
+/// does (verified term-for-term against both `PerspectiveCamera
+/// .updateProjectionMatrix` in `node_modules/three/src/cameras/
+/// PerspectiveCamera.js` and Bevy's `PerspectiveProjection
+/// ::get_clip_from_view_for_sub` in the vendored `bevy_camera-0.19.0/src/
+/// projection.rs` — both produce `top' = top - CROP_TOP*height` and
+/// `bottom' = bottom + CROP_BOTTOM*height` from the same inputs).
+/// `SubCameraView::offset` is top-down (screen-space) pixels, matching
+/// `setViewOffset`'s `x`/`y` params directly — `get_clip_from_view_for_sub`
+/// flips it to bottom-up internally, so no sign adjustment is needed here.
+///
+/// Pixel math mirrors TS's floor-once-then-integer-arithmetic order (floor
+/// each crop amount individually, then combine with plain subtraction)
+/// rather than flooring only the final result, so rounding lands on the
+/// same pixel TS would pick.
+#[must_use]
+fn camera_view_crop(width: f32, height: f32) -> SubCameraView {
+    let full_width = width.floor() as i32;
+    let full_height = height.floor() as i32;
+    let crop_top = (height * CAMERA_CROP_TOP).floor() as i32;
+    let crop_bottom = (height * CAMERA_CROP_BOTTOM).floor() as i32;
+    let crop_side = (width * CAMERA_CROP_SIDE).floor() as i32;
+    SubCameraView {
+        full_size: UVec2::new(full_width.max(0) as u32, full_height.max(0) as u32),
+        offset: Vec2::new(crop_side as f32, crop_top as f32),
+        size: UVec2::new(
+            (full_width - crop_side * 2).max(0) as u32,
+            (full_height - crop_top - crop_bottom).max(0) as u32,
+        ),
+    }
+}
+
+/// Applies the view crop to every camera this module owns — the single
+/// combined entity in single-zone levels and every `ZoneCamera` child in
+/// multi-zone ones both carry `Camera3d`, so one query reaches both
+/// architectures identically without needing to know which is active.
+///
+/// TS recomputes the crop on every window resize (`main.ts:1202-1206`,
+/// alongside `camera.aspect` and `renderer.setSize`) in addition to once at
+/// startup. Rather than mirror that split (a resize-event listener plus a
+/// separate startup call), this runs the same cheap recomputation every
+/// frame — the window query and crop math are a handful of float ops, and
+/// writing only happens when the computed value actually changed
+/// (`SubCameraView` is `PartialEq`), so an unchanged window costs one query
+/// and one comparison per camera per frame with no extra writes to trigger
+/// Bevy's change detection or the projection-matrix recompute it gates.
+pub fn apply_camera_view_crop(
+    windows: Query<&Window>,
+    mut cameras: Query<&mut Camera, With<Camera3d>>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    if window.width() <= 0.0 || window.height() <= 0.0 {
+        return;
+    }
+    let crop = camera_view_crop(window.width(), window.height());
+    for mut camera in &mut cameras {
+        if camera.sub_camera_view != Some(crop) {
+            camera.sub_camera_view = Some(crop);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,5 +478,31 @@ mod tests {
     fn forest_zone_index_falls_back_to_one_when_the_default_environment_is_absent() {
         let zones = [Environment::Dungeon, Environment::Mist];
         assert_eq!(forest_zone_index(&zones, Environment::Outdoor), 1);
+    }
+
+    /// Hand-computed from TS's own formula: crop_top = floor(1080*0.15) =
+    /// 162, crop_bottom = floor(1080*-0.2) = -216, crop_side =
+    /// floor(1920*-0.025) = -48 — every intermediate value already a whole
+    /// number, so this case can't hide a flooring mistake on its own (see
+    /// the fractional case below for that).
+    #[test]
+    fn camera_view_crop_matches_ts_set_view_offset_for_a_1080p_window() {
+        let crop = camera_view_crop(1920.0, 1080.0);
+        assert_eq!(crop.full_size, UVec2::new(1920, 1080));
+        assert_eq!(crop.offset, Vec2::new(-48.0, 162.0));
+        assert_eq!(crop.size, UVec2::new(2016, 1134));
+    }
+
+    /// A window size TS's `Math.floor(h * CAMERA_CROP_TOP)` etc. would
+    /// genuinely round: crop_top = floor(333*0.15) = floor(49.95) = 49,
+    /// crop_bottom = floor(333*-0.2) = floor(-66.6) = -67 (floors toward
+    /// negative infinity, not toward zero), crop_side =
+    /// floor(777*-0.025) = floor(-19.425) = -20.
+    #[test]
+    fn camera_view_crop_floors_toward_negative_infinity_like_ts_math_floor() {
+        let crop = camera_view_crop(777.0, 333.0);
+        assert_eq!(crop.full_size, UVec2::new(777, 333));
+        assert_eq!(crop.offset, Vec2::new(-20.0, 49.0));
+        assert_eq!(crop.size, UVec2::new(817, 351));
     }
 }
