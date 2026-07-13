@@ -16,6 +16,7 @@ use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
 use crate::npcs::{self, NpcBillboards};
 use crate::plates::{self, PlateHandles};
+use crate::ramps;
 use crate::sconces::{self, SconceParts};
 use crate::signs;
 use crate::stairs;
@@ -151,6 +152,12 @@ pub fn spawn_level_scene(
             .map(|pit| door_key(pit.col, pit.row))
             .collect();
 
+        let ramp_base_cells: HashMap<String, delve_core::grid::Facing> = layer
+            .ramps
+            .values()
+            .map(|ramp| (door_key(ramp.col, ramp.row), ramp.facing))
+            .collect();
+
         dungeon::spawn_dungeon(
             commands,
             assets.meshes,
@@ -159,6 +166,14 @@ pub fn spawn_level_scene(
             &stair_cells,
             &wall_entity_keys,
             &pit_trap_cells,
+            &ramp_base_cells,
+        );
+        ramps::spawn_ramps(
+            commands,
+            assets.meshes,
+            scene.dungeon_materials,
+            &layer_spawn,
+            layer,
         );
         let layer_pit_floors = dungeon::spawn_pit_floors(
             commands,

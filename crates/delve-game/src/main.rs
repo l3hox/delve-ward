@@ -33,6 +33,7 @@ mod plates;
 mod player;
 mod projectiles;
 mod quest_log_overlay;
+mod ramps;
 mod save_load_overlay;
 mod save_store;
 mod sconces;

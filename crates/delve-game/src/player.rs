@@ -169,7 +169,7 @@ impl Player {
 
     /// Swaps the grid/walkable-set/stairs a move is checked against —
     /// ported from `switchGrid`, used when the player's active layer
-    /// changes (falling now; ramp crossings in a later slice).
+    /// changes (falling, and now ramp crossings).
     pub fn switch_grid(
         &mut self,
         grid: Vec<String>,
@@ -179,6 +179,15 @@ impl Player {
         self.grid = grid;
         self.stairs = stairs;
         self.state.set_walkable(walkable);
+    }
+
+    /// Sets the ordinary-lerp Y-offset target directly — ramp crossings use
+    /// this (`ls.player.targetYOffset = destLayer * LAYER_HEIGHT` in
+    /// `main.ts`'s ramp-detection block), climbing smoothly via the same
+    /// lerp `update` already applies outside a fall, rather than the fall's
+    /// kinematic integration.
+    pub fn set_target_y_offset(&mut self, value: f32) {
+        self.target_y_offset = value;
     }
 
     fn enqueue(&mut self, command: Command) {

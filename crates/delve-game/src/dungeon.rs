@@ -6,6 +6,7 @@ use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
 use delve_core::game_state::{LayerState, PitTrapState, door_key, layer_door_key};
+use delve_core::grid::Facing;
 use delve_core::texture_resolver::resolve_textures;
 use delve_core::types::{CharDef, DungeonLevel, LayerDef};
 use std::collections::{HashMap, HashSet};
@@ -89,6 +90,7 @@ fn wall_material_for_face(
     fallback.to_string()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_dungeon(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -97,6 +99,7 @@ pub fn spawn_dungeon(
     stair_cells: &HashSet<String>,
     wall_entity_cells: &HashSet<String>,
     pit_trap_cells: &HashSet<String>,
+    ramp_base_cells: &HashMap<String, Facing>,
 ) {
     let grid: Vec<Vec<char>> = layer
         .layer_def
@@ -174,7 +177,11 @@ pub fn spawn_dungeon(
                 ));
             }
 
-            if ceiling_enabled {
+            // A ramp based at this cell rises up through where the ceiling
+            // would be — TS's `buildRampInfo` marks every ramp base cell
+            // `skipCeiling: true` unconditionally.
+            let ramp_facing = ramp_base_cells.get(&key).copied();
+            if ceiling_enabled && ramp_facing.is_none() {
                 commands.spawn((
                     LevelEntity,
                     Mesh3d(tile_mesh.clone()),
@@ -192,6 +199,11 @@ pub fn spawn_dungeon(
                 (FRAC_PI_2, (-1, 0), (-CELL_SIZE / 2.0, 0.0)),
             ];
             for (rotation_y, (dcol, drow), (offset_x, offset_z)) in faces {
+                // The wall a ramp opens through is skipped too — TS's
+                // `rampDirs?.includes(direction)` check.
+                if ramp_facing.is_some_and(|facing| facing.delta() == (dcol, drow)) {
+                    continue;
+                }
                 if !is_solid(&grid, col + dcol, row + drow, &renderable) {
                     continue;
                 }

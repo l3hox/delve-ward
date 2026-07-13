@@ -102,11 +102,42 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
             i64::from(to_row),
         )
     };
+    // Ported from `main.ts`'s ramp-accessibility check (the `isRampAccessible`
+    // callback `PlayerState` is constructed with): a move is ramp-accessible
+    // either going up (a ramp based at the FROM cell, on the player's
+    // current layer, facing this move's direction) or going down (a ramp on
+    // the layer below whose top cell is the FROM cell, facing the exact
+    // reverse of this move). Only `&GameState` is available here, so the
+    // "going down" check uses `GameState::layer` to peek the layer below
+    // read-only rather than TS's save/restore-`activeLayerIndex` dance,
+    // which isn't viable without `&mut GameState`.
+    let is_ramp_accessible = |from_col: i32, from_row: i32, to_col: i32, to_row: i32| {
+        let delta = (to_col - from_col, to_row - from_row);
+        let from_key = door_key(i64::from(from_col), i64::from(from_row));
+        let going_up = game
+            .active_layer()
+            .ramps
+            .get(&from_key)
+            .is_some_and(|ramp| ramp.facing.delta() == delta);
+        if going_up {
+            return true;
+        }
+        game.active_layer_index
+            .checked_sub(1)
+            .and_then(|below_index| game.layer(below_index))
+            .is_some_and(|below| {
+                below.ramps.values().any(|ramp| {
+                    let (rdx, rdy) = ramp.facing.delta();
+                    (from_col, from_row) == (ramp.col as i32 + rdx, ramp.row as i32 + rdy)
+                        && delta == (-rdx, -rdy)
+                })
+            })
+    };
     f(&MoveRules {
         is_door_open: Some(&is_door_open),
         is_blocked: Some(&is_blocked),
         is_edge_blocked: Some(&is_edge_blocked),
-        is_ramp_accessible: None,
+        is_ramp_accessible: Some(&is_ramp_accessible),
     })
 }
 
@@ -302,9 +333,52 @@ pub fn player_input(
     });
 }
 
+/// Switches the active layer and both the grid/walkable-set (via the given
+/// mutable references) and `Player`'s own copy (`switch_grid`) to match —
+/// the common core of TS's `onFallLand` and its ramp-crossing block, which
+/// differ only in what runs afterward (falling always reveals around the
+/// landing cell; ramp crossing never does, matching TS's own call sites —
+/// see [`detect_ramp_crossing`]'s doc comment). Takes `grid`/`walkable` as
+/// separate `&mut` (not `&mut Session`) so `on_player_moved`'s own
+/// already-destructured `Session` fields can call this directly without
+/// re-borrowing the whole struct. Returns whether the switch actually
+/// happened (a missing level/layer leaves everything untouched).
+fn switch_active_layer(
+    game: &mut GameState,
+    grid: &mut Vec<String>,
+    walkable: &mut HashSet<char>,
+    player: &mut Player,
+    dungeon: &DungeonRes,
+    level_id: &str,
+    new_layer: usize,
+) -> bool {
+    game.active_layer_index = new_layer;
+    let Some(level) = find_level_by_id(dungeon, level_id) else {
+        return false;
+    };
+    let Some(layer_def) = level.layers.get(new_layer) else {
+        return false;
+    };
+    *grid = layer_def.grid.clone();
+    *walkable = build_walkable_set(
+        level
+            .char_defs
+            .iter()
+            .flatten()
+            .map(|def| (def.character, def.solid)),
+    );
+    let stairs_map = game
+        .active_layer()
+        .stairs
+        .values()
+        .map(|stair| (door_key(stair.col, stair.row), stair.direction))
+        .collect();
+    player.switch_grid(grid.clone(), walkable.clone(), stairs_map);
+    true
+}
+
 /// The `onFallLand` callback's effects (`main.ts:702-708`): switch the
-/// active layer, swap the grid/walkable-set/stairs both `Session` and
-/// `Player` check moves against, and reveal around the landing cell. Reads
+/// active layer and reveal around the landing cell. Reads
 /// `session.current_level_id`'s layers fresh from `DungeonRes` rather than
 /// carrying a snapshot from trigger time, since a fall can span several
 /// frames.
@@ -314,32 +388,68 @@ fn land_on_layer(
     player: &mut Player,
     landing_layer: usize,
 ) {
-    session.game.active_layer_index = landing_layer;
-    let Some(level) = find_level_by_id(dungeon, &session.current_level_id) else {
+    let level_id = session.current_level_id.clone();
+    if !switch_active_layer(
+        &mut session.game,
+        &mut session.grid,
+        &mut session.walkable,
+        player,
+        dungeon,
+        &level_id,
+        landing_layer,
+    ) {
         return;
-    };
-    let Some(layer_def) = level.layers.get(landing_layer) else {
-        return;
-    };
-    session.grid = layer_def.grid.clone();
-    session.walkable = build_walkable_set(
-        level
-            .char_defs
-            .iter()
-            .flatten()
-            .map(|def| (def.character, def.solid)),
-    );
-    let stairs_map = session
-        .game
-        .active_layer()
-        .stairs
-        .values()
-        .map(|stair| (door_key(stair.col, stair.row), stair.direction))
-        .collect();
-    player.switch_grid(session.grid.clone(), session.walkable.clone(), stairs_map);
+    }
     let state = player.grid_state();
     let (col, row, facing) = (i64::from(state.col), i64::from(state.row), state.facing);
     session.game.reveal_around(col, row, facing, &session.grid);
+}
+
+/// Detects whether the just-completed move crossed a ramp edge, returning
+/// the destination layer if so — ported from `main.ts:607-644`'s two
+/// direction checks. TS runs this same-scene, Y-shifted layer switch
+/// (`ls.player.targetYOffset = destLayer * LAYER_HEIGHT`, no fade) *after*
+/// its `revealAround` call for the move, so the reveal still uses the
+/// pre-crossing layer's grid that frame — this port preserves that exact
+/// ordering by calling `switch_active_layer` from `on_player_moved` after
+/// its own `reveal_around` call, not before.
+fn detect_ramp_crossing(
+    game: &GameState,
+    level: Option<&DungeonLevel>,
+    prev_col: i32,
+    prev_row: i32,
+    col: i32,
+    row: i32,
+) -> Option<usize> {
+    let level = level?;
+    let delta = (col - prev_col, row - prev_row);
+    let current_layer = game.active_layer_index;
+
+    // Going up: a ramp based at the cell we just left, facing this move.
+    let src_key = door_key(i64::from(prev_col), i64::from(prev_row));
+    if game
+        .active_layer()
+        .ramps
+        .get(&src_key)
+        .is_some_and(|ramp| ramp.facing.delta() == delta)
+        && current_layer + 1 < level.layers.len()
+    {
+        return Some(current_layer + 1);
+    }
+
+    // Going down: a ramp on the layer below whose top cell is the cell we
+    // just left, facing the exact reverse of this move.
+    if current_layer > 0
+        && let Some(below) = game.layer(current_layer - 1)
+        && below.ramps.values().any(|ramp| {
+            let (rdx, rdy) = ramp.facing.delta();
+            (prev_col, prev_row) == (ramp.col as i32 + rdx, ramp.row as i32 + rdy)
+                && delta == (-rdx, -rdy)
+        })
+    {
+        return Some(current_layer - 1);
+    }
+    None
 }
 
 pub fn player_update(
@@ -395,6 +505,7 @@ pub fn on_player_moved(
     let Session {
         game,
         grid,
+        walkable,
         environment,
         areas,
         ..
@@ -481,6 +592,25 @@ pub fn on_player_moved(
             crate::environment::resolve_environment_at_cell(col, row, *environment, areas);
         if delve_core::player_controller::should_drain_torch(cell_environment) {
             game.drain_torch_fuel(1.0);
+        }
+
+        // Ramp crossing — a same-scene, Y-shifted layer switch (no fade,
+        // unlike stairs — this must never touch `transition.rs`), ported
+        // from `main.ts:607-644`. Checked before the hole-detection below,
+        // matching TS's own block order.
+        if let Some(new_layer) =
+            detect_ramp_crossing(game, level, prev_col, prev_row, pose.0, pose.1)
+            && switch_active_layer(
+                game,
+                grid,
+                walkable,
+                &mut player,
+                &dungeon,
+                &level_id,
+                new_layer,
+            )
+        {
+            player.set_target_y_offset(new_layer as f32 * crate::dungeon::LAYER_HEIGHT);
         }
 
         // Hole detection — falling through an open floor or an already-open
