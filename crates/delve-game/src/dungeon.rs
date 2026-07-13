@@ -5,9 +5,10 @@
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use bevy::prelude::*;
+use delve_core::game_state::{LayerState, PitTrapState, door_key, layer_door_key};
 use delve_core::texture_resolver::resolve_textures;
 use delve_core::types::{CharDef, DungeonLevel, LayerDef};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub const CELL_SIZE: f32 = 2.0;
@@ -95,6 +96,7 @@ pub fn spawn_dungeon(
     layer: &LayerSpawn,
     stair_cells: &HashSet<String>,
     wall_entity_cells: &HashSet<String>,
+    pit_trap_cells: &HashSet<String>,
 ) {
     let grid: Vec<Vec<char>> = layer
         .layer_def
@@ -157,13 +159,20 @@ pub fn spawn_dungeon(
                 layer_areas,
             );
 
-            commands.spawn((
-                LevelEntity,
-                Mesh3d(tile_mesh.clone()),
-                MeshMaterial3d(materials.floor(&textures.floor)),
-                Transform::from_xyz(center_x, layer_y_offset, center_z)
-                    .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-            ));
+            // Pit-trap cells keep their normal ceiling/walls here but get a
+            // separate, toggleable floor tile from `spawn_pit_floors`
+            // instead of this one — TS's `onPitTrapSignalChanged` only ever
+            // toggles the floor mesh's visibility, never the surrounding
+            // ceiling/walls for that cell.
+            if !pit_trap_cells.contains(&key) {
+                commands.spawn((
+                    LevelEntity,
+                    Mesh3d(tile_mesh.clone()),
+                    MeshMaterial3d(materials.floor(&textures.floor)),
+                    Transform::from_xyz(center_x, layer_y_offset, center_z)
+                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+                ));
+            }
 
             if ceiling_enabled {
                 commands.spawn((
@@ -207,4 +216,69 @@ pub fn spawn_dungeon(
             }
         }
     }
+}
+
+/// Floor tile entities for pit-trap cells, layer-door-keyed — hidden when
+/// the trap opens, shown when it closes, ported from TS's `pitFloorMap`.
+/// Spawned separately from `spawn_dungeon`'s main per-cell pass (which
+/// excludes these cells' floor specifically, not their ceiling/walls) so
+/// each tile can be found and toggled later.
+#[derive(Resource, Default)]
+pub struct PitFloorHandles {
+    pub by_key: HashMap<String, Entity>,
+}
+
+pub fn spawn_pit_floors(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &DungeonMaterials,
+    layer: &LayerSpawn,
+    layer_state: &LayerState,
+) -> PitFloorHandles {
+    let mut handles = PitFloorHandles::default();
+    if layer_state.pit_traps.is_empty() {
+        return handles;
+    }
+    let (layer_defaults, layer_areas) = layer.texture_style();
+    let tile_mesh = meshes.add(Rectangle::new(CELL_SIZE, CELL_SIZE));
+
+    for pit in layer_state.pit_traps.values() {
+        let (col, row) = (pit.col as i32, pit.row as i32);
+        let cell_char = layer
+            .layer_def
+            .grid
+            .get(row as usize)
+            .and_then(|line| line.chars().nth(col as usize))
+            .unwrap_or('.');
+        let textures = resolve_textures(
+            col,
+            row,
+            cell_char,
+            layer_defaults,
+            layer.level.char_defs.as_deref(),
+            layer_areas,
+        );
+        let center_x = col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+        let center_z = row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+        let visibility = if pit.state == PitTrapState::Open {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        let entity = commands
+            .spawn((
+                LevelEntity,
+                Mesh3d(tile_mesh.clone()),
+                MeshMaterial3d(materials.floor(&textures.floor)),
+                Transform::from_xyz(center_x, layer.y_offset, center_z)
+                    .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+                visibility,
+            ))
+            .id();
+        handles.by_key.insert(
+            layer_door_key(layer.index, &door_key(pit.col, pit.row)),
+            entity,
+        );
+    }
+    handles
 }

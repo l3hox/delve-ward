@@ -69,6 +69,7 @@ pub struct LevelSceneHandles {
     pub fountain_handles: FountainHandles,
     pub altar_handles: AltarHandles,
     pub barrel_handles: BarrelHandles,
+    pub pit_floor_handles: dungeon::PitFloorHandles,
 }
 
 /// Read-only level data the scene spawn reads from.
@@ -96,6 +97,7 @@ pub fn spawn_level_scene(
     let mut lever_handles = LeverHandles::default();
     let mut plate_handles = PlateHandles::default();
     let mut tripwire_handles = TripwireHandles::default();
+    let mut pit_floor_handles = dungeon::PitFloorHandles::default();
 
     // TS builds every layer's geometry and entity meshes simultaneously at
     // load time, each Y-offset by `layer_index * LAYER_HEIGHT` (or an
@@ -142,6 +144,12 @@ pub fn spawn_level_scene(
             HashSet::new()
         };
 
+        let pit_trap_cells: HashSet<String> = layer
+            .pit_traps
+            .values()
+            .map(|pit| door_key(pit.col, pit.row))
+            .collect();
+
         dungeon::spawn_dungeon(
             commands,
             assets.meshes,
@@ -149,7 +157,16 @@ pub fn spawn_level_scene(
             &layer_spawn,
             &stair_cells,
             &wall_entity_cells,
+            &pit_trap_cells,
         );
+        let layer_pit_floors = dungeon::spawn_pit_floors(
+            commands,
+            assets.meshes,
+            scene.dungeon_materials,
+            &layer_spawn,
+            layer,
+        );
+        pit_floor_handles.by_key.extend(layer_pit_floors.by_key);
         stairs::spawn_stairs(
             commands,
             assets.meshes,
@@ -344,5 +361,6 @@ pub fn spawn_level_scene(
         fountain_handles,
         altar_handles,
         barrel_handles,
+        pit_floor_handles,
     }
 }

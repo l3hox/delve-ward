@@ -7,6 +7,7 @@ use crate::barrels::BarrelHandles;
 use crate::blocks::BlockHandles;
 use crate::chests::ChestHandles;
 use crate::doors::DoorPanels;
+use crate::dungeon::PitFloorHandles;
 use crate::enemies::{EnemyBillboards, EnemyDb};
 use crate::enemy_feedback::EnemyHealthBars;
 use crate::environment::{AMBIENT_BRIGHTNESS, environment_config};
@@ -185,6 +186,7 @@ pub struct SwapWorld<'w, 's> {
     fountain_handles: ResMut<'w, FountainHandles>,
     altar_handles: ResMut<'w, AltarHandles>,
     barrel_handles: ResMut<'w, BarrelHandles>,
+    pit_floor_handles: ResMut<'w, PitFloorHandles>,
 }
 
 /// Reapply recorded wall destruction to a freshly cloned grid: the clone
@@ -362,6 +364,7 @@ pub fn perform_level_swap(
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
+    *world.pit_floor_handles = handles.pit_floor_handles;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
@@ -550,6 +553,7 @@ pub fn perform_restart(
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
+    *world.pit_floor_handles = handles.pit_floor_handles;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 
@@ -718,6 +722,7 @@ pub fn perform_load(
     *world.health_bars = handles.health_bars;
     *world.npc_billboards = handles.npc_billboards;
     *world.fountain_handles = handles.fountain_handles;
+    *world.pit_floor_handles = handles.pit_floor_handles;
     *world.altar_handles = handles.altar_handles;
     *world.barrel_handles = handles.barrel_handles;
 

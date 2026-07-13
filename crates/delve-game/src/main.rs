@@ -247,6 +247,7 @@ fn setup(
     commands.insert_resource(handles.fountain_handles);
     commands.insert_resource(handles.altar_handles);
     commands.insert_resource(handles.barrel_handles);
+    commands.insert_resource(handles.pit_floor_handles);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
     commands.insert_resource(npcs::NpcDb(npc_db));
     commands.insert_resource(ItemDb(items));

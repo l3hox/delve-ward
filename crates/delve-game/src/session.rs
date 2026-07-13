@@ -6,6 +6,7 @@ use crate::altars::{self, AltarHandles};
 use crate::blocks::{self, BlockRender};
 use crate::chests::{self, ChestHandles, ChestLid};
 use crate::doors::{DoorPanel, DoorPanels};
+use crate::dungeon::PitFloorHandles;
 use crate::fountains::{self, FountainHandles};
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::keys::{self, KeyBillboards};
@@ -19,13 +20,14 @@ use crate::wall_entities::{self, WallEntityHandles};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use delve_core::game_state::{
-    DoorState, GameState, LeverState, MultiLayerSnapshot, WorldEvent, door_key, layer_door_key,
+    DoorState, GameState, LeverState, MultiLayerSnapshot, PitTrapState, WorldEvent, door_key,
+    layer_door_key,
 };
-use delve_core::grid::{Facing, MoveRules};
+use delve_core::grid::{Facing, MoveRules, build_walkable_set};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::player_controller::{InventoryAction, process_inventory_action};
 use delve_core::random::Mulberry32;
-use delve_core::types::{Dungeon, Environment, TextureArea};
+use delve_core::types::{CharDef, Dungeon, DungeonLevel, Environment, TextureArea};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Resource)]
@@ -106,6 +108,96 @@ fn with_move_rules<R>(game: &GameState, f: impl FnOnce(&MoveRules) -> R) -> R {
         is_edge_blocked: Some(&is_edge_blocked),
         is_ramp_accessible: None,
     })
+}
+
+/// Finds the currently-loaded level by id — the same
+/// `level.id.clone().unwrap_or_else(|| level.name.clone()) == id` lookup
+/// `transition.rs` already repeats at each of its own call sites.
+fn find_level_by_id<'a>(dungeon: &'a DungeonRes, level_id: &str) -> Option<&'a DungeonLevel> {
+    dungeon
+        .0
+        .levels
+        .iter()
+        .find(|level| level.id.clone().unwrap_or_else(|| level.name.clone()) == level_id)
+}
+
+/// Whether `character` represents solid ground — TS's `ch === '#' ||
+/// (def?.solid && !def?.seeThrough)`, the "not a hole" half of the
+/// fall-trigger predicate in `main.ts:646-681`/`:770-783`.
+fn is_solid_floor_char(character: char, char_defs: &[CharDef]) -> bool {
+    character == '#'
+        || char_defs
+            .iter()
+            .find(|def| def.character == character)
+            .is_some_and(|def| def.solid && def.see_through != Some(true))
+}
+
+/// Whether the layer directly below `layer_index` is open at `(col, row)` —
+/// the player's own fall-trigger hole predicate. **Deliberately separate
+/// from `boulders.rs::is_hole_at`**: that one additionally treats an
+/// occupying boulder/block as "plugging" the hole and respects
+/// `TextureArea.openBottom`, neither of which TS's player-side check does
+/// (`main.ts:646-681`) — porting a second, simpler predicate here is the
+/// faithful choice per `PHASE5-PLAN.md` §3, not a shortcut. Out-of-bounds or
+/// a missing layer-below grid defaults to "not a hole", matching TS's own
+/// guard-fails-closed behavior.
+fn is_hole_below(level: &DungeonLevel, layer_index: usize, col: i64, row: i64) -> bool {
+    let Some(below_index) = layer_index.checked_sub(1) else {
+        return false;
+    };
+    let Some(below) = level.layers.get(below_index) else {
+        return false;
+    };
+    let (Ok(row_usize), Ok(col_usize)) = (usize::try_from(row), usize::try_from(col)) else {
+        return false;
+    };
+    let Some(character) = below
+        .grid
+        .get(row_usize)
+        .and_then(|line| line.chars().nth(col_usize))
+    else {
+        return false;
+    };
+    !is_solid_floor_char(character, level.char_defs.as_deref().unwrap_or(&[]))
+}
+
+/// Scans downward from `current_layer - 1` for the first layer whose own
+/// floor (the layer below *it*) is solid — the cell the player lands on top
+/// of. Defaults to layer 0 (the ground floor) if nothing solid is found,
+/// matching TS's `landingLayer` scan in `main.ts:664-676`/`:772-782`.
+fn compute_landing_layer(level: &DungeonLevel, current_layer: usize, col: i64, row: i64) -> usize {
+    for candidate in (1..current_layer).rev() {
+        let Some(below) = level.layers.get(candidate - 1) else {
+            continue;
+        };
+        let (Ok(row_usize), Ok(col_usize)) = (usize::try_from(row), usize::try_from(col)) else {
+            continue;
+        };
+        let Some(character) = below
+            .grid
+            .get(row_usize)
+            .and_then(|line| line.chars().nth(col_usize))
+        else {
+            continue;
+        };
+        if is_solid_floor_char(character, level.char_defs.as_deref().unwrap_or(&[])) {
+            return candidate;
+        }
+    }
+    0
+}
+
+/// Player + level context `apply_world_events` needs to trigger a fall from
+/// a `WorldEvent::PitTrapSignalChanged { open: true, .. }` landing on the
+/// player's own cell — ported from `onPitTrapSignalChanged`'s "player is
+/// standing here and it just opened" branch (`main.ts:766-788`). `None`
+/// callers (`tick_game`, which has no `Player` query of its own) still get
+/// the floor-mesh toggle; only the fall-trigger half is skipped for them —
+/// a purely-timed pit trap opening under a motionless, non-interacting
+/// player is a deliberately deferred edge case (see the phase-5 report).
+pub struct FallTriggerContext<'a> {
+    pub player: &'a mut Player,
+    pub level: &'a DungeonLevel,
 }
 
 /// Rendering-side handles for revealing a secret wall's floor/ceiling/inward
@@ -210,32 +302,78 @@ pub fn player_input(
     });
 }
 
+/// The `onFallLand` callback's effects (`main.ts:702-708`): switch the
+/// active layer, swap the grid/walkable-set/stairs both `Session` and
+/// `Player` check moves against, and reveal around the landing cell. Reads
+/// `session.current_level_id`'s layers fresh from `DungeonRes` rather than
+/// carrying a snapshot from trigger time, since a fall can span several
+/// frames.
+fn land_on_layer(
+    session: &mut Session,
+    dungeon: &DungeonRes,
+    player: &mut Player,
+    landing_layer: usize,
+) {
+    session.game.active_layer_index = landing_layer;
+    let Some(level) = find_level_by_id(dungeon, &session.current_level_id) else {
+        return;
+    };
+    let Some(layer_def) = level.layers.get(landing_layer) else {
+        return;
+    };
+    session.grid = layer_def.grid.clone();
+    session.walkable = build_walkable_set(
+        level
+            .char_defs
+            .iter()
+            .flatten()
+            .map(|def| (def.character, def.solid)),
+    );
+    let stairs_map = session
+        .game
+        .active_layer()
+        .stairs
+        .values()
+        .map(|stair| (door_key(stair.col, stair.row), stair.direction))
+        .collect();
+    player.switch_grid(session.grid.clone(), session.walkable.clone(), stairs_map);
+    let state = player.grid_state();
+    let (col, row, facing) = (i64::from(state.col), i64::from(state.row), state.facing);
+    session.game.reveal_around(col, row, facing, &session.grid);
+}
+
 pub fn player_update(
     time: Res<Time>,
-    session: Res<Session>,
+    mut session: ResMut<Session>,
+    dungeon: Res<DungeonRes>,
     mut players: Query<(&mut Player, &mut Transform)>,
 ) {
     let Ok((mut player, mut transform)) = players.single_mut() else {
         return;
     };
-    with_move_rules(&session.game, |rules| {
-        player.update(time.delta_secs(), &mut transform, rules);
+    let landed = with_move_rules(&session.game, |rules| {
+        player.update(time.delta_secs(), &mut transform, rules)
     });
+    if let Some(landing_layer) = landed {
+        land_on_layer(&mut session, &dungeon, &mut player, landing_layer);
+    }
 }
 
 /// Reveal explored cells, pick up keys and items, activate signal entities,
 /// and start stair transitions whenever the player's logical cell or facing
 /// changes.
+#[allow(clippy::too_many_arguments)]
 pub fn on_player_moved(
     mut session: ResMut<Session>,
-    players: Query<&Player>,
+    dungeon: Res<DungeonRes>,
+    mut players: Query<&mut Player>,
     mut transition: ResMut<Transition>,
     mut item_render: GroundItemRender,
     mut key_billboards: ResMut<KeyBillboards>,
     mut hud: ResMut<crate::hud::HudState>,
     mut signal: SignalRenderState,
 ) {
-    let Ok(player) = players.single() else {
+    let Ok(mut player) = players.single_mut() else {
         return;
     };
     let state = player.grid_state();
@@ -251,6 +389,8 @@ pub fn on_player_moved(
     // runs for pure turns (its pose includes facing), so the same guard is
     // needed here to avoid re-toggling on every turn-in-place.
     let moved = pose.0 != prev_col || pose.1 != prev_row;
+    let level_id = session.current_level_id.clone();
+    let level = find_level_by_id(&dungeon, &level_id);
 
     let Session {
         game,
@@ -340,10 +480,34 @@ pub fn on_player_moved(
         if delve_core::player_controller::should_drain_torch(cell_environment) {
             game.drain_torch_fuel(1.0);
         }
+
+        // Hole detection — falling through an open floor or an already-open
+        // pit trap, ported from `main.ts:646-681`. TS's equivalent check
+        // lives inside the `onMove` callback, never `onTurn`, so this stays
+        // inside the `moved` block too.
+        if game.active_layer_index > 0
+            && let Some(level) = level
+        {
+            let key = delve_core::game_state::door_key(col, row);
+            let is_hole = is_hole_below(level, game.active_layer_index, col, row)
+                || game
+                    .active_layer()
+                    .pit_traps
+                    .get(&key)
+                    .is_some_and(|pit| pit.state == PitTrapState::Open);
+            if is_hole {
+                let landing_layer = compute_landing_layer(level, game.active_layer_index, col, row);
+                player.set_pending_fall(landing_layer);
+            }
+        }
     }
 
     let events = game.take_events();
-    apply_world_events(events, game, (col, row), &mut signal);
+    let fall_trigger = level.map(|level| FallTriggerContext {
+        player: &mut player,
+        level,
+    });
+    apply_world_events(events, game, (col, row), &mut signal, fall_trigger);
 
     if moved
         && let Some(stair) = game.get_stair(col, row)
@@ -367,6 +531,16 @@ pub struct SignalRenderState<'w, 's> {
     pub chest_handles: Res<'w, ChestHandles>,
     pub chest_lids: Query<'w, 's, &'static mut ChestLid>,
     pub projectiles: ResMut<'w, crate::projectiles::ProjectileManagerRes>,
+    pub pit_floor_handles: Res<'w, PitFloorHandles>,
+    // A second `Commands` alongside whatever the caller's own bundled
+    // render-state structs already carry (e.g. `GroundItemRender`'s) is
+    // fine — unlike `Query`, multiple `Commands` params never conflict.
+    // Toggling visibility this way (insert/overwrite the component) instead
+    // of through a `Query<&mut Visibility>` sidesteps a real conflict:
+    // `SconceRender.visibility` (already in `interact_input`'s param set)
+    // is a completely unfiltered `Query<&mut Visibility>`, so a second one
+    // here — filtered or not — would be flagged as ambiguous access.
+    pub commands: Commands<'w, 's>,
 }
 
 const DOOR_RETRY_INTERVAL: f32 = 1.5;
@@ -473,7 +647,11 @@ pub fn tick_game(
     session.game.tick_signals(f64::from(delta));
     let events = session.game.take_events();
     let Session { game, .. } = &mut *session;
-    apply_world_events(events, game, player_cell, &mut signal);
+    // No `Player` query in this system (a purely-timed pit trap opening
+    // under a motionless, non-interacting player is a deliberately deferred
+    // edge case — see `FallTriggerContext`'s doc comment) — the floor-mesh
+    // toggle still applies, just not the fall trigger.
+    apply_world_events(events, game, player_cell, &mut signal, None);
     tick_blocked_doors(game, player_cell, &mut signal, delta);
 }
 
@@ -499,6 +677,7 @@ pub fn apply_world_events(
     game: &mut GameState,
     player_cell: (i64, i64),
     signal: &mut SignalRenderState,
+    mut fall_trigger: Option<FallTriggerContext>,
 ) {
     // Events are always drained the same frame they're produced, and
     // gameplay only ever mutates `active_layer_mut()`, so `active_layer_index`
@@ -579,6 +758,42 @@ pub fn apply_world_events(
                     row,
                 );
             }
+            // Floor-mesh toggle, ported from TS's `onPitTrapSignalChanged`
+            // (`main.ts:734-789`) — the ceiling-2-layers-below toggle and
+            // the layer-below geometry rebuild that function also performs
+            // are deliberately not ported here (see the phase-5 report):
+            // this port never spawns a separate ceiling mesh for a
+            // non-topmost layer in the first place (`dungeon.rs`'s
+            // `is_top_layer` check — the layer above's floor already serves
+            // as that visual), so TS's redundant second mesh has nothing to
+            // toggle on this side.
+            WorldEvent::PitTrapSignalChanged { col, row, open } => {
+                let render_key = layer_door_key(active_layer_index, &door_key(col, row));
+                if let Some(&entity) = signal.pit_floor_handles.by_key.get(&render_key) {
+                    signal.commands.entity(entity).insert(if open {
+                        Visibility::Hidden
+                    } else {
+                        Visibility::Inherited
+                    });
+                }
+                // A pit that just opened exactly under the player, while
+                // they aren't already falling, starts a fall immediately —
+                // ported from `onPitTrapSignalChanged`'s `if (open &&
+                // !ls.player.falling)` branch. `None` callers (`tick_game`)
+                // get the floor toggle above but skip this half — see
+                // `FallTriggerContext`'s doc comment.
+                if open
+                    && player_cell == (col, row)
+                    && let Some(ctx) = fall_trigger.as_mut()
+                    && !ctx.player.falling()
+                {
+                    let landing_layer =
+                        compute_landing_layer(ctx.level, active_layer_index, col, row);
+                    if landing_layer < active_layer_index {
+                        ctx.player.set_pending_fall(landing_layer);
+                    }
+                }
+            }
             other => debug!("unhandled world event: {other:?}"),
         }
     }
@@ -608,6 +823,7 @@ pub struct InteractEffects<'w, 's> {
     pub trading_state: ResMut<'w, crate::trading_overlay::TradingOverlayState>,
     pub fountain_handles: Res<'w, FountainHandles>,
     pub altar_handles: Res<'w, AltarHandles>,
+    pub dungeon: Res<'w, DungeonRes>,
     // Read-only, and filtered `Without<PlateVisual>` so Bevy can prove this
     // is disjoint from `signal.plate.visuals`'s `Query<&mut
     // MeshMaterial3d<StandardMaterial>, With<PlateVisual>>` — an
@@ -629,7 +845,7 @@ pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
     transition: Res<Transition>,
-    players: Query<&Player>,
+    mut players: Query<&mut Player>,
     mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
     mut effects: InteractEffects,
@@ -637,9 +853,10 @@ pub fn interact_input(
     if transition.is_active() || effects.overlay.is_open() || !keys.just_pressed(KeyCode::Space) {
         return;
     }
-    let Ok(player) = players.single() else {
+    let Ok(mut player) = players.single_mut() else {
         return;
     };
+    let level = find_level_by_id(&effects.dungeon, &session.current_level_id);
     let player_state = player.grid_state();
     let facing_cell = delve_core::grid::get_facing_cell(player_state);
     let facing_key =
@@ -817,7 +1034,17 @@ pub fn interact_input(
 
     let player_cell = (i64::from(player_state.col), i64::from(player_state.row));
     let events = session.game.take_events();
-    apply_world_events(events, &mut session.game, player_cell, &mut signal);
+    let fall_trigger = level.map(|level| FallTriggerContext {
+        player: &mut player,
+        level,
+    });
+    apply_world_events(
+        events,
+        &mut session.game,
+        player_cell,
+        &mut signal,
+        fall_trigger,
+    );
 }
 
 /// Dispatches one `InventoryAction` through `process_inventory_action`,
