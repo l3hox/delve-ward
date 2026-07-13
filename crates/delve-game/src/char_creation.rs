@@ -6,11 +6,9 @@
 
 use crate::hud::{HUD_HEIGHT, HUD_WIDTH};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
+use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
-use crate::save_load_overlay::SaveLoadOverlay;
 use crate::session::Session;
-use crate::transition::Transition;
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 const STARTING_POINTS: i64 = 5;
@@ -69,11 +67,11 @@ impl CreationStat {
     }
 }
 
-/// Character-creation state. Blocks gameplay input and replaces the HUD
-/// while `active`, mirroring the TS screen showing before the level loads.
+/// Character-creation state. Whether it blocks gameplay input and replaces
+/// the HUD is centralized in `ActiveOverlay::CharCreation`, not a field
+/// here — this resource only holds the screen's own data.
 #[derive(Resource)]
 pub struct CharCreation {
-    pub active: bool,
     name: String,
     str: f64,
     dex: f64,
@@ -86,7 +84,6 @@ pub struct CharCreation {
 impl Default for CharCreation {
     fn default() -> Self {
         Self {
-            active: true,
             name: "Adventurer".to_string(),
             str: 5.0,
             dex: 5.0,
@@ -134,39 +131,13 @@ impl CharCreation {
     }
 }
 
-/// Gameplay systems check `blocked()` the same way they already check
-/// `Transition::is_active` — character creation and the save/load overlay
-/// are just other reasons input should not reach the dungeon yet, matching
-/// TS's `anyOverlayOpen`. Systems that need `ResMut` access to
-/// `SaveLoadOverlay`/`Transition` themselves (the overlay's own input
-/// handler, the death check) can't use this — it would conflict with their
-/// own `ResMut` borrow — and inline the same three-condition check instead.
-#[derive(SystemParam)]
-pub struct InputGate<'w> {
-    transition: Res<'w, Transition>,
-    creation: Res<'w, CharCreation>,
-    save_load: Res<'w, SaveLoadOverlay>,
-}
-
-impl InputGate<'_> {
-    pub fn blocked(&self) -> bool {
-        self.transition.is_active() || self.creation.active || self.save_load.active
-    }
-
-    /// Overlay-only pause for per-frame tick systems: TS gates those on
-    /// `anyOverlayOpen` alone and keeps them running through transition
-    /// fades — only the enemy AI adds the transition condition (`blocked`).
-    pub fn paused(&self) -> bool {
-        self.creation.active || self.save_load.active
-    }
-}
-
 pub fn char_creation_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mut overlay: ResMut<ActiveOverlay>,
     mut creation: ResMut<CharCreation>,
     mut session: ResMut<Session>,
 ) {
-    if !creation.active {
+    if *overlay != ActiveOverlay::CharCreation {
         return;
     }
     if keys.just_pressed(KeyCode::ArrowUp) {
@@ -191,7 +162,7 @@ pub fn char_creation_input(
             creation.wis,
             &creation.name,
         );
-        creation.active = false;
+        *overlay = ActiveOverlay::None;
     }
 }
 

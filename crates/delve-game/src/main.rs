@@ -1,34 +1,49 @@
 #![forbid(unsafe_code)]
 
+mod altars;
+mod attribute_panel;
+mod barrels;
 mod billboard;
 mod blocks;
+mod bookshelves;
 mod char_creation;
 mod chests;
 mod damage_numbers;
+mod dialog_overlay;
 mod doors;
 mod dungeon;
 mod enemies;
 mod enemy_feedback;
 mod environment;
+mod equip_layout;
+mod fountains;
 mod ground_items;
 mod hud;
 mod hud_font;
+mod inventory_overlay;
+mod item_tooltip;
 mod keys;
 mod level_scene;
 mod levers;
+mod mouse;
+mod npcs;
+mod overlay;
 mod pixel_canvas;
 mod plates;
 mod player;
 mod projectiles;
+mod quest_log_overlay;
 mod save_load_overlay;
 mod save_store;
 mod sconces;
 mod session;
 mod signs;
 mod stairs;
+mod stats_panel;
 mod status_effects;
 mod textures;
 mod torch;
+mod trading_overlay;
 mod transition;
 mod tripwires;
 mod wall_entities;
@@ -44,11 +59,14 @@ use delve_core::items::ItemDatabase;
 use delve_core::level_loader::{ValidationContext, resolve_layer_coord, validate_dungeon_str};
 use delve_core::loot::LootTables;
 use delve_core::npcs::NpcDatabase;
+use delve_core::quest_manager::QuestManager;
+use delve_core::quests::QuestDef;
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment};
 use environment::{AMBIENT_BRIGHTNESS, environment_config};
 use ground_items::{ItemDb, LootTablesRes};
 use level_scene::{SceneAssets, SceneContext, spawn_level_scene};
+use overlay::ActiveOverlay;
 use player::Player;
 use projectiles::{ProjectileBillboards, ProjectileManagerRes};
 use save_store::FileSaveStore;
@@ -80,6 +98,23 @@ fn read_asset(relative: &str) -> String {
     let path = assets_dir().join(relative);
     std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+/// The quest defs the shipped dungeons can reference, matching TS's
+/// hardcoded `questManager.loadQuest(...)` calls in `main.ts` — a
+/// register-at-startup stand-in for TS's upfront `Promise.all` fetch, per
+/// `PHASE4-PLAN.md` section 2.3.
+const QUEST_IDS: [&str; 3] = ["fetch_amulet", "kill_spider_queen", "collect_lore"];
+
+fn load_quest_manager() -> QuestManager {
+    let mut quests = QuestManager::new();
+    for quest_id in QUEST_IDS {
+        let json = read_asset(&format!("data/quests/{quest_id}.json"));
+        let def = QuestDef::from_json(&json)
+            .unwrap_or_else(|error| panic!("failed to parse quest {quest_id}: {error}"));
+        quests.register_quest_def(def);
+    }
+    quests
 }
 
 fn load_dungeon(relative: &str) -> Dungeon {
@@ -177,6 +212,8 @@ fn setup(
     let enemy_db = Arc::new(
         EnemyDatabase::from_json(&read_asset("data/enemies.json")).expect("enemies.json loads"),
     );
+    let npc_db =
+        Arc::new(NpcDatabase::from_json(&read_asset("data/npcs.json")).expect("npcs.json loads"));
     let mut scene_assets = SceneAssets {
         meshes: &mut meshes,
         images: &mut images,
@@ -187,6 +224,7 @@ fn setup(
         dungeon_materials: &materials,
         enemy_db: &enemy_db,
         items: &items,
+        npc_db: &npc_db,
         game: &game,
         level: &level,
         grid: &grid,
@@ -205,13 +243,21 @@ fn setup(
     commands.insert_resource(handles.block_handles);
     commands.insert_resource(handles.wall_entity_handles);
     commands.insert_resource(handles.health_bars);
+    commands.insert_resource(handles.npc_billboards);
+    commands.insert_resource(handles.fountain_handles);
+    commands.insert_resource(handles.altar_handles);
+    commands.insert_resource(handles.barrel_handles);
     commands.insert_resource(enemies::EnemyDb(enemy_db));
+    commands.insert_resource(npcs::NpcDb(npc_db));
     commands.insert_resource(ItemDb(items));
     commands.insert_resource(LootTablesRes(
         LootTables::from_json(&read_asset("data/loot-tables.json"))
             .expect("loot-tables.json loads"),
     ));
     commands.insert_resource(materials);
+    commands.insert_resource(dialog_overlay::QuestManagerRes(load_quest_manager()));
+    commands.insert_resource(dialog_overlay::DialogTreeCache::default());
+    commands.insert_resource(dialog_overlay::DialogOverlayState::default());
 
     let stairs_map = game
         .active_layer()
@@ -360,6 +406,15 @@ fn main() {
         .init_resource::<status_effects::PlayerVitals>()
         .init_resource::<save_load_overlay::SaveLoadOverlay>()
         .insert_resource(FileSaveStore::new(save_store::saves_dir()))
+        // The game boots straight into character creation, matching TS
+        // showing that screen before the level loads — never re-entered
+        // afterward, so this is an explicit initial value, not a `Default`.
+        .insert_resource(ActiveOverlay::CharCreation)
+        .init_resource::<mouse::MouseState>()
+        .init_resource::<hud::MiniPanelState>()
+        .init_resource::<inventory_overlay::InventoryOverlayState>()
+        .init_resource::<attribute_panel::AttributePanelState>()
+        .init_resource::<trading_overlay::TradingOverlayState>()
         .add_systems(Startup, (setup, transition::spawn_overlay, hud::setup_hud))
         .add_systems(
             Update,
@@ -368,10 +423,19 @@ fn main() {
                 // out at 20 elements) but chained together at the outer
                 // level below, so ordering is identical to one long chain.
                 (
+                    mouse::track_mouse,
                     char_creation::char_creation_input,
                     save_load_overlay::save_load_input,
+                    dialog_overlay::dialog_input,
+                    trading_overlay::trading_overlay_input,
+                    quest_log_overlay::quest_log_input,
+                    inventory_overlay::inventory_overlay_input,
+                    attribute_panel::attribute_panel_input,
+                    stats_panel::stats_panel_input,
+                    hud::mini_panel_input,
                     session::player_input,
                     session::interact_input,
+                    session::quick_slot_input,
                     enemies::attack_input,
                     session::player_update,
                     session::on_player_moved,

@@ -5,15 +5,28 @@
 //! fonts, so messages render uppercase.
 
 use crate::assets_dir;
+use crate::attribute_panel::{AttributePanelState, draw_attribute_panel};
 use crate::char_creation::{CharCreation, draw_char_creation};
-use crate::ground_items::ItemDb;
+use crate::dialog_overlay::{DialogOverlayState, QuestManagerRes, draw_dialog_overlay};
+use crate::equip_layout::EQUIP_SLOTS;
+use crate::ground_items::{GroundItemRender, ItemDb};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
+use crate::inventory_overlay::InventoryOverlayState;
+use crate::item_tooltip::draw_item_tooltip;
+use crate::mouse::MouseState;
+use crate::npcs::NpcDb;
+use crate::overlay::ActiveOverlay;
 use crate::pixel_canvas::{PixelCanvas, Rgba, RgbaImage};
 use crate::player::Player;
+use crate::quest_log_overlay::draw_quest_log_overlay;
 use crate::save_load_overlay::{SaveLoadOverlay, draw_save_load_overlay};
 use crate::save_store::FileSaveStore;
-use crate::session::Session;
+use crate::session::{self, Session};
+use crate::stats_panel::draw_stats_panel;
+use crate::trading_overlay::{TradingOverlayState, draw_trading_overlay};
+use crate::transition::Transition;
 use bevy::asset::RenderAssetUsages;
+use bevy::ecs::system::SystemParam;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
@@ -30,6 +43,18 @@ use std::collections::HashMap;
 pub const HUD_WIDTH: usize = 640;
 pub const HUD_HEIGHT: usize = 360;
 const MARGIN: i32 = 8;
+
+/// Window-pixel cursor position to HUD-canvas (`HUD_WIDTH`x`HUD_HEIGHT`)
+/// coordinates. The HUD image renders as an `ImageNode` with
+/// `NodeImageMode::Stretch` filling the whole window (`setup_hud`), so this
+/// is a straight per-axis scale — no aspect-ratio preservation, no
+/// letterbox offset, matching TS's `_screenToHud` (`hudCanvas.ts`).
+pub fn screen_to_hud(cursor: Vec2, window: &Window) -> Vec2 {
+    Vec2::new(
+        cursor.x / window.width() * HUD_WIDTH as f32,
+        cursor.y / window.height() * HUD_HEIGHT as f32,
+    )
+}
 
 // Health bar — bottom-left.
 const HEALTH_BAR: (i32, i32, i32, i32) = (MARGIN, HUD_HEIGHT as i32 - MARGIN - 24, 140, 24);
@@ -113,6 +138,14 @@ const HUNGER_LOW: Rgba = Rgba::opaque(0xcc, 0x44, 0x00);
 const DAMAGE_FLASH_RGB: (u8, u8, u8) = (180, 0, 0);
 const STARVATION_TINT: Rgba = Rgba::translucent(100, 60, 0, 0.06);
 
+// Mini-panel mouse-interaction highlights, ported from `inventoryPanel.ts`.
+const HOVER_FILL: Rgba = Rgba::translucent(0xe8, 0xc8, 0x4a, 0.3);
+const HOVER_BORDER: Rgba = Rgba::opaque(0xe8, 0xc8, 0x4a);
+const VALID_DROP_FILL: Rgba = Rgba::translucent(0x44, 0xc8, 0x44, 0.25);
+const VALID_DROP_BORDER: Rgba = Rgba::opaque(0x44, 0xcc, 0x44);
+const BACKPACK_DROP_FILL: Rgba = Rgba::translucent(0x44, 0xc8, 0x44, 0.15);
+const BACKPACK_DROP_BORDER: Rgba = Rgba::translucent(0x44, 0xcc, 0x44, 0.4);
+
 // Status effect screen tints (full-screen overlays).
 const BURNING_TINT_RGB: (u8, u8, u8) = (255, 100, 0);
 const POISON_TINT_RGB: (u8, u8, u8) = (0, 180, 0);
@@ -134,20 +167,6 @@ const COMPASS_DIRECTIONS: [(&str, Facing, i32, i32); 4] = [
     ("E", Facing::E, 1, 0),
     ("S", Facing::S, 0, 1),
     ("W", Facing::W, -1, 0),
-];
-
-/// Two rows of five equipment slots, matching the TS panel layout.
-const EQUIP_SLOTS: [EquipSlot; 10] = [
-    EquipSlot::Weapon,
-    EquipSlot::Head,
-    EquipSlot::Chest,
-    EquipSlot::Legs,
-    EquipSlot::Hands,
-    EquipSlot::Shield,
-    EquipSlot::Feet,
-    EquipSlot::Ring1,
-    EquipSlot::Ring2,
-    EquipSlot::Amulet,
 ];
 
 fn equip_slot_color(slot: EquipSlot) -> Rgba {
@@ -186,7 +205,7 @@ fn consumable_color(subtype: ItemSubtype) -> Rgba {
 }
 
 /// JS-like number display: integers without decimals, fractions with one.
-fn format_number(value: f64) -> String {
+pub(crate) fn format_number(value: f64) -> String {
     if (value - value.round()).abs() < 1e-9 {
         format!("{}", value.round() as i64)
     } else {
@@ -395,6 +414,15 @@ pub struct HudSources<'w, 's> {
     players: Query<'w, 's, &'static Player>,
     save_load: Res<'w, SaveLoadOverlay>,
     save_store: Res<'w, FileSaveStore>,
+    overlay: Res<'w, ActiveOverlay>,
+    dialog_state: Res<'w, DialogOverlayState>,
+    quests: Res<'w, QuestManagerRes>,
+    mini_panel: Res<'w, MiniPanelState>,
+    inventory_state: Res<'w, InventoryOverlayState>,
+    attribute_state: Res<'w, AttributePanelState>,
+    trading_state: Res<'w, TradingOverlayState>,
+    npc_db: Res<'w, NpcDb>,
+    mouse: Res<'w, MouseState>,
 }
 
 pub fn draw_hud(
@@ -408,7 +436,7 @@ pub fn draw_hud(
     hud.time += delta;
     let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
 
-    if sources.creation.active {
+    if *sources.overlay == ActiveOverlay::CharCreation {
         draw_char_creation(&mut canvas, &sources.creation);
     } else {
         let game = &sources.session.game;
@@ -434,7 +462,13 @@ pub fn draw_hud(
 
         draw_health_bar(&mut canvas, game.player.hp, game.player.max_hp, hud.time);
         draw_status_icons(&mut canvas, &game.status_fx.player_status_effects, hud.time);
-        draw_inventory_panel(&mut canvas, game, &sources.items.0, &mut hud.icons);
+        draw_inventory_panel(
+            &mut canvas,
+            game,
+            &sources.items.0,
+            &mut hud.icons,
+            &sources.mini_panel,
+        );
         draw_xp_bar(&mut canvas, game);
         draw_level_up_hint(&mut canvas, game);
         draw_message(&mut canvas, hud, delta);
@@ -470,9 +504,44 @@ pub fn draw_hud(
     // Drawn on top of, not instead of, whichever screen rendered above —
     // matches TS's DOM layering, where the overlay sits above the dimmed
     // (but still-rendered) game/HUD rather than replacing it.
-    if sources.save_load.active {
+    if *sources.overlay == ActiveOverlay::SaveLoad {
         let metadata = get_all_slot_metadata(&*sources.save_store);
         draw_save_load_overlay(&mut canvas, &sources.save_load, &metadata);
+    }
+    if *sources.overlay == ActiveOverlay::Dialog {
+        draw_dialog_overlay(
+            &mut canvas,
+            &sources.dialog_state,
+            &sources.session.game,
+            &sources.quests.0,
+        );
+    }
+    if *sources.overlay == ActiveOverlay::Inventory {
+        crate::inventory_overlay::draw_inventory_overlay(
+            &mut canvas,
+            &sources.inventory_state,
+            &sources.session.game,
+            &sources.items.0,
+        );
+    }
+    if *sources.overlay == ActiveOverlay::AttributePanel {
+        draw_attribute_panel(&mut canvas, &sources.attribute_state, &sources.session.game);
+    }
+    if *sources.overlay == ActiveOverlay::StatsPanel {
+        draw_stats_panel(&mut canvas, &sources.session.game);
+    }
+    if *sources.overlay == ActiveOverlay::Trading {
+        draw_trading_overlay(
+            &mut canvas,
+            &sources.trading_state,
+            &sources.npc_db.0,
+            &sources.session.game,
+            &sources.items.0,
+            &sources.mouse,
+        );
+    }
+    if *sources.overlay == ActiveOverlay::QuestLog {
+        draw_quest_log_overlay(&mut canvas, &sources.quests.0);
     }
 
     if let Some(mut image) = images.get_mut(&hud.image) {
@@ -901,11 +970,212 @@ fn draw_item_icon(
     );
 }
 
+// ---------------------------------------------------------------------------
+// Mini panel mouse interactions — hover, drag-to-equip, double-click use,
+// right-click drop — ported from `hud/inventoryPanel.ts`'s module-level
+// `hoveredSlot`/`dragState` and its mouse handlers.
+// ---------------------------------------------------------------------------
+
+use crate::inventory_overlay::{
+    CursorPos, Section, handle_drop, handle_enter, resolve_drag, valid_equip_slots_for_drag,
+};
+
+struct MiniPanelDrag {
+    source: CursorPos,
+    item_id: String,
+    hud_x: f32,
+    hud_y: f32,
+    valid_equip_slots: std::collections::HashSet<usize>,
+}
+
+/// Whether the panel currently blocks mouse-driven dungeon actions is not
+/// tracked separately here — `mini_panel_input` gates on `ActiveOverlay`
+/// itself. Gated on `overlay.is_open()` (any overlay), not just
+/// `Inventory` specifically as TS's own `if (inventoryOverlay.isOpen())
+/// return;` checks: TS's window-level mouse listeners stay live underneath
+/// the attribute/stats/dialog panels too (the HUD canvas's `pointer-
+/// events:none` is only toggled by the inventory overlay), which would let
+/// mini-panel clicks land on the inventory through another panel's opaque
+/// backdrop — almost certainly an unnoticed gap rather than intended
+/// behavior, and not one worth reproducing.
+#[derive(Resource, Default)]
+pub struct MiniPanelState {
+    hovered: Option<CursorPos>,
+    drag: Option<MiniPanelDrag>,
+}
+
+fn mini_panel_slot_origin(pos: CursorPos) -> (i32, i32) {
+    let (x, y, _, _) = INVENTORY;
+    let equip_y1 = y + 28;
+    let equip_y2 = equip_y1 + SLOT_SIZE + SLOT_GAP;
+    let backpack_y = equip_y2 + SLOT_SIZE + SLOT_GAP + 4;
+    match pos.section {
+        Section::Equipment => {
+            let row_y = if pos.index < 5 { equip_y1 } else { equip_y2 };
+            let col = pos.index as i32 % 5;
+            (x + 6 + col * (SLOT_SIZE + SLOT_GAP), row_y)
+        }
+        Section::Backpack => {
+            let col = pos.index as i32 % 4;
+            let row = pos.index as i32 / 4;
+            (
+                x + 6 + col * (SLOT_SIZE + SLOT_GAP),
+                backpack_y + row * (SLOT_SIZE + SLOT_GAP),
+            )
+        }
+    }
+}
+
+fn mini_panel_in_slot(hud_x: f32, hud_y: f32, sx: i32, sy: i32) -> bool {
+    hud_x >= sx as f32
+        && hud_x < (sx + SLOT_SIZE) as f32
+        && hud_y >= sy as f32
+        && hud_y < (sy + SLOT_SIZE) as f32
+}
+
+/// Ported from TS's `panelHitTest` — equipment row 1 (0-4), row 2 (5-9),
+/// then the backpack grid (0-11).
+fn mini_panel_hit_test(hud_x: f32, hud_y: f32) -> Option<CursorPos> {
+    for index in 0..EQUIP_SLOTS.len() {
+        let pos = CursorPos {
+            section: Section::Equipment,
+            index,
+        };
+        let (sx, sy) = mini_panel_slot_origin(pos);
+        if mini_panel_in_slot(hud_x, hud_y, sx, sy) {
+            return Some(pos);
+        }
+    }
+    for index in 0..12 {
+        let pos = CursorPos {
+            section: Section::Backpack,
+            index,
+        };
+        let (sx, sy) = mini_panel_slot_origin(pos);
+        if mini_panel_in_slot(hud_x, hud_y, sx, sy) {
+            return Some(pos);
+        }
+    }
+    None
+}
+
+/// Dependencies `mini_panel_input` needs beyond the mouse/overlay flag,
+/// bundled to stay under the argument-count lint.
+#[derive(SystemParam)]
+pub struct MiniPanelEffects<'w, 's> {
+    mini: ResMut<'w, MiniPanelState>,
+    session: ResMut<'w, Session>,
+    items: Res<'w, ItemDb>,
+    players: Query<'w, 's, &'static Player>,
+    item_render: GroundItemRender<'w, 's>,
+    hud: ResMut<'w, HudState>,
+}
+
+/// Ported from `hudCanvas.ts`'s window-level mousemove/mousedown/mouseup/
+/// dblclick listeners for the mini panel — see [`MiniPanelState`]'s doc
+/// comment for the one deliberate gating deviation from TS. Also blocked
+/// during a level transition, matching every other dungeon-context input
+/// system's `InputGate::blocked()` shape (TS's own mini-panel listeners
+/// have no transition check at all — a second instance of the same
+/// window-level-listener gap the module doc comment already flags, not
+/// worth reproducing twice).
+pub fn mini_panel_input(
+    mouse: Res<MouseState>,
+    overlay: Res<ActiveOverlay>,
+    transition: Res<Transition>,
+    mut effects: MiniPanelEffects,
+) {
+    if transition.is_active() || overlay.is_open() || !mouse.in_window {
+        effects.mini.hovered = None;
+        return;
+    }
+
+    let mut action = None;
+    {
+        let game = &effects.session.game;
+        let items = &effects.items.0;
+
+        if effects.mini.drag.is_some() {
+            if let Some(drag) = effects.mini.drag.as_mut() {
+                drag.hud_x = mouse.hud_x;
+                drag.hud_y = mouse.hud_y;
+            }
+            effects.mini.hovered = None;
+        } else {
+            effects.mini.hovered = mini_panel_hit_test(mouse.hud_x, mouse.hud_y);
+        }
+
+        if mouse.left_just_pressed
+            && effects.mini.drag.is_none()
+            && let Some(pos) = mini_panel_hit_test(mouse.hud_x, mouse.hud_y)
+        {
+            let entity = match pos.section {
+                Section::Equipment => game.entity_registry.get_equipped(EQUIP_SLOTS[pos.index]),
+                Section::Backpack => game.entity_registry.backpack_item_at(pos.index as u32),
+            };
+            if let Some(entity) = entity
+                && let Some(def) = items.get_item(&entity.item_id)
+            {
+                effects.mini.drag = Some(MiniPanelDrag {
+                    source: pos,
+                    item_id: entity.item_id.clone(),
+                    hud_x: mouse.hud_x,
+                    hud_y: mouse.hud_y,
+                    valid_equip_slots: valid_equip_slots_for_drag(
+                        def.item_type,
+                        def.subtype,
+                        pos.section,
+                        game,
+                    ),
+                });
+            }
+        }
+
+        if mouse.left_just_released
+            && let Some(drag) = effects.mini.drag.take()
+            && let Some(target) = mini_panel_hit_test(mouse.hud_x, mouse.hud_y)
+        {
+            action = resolve_drag(drag.source, target, game, items);
+        }
+
+        if action.is_none()
+            && mouse.left_double_clicked
+            && let Some(pos) = mini_panel_hit_test(mouse.hud_x, mouse.hud_y)
+        {
+            action = handle_enter(pos, game, items);
+        }
+
+        if action.is_none()
+            && mouse.right_just_pressed
+            && let Some(pos) = mini_panel_hit_test(mouse.hud_x, mouse.hud_y)
+            && let Ok(player) = effects.players.single()
+        {
+            let player_state = player.grid_state();
+            action = handle_drop(
+                pos,
+                game,
+                i64::from(player_state.col),
+                i64::from(player_state.row),
+            );
+        }
+    }
+
+    if let Some(action) = action {
+        session::apply_inventory_action(
+            &mut effects.session.game,
+            &mut effects.item_render,
+            &mut effects.hud,
+            &action,
+        );
+    }
+}
+
 fn draw_inventory_panel(
     canvas: &mut PixelCanvas,
     game: &GameState,
     items: &ItemDatabase,
     icons: &mut IconCache,
+    mini_panel: &MiniPanelState,
 ) {
     let (x, y, width, height) = INVENTORY;
 
@@ -945,6 +1215,44 @@ fn draw_inventory_panel(
     for (index, &slot) in EQUIP_SLOTS.iter().enumerate() {
         let slot_x = x + 6 + (index as i32 % 5) * (SLOT_SIZE + SLOT_GAP);
         let slot_y = if index < 5 { equip_y1 } else { equip_y2 };
+        let pos = CursorPos {
+            section: Section::Equipment,
+            index,
+        };
+        if mini_panel.drag.is_none() && mini_panel.hovered == Some(pos) {
+            canvas.fill_rect(
+                slot_x - 1,
+                slot_y - 1,
+                SLOT_SIZE + 2,
+                SLOT_SIZE + 2,
+                HOVER_FILL,
+            );
+            canvas.stroke_rect(
+                slot_x - 1,
+                slot_y - 1,
+                SLOT_SIZE + 2,
+                SLOT_SIZE + 2,
+                HOVER_BORDER,
+            );
+        }
+        if mini_panel.drag.as_ref().is_some_and(|drag| {
+            drag.source.section == Section::Backpack && drag.valid_equip_slots.contains(&index)
+        }) {
+            canvas.fill_rect(
+                slot_x - 1,
+                slot_y - 1,
+                SLOT_SIZE + 2,
+                SLOT_SIZE + 2,
+                VALID_DROP_FILL,
+            );
+            canvas.stroke_rect(
+                slot_x - 1,
+                slot_y - 1,
+                SLOT_SIZE + 2,
+                SLOT_SIZE + 2,
+                VALID_DROP_BORDER,
+            );
+        }
         draw_slot(canvas, slot_x, slot_y);
         if let Some(entity) = game.entity_registry.get_equipped(slot) {
             let item_id = entity.item_id.clone();
@@ -992,6 +1300,45 @@ fn draw_inventory_panel(
             let slot_index = row * 4 + column;
             let slot_x = x + 6 + column * (SLOT_SIZE + SLOT_GAP);
             let slot_y = backpack_y + row * (SLOT_SIZE + SLOT_GAP);
+            let pos = CursorPos {
+                section: Section::Backpack,
+                index: slot_index as usize,
+            };
+            if mini_panel.drag.is_none() && mini_panel.hovered == Some(pos) {
+                canvas.fill_rect(
+                    slot_x - 1,
+                    slot_y - 1,
+                    SLOT_SIZE + 2,
+                    SLOT_SIZE + 2,
+                    HOVER_FILL,
+                );
+                canvas.stroke_rect(
+                    slot_x - 1,
+                    slot_y - 1,
+                    SLOT_SIZE + 2,
+                    SLOT_SIZE + 2,
+                    HOVER_BORDER,
+                );
+            }
+            if mini_panel.drag.as_ref().is_some_and(|drag| {
+                !(drag.source.section == Section::Backpack
+                    && drag.source.index == slot_index as usize)
+            }) {
+                canvas.fill_rect(
+                    slot_x - 1,
+                    slot_y - 1,
+                    SLOT_SIZE + 2,
+                    SLOT_SIZE + 2,
+                    BACKPACK_DROP_FILL,
+                );
+                canvas.stroke_rect(
+                    slot_x - 1,
+                    slot_y - 1,
+                    SLOT_SIZE + 2,
+                    SLOT_SIZE + 2,
+                    BACKPACK_DROP_BORDER,
+                );
+            }
             draw_slot(canvas, slot_x, slot_y);
 
             let entity = game.entity_registry.backpack_item_at(slot_index as u32);
@@ -1031,6 +1378,30 @@ fn draw_inventory_panel(
     }
 
     canvas.stroke_rect(x, y, width, height, PANEL_BORDER);
+
+    if mini_panel.drag.is_none()
+        && let Some(pos) = mini_panel.hovered
+    {
+        let hovered_entity = match pos.section {
+            Section::Equipment => game.entity_registry.get_equipped(EQUIP_SLOTS[pos.index]),
+            Section::Backpack => game.entity_registry.backpack_item_at(pos.index as u32),
+        };
+        if let Some(entity) = hovered_entity {
+            draw_item_tooltip(canvas, entity, game, items, x - 4, y);
+        }
+    }
+
+    if let Some(drag) = &mini_panel.drag {
+        draw_item_icon(
+            canvas,
+            icons,
+            items,
+            &drag.item_id,
+            drag.hud_x as i32 - SLOT_SIZE / 2,
+            drag.hud_y as i32 - SLOT_SIZE / 2,
+            Rgba::opaque(0x88, 0x88, 0x88),
+        );
+    }
 }
 
 fn draw_message(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32) {

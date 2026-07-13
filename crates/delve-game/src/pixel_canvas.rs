@@ -4,7 +4,7 @@
 
 use delve_core::random::Mulberry32;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rgba {
     pub red: u8,
     pub green: u8,

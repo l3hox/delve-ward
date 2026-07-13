@@ -33,9 +33,14 @@ use delve_core::save_system::QuestSaveState;
 use std::collections::HashMap;
 
 const TREE_JSON: &str = include_str!("fixtures/dialog-manager-tree.json");
+const HILDA_DIALOG_JSON: &str = include_str!("../../../assets/data/dialogs/questgiver_hilda.json");
 
 fn tree() -> DialogTree {
     DialogTree::from_json(TREE_JSON).expect("fixture dialog tree parses")
+}
+
+fn hilda_tree() -> DialogTree {
+    DialogTree::from_json(HILDA_DIALOG_JSON).expect("shipped questgiver_hilda.json parses")
 }
 
 fn game() -> GameState {
@@ -631,7 +636,7 @@ fn select_choice_runs_choice_effects_moves_the_session_and_returns_the_next_id()
     let mut state = game();
     // Choices in order: locked(unavailable), "Give me a token" is index 0
     // once the unmet-condition choice is filtered out.
-    let next = select_choice(&mut session, 0, &mut state, None);
+    let (next, _events) = select_choice(&mut session, 0, &mut state, None);
     assert_eq!(next, Some("gave_token".to_string()));
     assert_eq!(session.current_node_id, "gave_token");
     assert_eq!(
@@ -655,7 +660,7 @@ fn select_choice_ends_the_dialog_when_next_is_null() {
     // "Farewell" is the last available choice from the start node.
     let choices_len = get_available_choices(&session, &state, None).len();
     let farewell_index = choices_len - 1;
-    let next = select_choice(&mut session, farewell_index, &mut state, None);
+    let (next, _events) = select_choice(&mut session, farewell_index, &mut state, None);
     assert_eq!(next, None);
     // The session pointer does not move past the ending choice.
     assert_eq!(session.current_node_id, "start");
@@ -666,7 +671,7 @@ fn select_choice_out_of_range_index_returns_none_and_does_not_mutate_state() {
     let mut session = start_dialog("npc_gregor", tree());
     let mut state = game();
     let out_of_range = get_available_choices(&session, &state, None).len() + 10;
-    let next = select_choice(&mut session, out_of_range, &mut state, None);
+    let (next, _events) = select_choice(&mut session, out_of_range, &mut state, None);
     assert_eq!(next, None);
     assert_eq!(session.current_node_id, "start");
     assert!(state.entity_registry.backpack_items().is_empty());
@@ -678,8 +683,96 @@ fn select_choice_only_considers_currently_available_choices() {
     // must resolve to "Give me a token", never to the locked choice.
     let mut session = start_dialog("npc_gregor", tree());
     let mut state = game();
-    let next = select_choice(&mut session, 0, &mut state, None);
+    let (next, _events) = select_choice(&mut session, 0, &mut state, None);
     assert_ne!(next, Some("locked".to_string()));
+}
+
+#[test]
+fn select_choice_returns_the_start_quest_event_from_the_choices_own_effects() {
+    let mut session = start_dialog("npc_gregor", tree());
+    let mut state = game();
+    // Available at the start node: "Give me a token"(0), "Start a
+    // quest"(1), "Advance the quest"(2), "Open the shop"(3), "Farewell"(4) —
+    // "Locked path"/"Take my token back"/"Strength check" are all filtered
+    // by unmet conditions on a fresh `game()`.
+    let (next, events) = select_choice(&mut session, 1, &mut state, None);
+    assert_eq!(next, None);
+    assert_eq!(
+        events,
+        vec![DialogEvent::StartQuest("fixture_quest".to_string())]
+    );
+}
+
+#[test]
+fn select_choice_returns_the_advance_quest_event_from_the_choices_own_effects() {
+    let mut session = start_dialog("npc_gregor", tree());
+    let mut state = game();
+    let (_next, events) = select_choice(&mut session, 2, &mut state, None);
+    assert_eq!(
+        events,
+        vec![DialogEvent::AdvanceQuest("fixture_quest".to_string())]
+    );
+}
+
+#[test]
+fn select_choice_returns_the_open_shop_event_carrying_the_sessions_npc_id() {
+    let mut session = start_dialog("npc_gregor", tree());
+    let mut state = game();
+    let (_next, events) = select_choice(&mut session, 3, &mut state, None);
+    assert_eq!(
+        events,
+        vec![DialogEvent::OpenShop("npc_gregor".to_string())]
+    );
+}
+
+#[test]
+fn select_choice_collects_events_from_both_the_choice_and_the_entered_nodes_effects() {
+    let mut session = start_dialog("npc_gregor", tree());
+    let mut state = game();
+    // "Give me a token" carries a giveItem effect (no DialogEvent) and moves
+    // to "gave_token", whose own entry effect is setFlag (also no
+    // DialogEvent) — this proves a choice with zero DialogEvents still
+    // returns cleanly rather than proving concatenation itself; concatenation
+    // order (choice effects before entered-node effects) is documented on
+    // `select_choice` and exercised structurally by the three tests above
+    // each touching only one side.
+    let (next, events) = select_choice(&mut session, 0, &mut state, None);
+    assert_eq!(next, Some("gave_token".to_string()));
+    assert!(events.is_empty());
+}
+
+/// The exact real-content path that motivated returning events from
+/// `select_choice` at all: without a `QuestManager`, `kill_spider_queen`
+/// reads as "undiscovered" by default (the `None` fallback in
+/// `evaluate_condition`), so "Need something killed?" is available from the
+/// greeting node; picking it, then "Consider it done." on the follow-up
+/// node, must surface the bounty's `startQuest` effect as a `DialogEvent`
+/// rather than silently dropping it.
+#[test]
+fn select_choice_surfaces_hildas_start_quest_event_for_the_spider_queen_bounty() {
+    let mut session = start_dialog("questgiver_hilda", hilda_tree());
+    let mut state = game();
+
+    let choices = get_available_choices(&session, &state, None);
+    let need_something_killed = choices
+        .iter()
+        .position(|choice| choice.text == "Need something killed?")
+        .expect("bounty choice is offered before the quest is discovered");
+    let (next, events) = select_choice(&mut session, need_something_killed, &mut state, None);
+    assert_eq!(next, Some("bounty_intro".to_string()));
+    assert!(events.is_empty());
+
+    let choices = get_available_choices(&session, &state, None);
+    let consider_it_done = choices
+        .iter()
+        .position(|choice| choice.text == "Consider it done.")
+        .expect("bounty_intro offers the accept choice");
+    let (next, events) = select_choice(&mut session, consider_it_done, &mut state, None);
+    assert_eq!(next, None); // "Consider it done." ends the dialog (next: null)
+    assert_eq!(
+        events,
+        vec![DialogEvent::StartQuest("kill_spider_queen".to_string())]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -691,7 +784,7 @@ fn advance_dialog_follows_the_linear_next_field() {
     let mut session = start_dialog("npc_gregor", tree());
     session.current_node_id = "linear_a".to_string();
     let mut state = game();
-    let next = advance_dialog(&mut session, &mut state);
+    let (next, _events) = advance_dialog(&mut session, &mut state);
     assert_eq!(next, Some("linear_b".to_string()));
     assert_eq!(session.current_node_id, "linear_b");
 }
@@ -710,7 +803,7 @@ fn advance_dialog_ends_when_next_is_null() {
     let mut session = start_dialog("npc_gregor", tree());
     session.current_node_id = "linear_b".to_string();
     let mut state = game();
-    let next = advance_dialog(&mut session, &mut state);
+    let (next, _events) = advance_dialog(&mut session, &mut state);
     assert_eq!(next, None);
     assert_eq!(session.current_node_id, "linear_b");
 }
@@ -720,7 +813,20 @@ fn advance_dialog_returns_none_for_a_missing_current_node() {
     let mut session = start_dialog("npc_gregor", tree());
     session.current_node_id = "does_not_exist".to_string();
     let mut state = game();
-    assert_eq!(advance_dialog(&mut session, &mut state), None);
+    assert_eq!(advance_dialog(&mut session, &mut state).0, None);
+}
+
+#[test]
+fn advance_dialog_returns_the_entered_nodes_dialog_events() {
+    let mut session = start_dialog("npc_gregor", tree());
+    session.current_node_id = "linear_to_quest".to_string();
+    let mut state = game();
+    let (next, events) = advance_dialog(&mut session, &mut state);
+    assert_eq!(next, Some("linear_quest_node".to_string()));
+    assert_eq!(
+        events,
+        vec![DialogEvent::StartQuest("fixture_quest".to_string())]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -879,7 +985,7 @@ fn select_choice_resolves_a_quest_gated_choice_once_it_becomes_available() {
     let choices = get_available_choices(&session, &state, Some(&quests));
     assert_eq!(choices[0].text, "Turn in the delivery");
 
-    let next = select_choice(&mut session, 0, &mut state, Some(&quests));
+    let (next, _events) = select_choice(&mut session, 0, &mut state, Some(&quests));
     // "Turn in the delivery"'s own `next` is null in this fixture, ending
     // the dialog.
     assert_eq!(next, None);

@@ -2,9 +2,11 @@
 //! resources, plus the input/update systems that connect the player
 //! controller, interaction, and world events to rendering.
 
+use crate::altars::{self, AltarHandles};
 use crate::blocks::{self, BlockRender};
 use crate::chests::{self, ChestHandles, ChestLid};
 use crate::doors::{DoorPanel, DoorPanels};
+use crate::fountains::{self, FountainHandles};
 use crate::ground_items::{self, GroundItemRender, LootTablesRes};
 use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverRender};
@@ -21,6 +23,7 @@ use delve_core::game_state::{
 };
 use delve_core::grid::{Facing, MoveRules};
 use delve_core::interaction::{InteractionType, interact};
+use delve_core::player_controller::{InventoryAction, process_inventory_action};
 use delve_core::random::Mulberry32;
 use delve_core::types::{Dungeon, Environment, TextureArea};
 use std::collections::{HashMap, HashSet};
@@ -169,7 +172,7 @@ fn move_forward_with_secret_wall_reveal(
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     mut players: Query<&mut Player>,
     mut wall_entities: WallEntityRender,
     mut hud: ResMut<crate::hud::HudState>,
@@ -433,7 +436,7 @@ fn tick_blocked_doors(
 pub fn tick_game(
     time: Res<Time>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
     mut signal: SignalRenderState,
 ) {
     if gate.paused() {
@@ -546,18 +549,46 @@ pub struct InteractEffects<'w, 's> {
     pub rng: ResMut<'w, GameRng>,
     pub blocks: BlockRender<'w, 's>,
     pub hud: ResMut<'w, crate::hud::HudState>,
+    // `ActiveOverlay` lives here (not in a shared `InputGate`) because the
+    // `NpcInteracted` arm below needs `ResMut` access to open the dialog
+    // overlay — `InputGate` only offers `Res`, and borrowing both in the
+    // same system would conflict, the same reason `save_load_overlay.rs`'s
+    // `check_player_death` takes `ActiveOverlay` directly.
+    pub overlay: ResMut<'w, crate::overlay::ActiveOverlay>,
+    pub npc_db: Res<'w, crate::npcs::NpcDb>,
+    pub dialog_cache: ResMut<'w, crate::dialog_overlay::DialogTreeCache>,
+    pub dialog_state: ResMut<'w, crate::dialog_overlay::DialogOverlayState>,
+    pub quests: ResMut<'w, crate::dialog_overlay::QuestManagerRes>,
+    pub trading_state: ResMut<'w, crate::trading_overlay::TradingOverlayState>,
+    pub fountain_handles: Res<'w, FountainHandles>,
+    pub altar_handles: Res<'w, AltarHandles>,
+    // Read-only, and filtered `Without<PlateVisual>` so Bevy can prove this
+    // is disjoint from `signal.plate.visuals`'s `Query<&mut
+    // MeshMaterial3d<StandardMaterial>, With<PlateVisual>>` — an
+    // unfiltered query here would conflict with it despite the two never
+    // targeting the same entity, the same class of issue documented on
+    // `enemy_feedback::CombatFeedback::bar_fills`. The emissive mutation
+    // itself goes through `item_render.materials`, already present, rather
+    // than a second `ResMut<Assets<StandardMaterial>>` field (which would
+    // conflict on its own).
+    pub pillar_materials: Query<
+        'w,
+        's,
+        &'static MeshMaterial3d<StandardMaterial>,
+        Without<crate::plates::PlateVisual>,
+    >,
 }
 
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut session: ResMut<Session>,
-    gate: crate::char_creation::InputGate,
+    transition: Res<Transition>,
     players: Query<&Player>,
     mut signal: SignalRenderState,
     mut sconce_render: SconceRender,
     mut effects: InteractEffects,
 ) {
-    if gate.blocked() || !keys.just_pressed(KeyCode::Space) {
+    if transition.is_active() || effects.overlay.is_open() || !keys.just_pressed(KeyCode::Space) {
         return;
     }
     let Ok(player) = players.single() else {
@@ -664,12 +695,62 @@ pub fn interact_input(
                 );
             }
         }
+        InteractionType::NpcInteracted => {
+            // `result.message` carries the NPC *definition* id (see
+            // `interaction.rs::interact`'s NPC branch) — matches TS's
+            // `inputSystem.ts:218-237`, which only proceeds `if (npcDef)`
+            // and otherwise silently does nothing.
+            if let Some(npc_id) = &result.message
+                && let Some(npc_def) = effects.npc_db.0.get_npc(npc_id).cloned()
+            {
+                crate::dialog_overlay::open_dialog_for_npc(
+                    npc_id,
+                    &npc_def,
+                    &mut effects.dialog_cache,
+                    &mut session.game,
+                    &mut effects.dialog_state,
+                    &mut effects.overlay,
+                    &mut effects.quests.0,
+                    &mut effects.hud,
+                    &effects.npc_db.0,
+                    &mut effects.trading_state,
+                );
+            }
+        }
+        InteractionType::FountainUsed => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                fountains::mark_fountain_used(
+                    &effects.fountain_handles,
+                    &mut sconce_render.visibility,
+                    &door_key(col, row),
+                );
+            }
+        }
+        InteractionType::AltarActivated => {
+            if let (Some(col), Some(row)) = (result.target_col, result.target_row) {
+                altars::mark_altar_used(
+                    &effects.altar_handles,
+                    &effects.pillar_materials,
+                    &mut effects.item_render.materials,
+                    &door_key(col, row),
+                );
+            }
+        }
+        // `BookshelfRead` (like `SignRead`) has no dedicated visual state in
+        // TS beyond its own text popup, which the generic message toast
+        // below already substitutes for — no mesh update needed here.
         _ => {}
     }
     // Substitutes for TS's dedicated overlays (sign text, chest-locked
     // notices, etc.) until this port grows them — every interaction message
-    // gets a HUD toast in addition to the log line.
-    if let Some(message) = &result.message {
+    // gets a HUD toast in addition to the log line. `NpcInteracted` is
+    // excluded: its `message` carries the NPC definition id (an internal
+    // lookup key, not user-facing text — see the match arm above), and TS's
+    // own dispatcher has no `npc_interacted` case in this generic-toast
+    // position either.
+    if result.result_type != InteractionType::NpcInteracted
+        && let Some(message) = &result.message
+    {
         info!("{message}");
         effects.hud.show_message(message);
     }
@@ -677,4 +758,86 @@ pub fn interact_input(
     let player_cell = (i64::from(player_state.col), i64::from(player_state.row));
     let events = session.game.take_events();
     apply_world_events(events, &mut session.game, player_cell, &mut signal);
+}
+
+/// Dispatches one `InventoryAction` through `process_inventory_action`,
+/// showing `Message` actions as a HUD toast (matching TS's inventory
+/// overlay's own switch on the action's `type`, which never reaches
+/// `processInventoryAction` for that variant) and respawning a dropped
+/// item's world billboard on success. Shared by the full inventory overlay,
+/// the mini panel's mouse interactions, and quick-slot digit keys.
+///
+/// `on_drop` only *records* the drop (it can't call back into `game`/
+/// `item_render` itself — `process_inventory_action` already holds `game`
+/// exclusively for the whole call, and the closure has no independent path
+/// to either); the actual billboard respawn happens afterward, once that
+/// borrow has ended, by re-reading the now-dropped item straight from the
+/// registry.
+pub(crate) fn apply_inventory_action(
+    game: &mut GameState,
+    item_render: &mut GroundItemRender,
+    hud: &mut crate::hud::HudState,
+    action: &InventoryAction,
+) {
+    if let InventoryAction::Message { text } = action {
+        hud.show_message(text);
+        return;
+    }
+
+    let mut dropped: Option<(String, i64, i64)> = None;
+    {
+        let mut on_drop = |instance_id: &str, col: i64, row: i64| {
+            dropped = Some((instance_id.to_string(), col, row));
+        };
+        process_inventory_action(action, game, &mut on_drop);
+    }
+    if let Some((instance_id, ..)) = dropped
+        && let Some(entity) = game.entity_registry.get_item(&instance_id).cloned()
+        && let Some(def) = item_render.items.0.get_item(&entity.item_id)
+    {
+        let kind = ground_items::ItemKind::of(def.item_type);
+        ground_items::add_single_item_mesh(item_render, kind, &entity);
+    }
+}
+
+/// `Digit1`-`Digit8` use the consumable in that backpack slot directly —
+/// ported from `inputSystem.ts`'s quick-slot case, which calls
+/// `useConsumableFromRegistry` straight from the keyboard handler rather
+/// than going through `processInventoryAction`'s `Use` arm (that arm exists
+/// for the inventory overlay/mini panel's own Enter/double-click actions,
+/// which resolve to a *sorted-list* position; quick slots key directly off
+/// the physical backpack slot number instead, matching TS's
+/// `getBackpackItemAt(slotNum)` call).
+pub fn quick_slot_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut session: ResMut<Session>,
+    gate: crate::overlay::InputGate,
+) {
+    if gate.blocked() {
+        return;
+    }
+    const DIGIT_SLOTS: [(KeyCode, u32); 8] = [
+        (KeyCode::Digit1, 0),
+        (KeyCode::Digit2, 1),
+        (KeyCode::Digit3, 2),
+        (KeyCode::Digit4, 3),
+        (KeyCode::Digit5, 4),
+        (KeyCode::Digit6, 5),
+        (KeyCode::Digit7, 6),
+        (KeyCode::Digit8, 7),
+    ];
+    for (key, slot) in DIGIT_SLOTS {
+        if !keys.just_pressed(key) {
+            continue;
+        }
+        let instance_id = session
+            .game
+            .entity_registry
+            .backpack_item_at(slot)
+            .map(|entity| entity.instance_id.clone());
+        if let Some(instance_id) = instance_id {
+            session.game.use_consumable_from_registry(&instance_id);
+        }
+        break;
+    }
 }

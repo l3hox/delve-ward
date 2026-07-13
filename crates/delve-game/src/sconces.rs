@@ -227,7 +227,7 @@ pub fn sconce_flicker(
     mut flicker: ResMut<SconceFlicker>,
     parts: Res<SconceParts>,
     mut lights: Query<&mut PointLight, With<SconceLight>>,
-    gate: crate::char_creation::InputGate,
+    gate: crate::overlay::InputGate,
 ) {
     // TS ticks sconce flicker inside the same overlay-paused block as the
     // other per-frame systems.

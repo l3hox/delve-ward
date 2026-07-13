@@ -17,11 +17,11 @@
 //! already uses individual billboard quads, so this keeps the same shape.
 
 use crate::billboard::FacesCamera;
-use crate::char_creation::InputGate;
 use crate::dungeon::CELL_SIZE;
 use crate::enemies::{EnemyBillboards, EnemyDb, KillTarget, handle_kill};
 use crate::ground_items::{GroundItemRender, LootTablesRes};
 use crate::level_scene::LevelEntity;
+use crate::overlay::InputGate;
 use crate::session::{DungeonRes, GameRng, Session};
 use crate::torch::LUMENS_PER_THREE_UNIT;
 use bevy::ecs::system::SystemParam;
