@@ -413,6 +413,7 @@ pub struct ProjectileTickEffects<'w, 's> {
     feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
     visibility: Query<'w, 's, &'static mut Visibility>,
     hud: ResMut<'w, crate::hud::HudState>,
+    debug_flags: Res<'w, crate::debug::DebugFlags>,
 }
 
 /// Applies one projectile hit's gameplay effects (damage, status effect,
@@ -426,7 +427,10 @@ fn apply_projectile_hit(
     render_visuals: bool,
 ) {
     match event.hit_type {
-        HitType::Player => {
+        // TS: `if (hitType === 'player' && !debugFullbright)` (`main.ts:976`)
+        // — a sibling `if`, not a wrapper, around the fireball-explosion
+        // spawn below (`main.ts:1001-1007`), which stays unconditional.
+        HitType::Player if !effects.debug_flags.fullbright => {
             game.player.hp = (game.player.hp - event.projectile.damage).max(0.0);
             effects.vitals.flash();
             if let Some(effect_type) = event
@@ -450,6 +454,7 @@ fn apply_projectile_hit(
             );
             // Death detection is centralized in `save_load::check_player_death`.
         }
+        HitType::Player => {}
         HitType::Enemy => {
             let key = door_key(event.col, event.row);
             let render_key = layer_door_key(game.active_layer_index, &key);

@@ -1,5 +1,8 @@
 //! First-person grid movement with tweened camera, ported from the TS
-//! rendering `Player`. Noclip arrives with its own phase.
+//! rendering `Player`. `no_clip` (threaded through `move_forward`/
+//! `move_back`/`strafe_left`/`strafe_right`) is `debug.rs`'s debug
+//! fullbright flag — TS ties `debugNoClip` to `debugFullbright` 1:1 rather
+//! than exposing a separate toggle.
 
 use crate::dungeon::{CELL_SIZE, EYE_HEIGHT, LAYER_HEIGHT};
 use bevy::prelude::*;
@@ -196,29 +199,50 @@ impl Player {
         }
     }
 
-    fn run(&mut self, command: Command, rules: &MoveRules) {
+    fn run(&mut self, command: Command, rules: &MoveRules, no_clip: bool) {
         if self.is_animating() {
             self.enqueue(command);
             return;
         }
         match command {
             Command::Forward => {
-                if self.state.move_forward(&self.grid, rules) {
+                let moved = if no_clip {
+                    self.debug_move(self.state.facing.delta())
+                } else {
+                    self.state.move_forward(&self.grid, rules)
+                };
+                if moved {
                     self.arrive();
                 }
             }
             Command::Back => {
-                if self.state.move_back(&self.grid, rules) {
+                let moved = if no_clip {
+                    let (dc, dr) = self.state.facing.delta();
+                    self.debug_move((-dc, -dr))
+                } else {
+                    self.state.move_back(&self.grid, rules)
+                };
+                if moved {
                     self.arrive();
                 }
             }
             Command::StrafeLeft => {
-                if self.state.strafe_left(&self.grid, rules) {
+                let moved = if no_clip {
+                    self.debug_move(self.state.facing.turned_left().delta())
+                } else {
+                    self.state.strafe_left(&self.grid, rules)
+                };
+                if moved {
                     self.arrive();
                 }
             }
             Command::StrafeRight => {
-                if self.state.strafe_right(&self.grid, rules) {
+                let moved = if no_clip {
+                    self.debug_move(self.state.facing.turned_right().delta())
+                } else {
+                    self.state.strafe_right(&self.grid, rules)
+                };
+                if moved {
                     self.arrive();
                 }
             }
@@ -231,6 +255,26 @@ impl Player {
                 self.target_angle -= std::f32::consts::FRAC_PI_2;
             }
         }
+    }
+
+    /// TS's private `debugMove` (`rendering/player.ts:164-171`): bounds-only
+    /// movement bypassing every walkability/door/edge/entity check.
+    fn debug_move(&mut self, delta: (i32, i32)) -> bool {
+        let next_col = self.state.col + delta.0;
+        let next_row = self.state.row + delta.1;
+        let in_bounds = next_row >= 0
+            && next_col >= 0
+            && (next_row as usize) < self.grid.len()
+            && self
+                .grid
+                .first()
+                .is_some_and(|line| (next_col as usize) < line.chars().count());
+        if !in_bounds {
+            return false;
+        }
+        self.state.col = next_col;
+        self.state.row = next_row;
+        true
     }
 
     fn arrive(&mut self) {
@@ -247,28 +291,28 @@ impl Player {
         &self.state
     }
 
-    pub fn move_forward(&mut self, rules: &MoveRules) {
-        self.run(Command::Forward, rules);
+    pub fn move_forward(&mut self, rules: &MoveRules, no_clip: bool) {
+        self.run(Command::Forward, rules, no_clip);
     }
 
-    pub fn move_back(&mut self, rules: &MoveRules) {
-        self.run(Command::Back, rules);
+    pub fn move_back(&mut self, rules: &MoveRules, no_clip: bool) {
+        self.run(Command::Back, rules, no_clip);
     }
 
-    pub fn strafe_left(&mut self, rules: &MoveRules) {
-        self.run(Command::StrafeLeft, rules);
+    pub fn strafe_left(&mut self, rules: &MoveRules, no_clip: bool) {
+        self.run(Command::StrafeLeft, rules, no_clip);
     }
 
-    pub fn strafe_right(&mut self, rules: &MoveRules) {
-        self.run(Command::StrafeRight, rules);
+    pub fn strafe_right(&mut self, rules: &MoveRules, no_clip: bool) {
+        self.run(Command::StrafeRight, rules, no_clip);
     }
 
     pub fn turn_left(&mut self, rules: &MoveRules) {
-        self.run(Command::TurnLeft, rules);
+        self.run(Command::TurnLeft, rules, false);
     }
 
     pub fn turn_right(&mut self, rules: &MoveRules) {
-        self.run(Command::TurnRight, rules);
+        self.run(Command::TurnRight, rules, false);
     }
 
     /// Advances the tween, the fall state machine, and the camera transform
@@ -285,6 +329,7 @@ impl Player {
         delta: f32,
         transform: &mut Transform,
         rules: &MoveRules,
+        no_clip: bool,
     ) -> Option<usize> {
         let alpha = ((TWEEN_SPEED / self.slow_multiplier) * delta).min(1.0);
 
@@ -367,7 +412,7 @@ impl Player {
             && !self.is_animating()
             && let Some(next) = self.command_queue.pop_front()
         {
-            self.run(next, rules);
+            self.run(next, rules, no_clip);
         }
 
         landed

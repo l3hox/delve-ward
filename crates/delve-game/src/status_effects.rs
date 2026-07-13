@@ -46,6 +46,7 @@ pub fn tick_player_vitals(
     mut session: ResMut<Session>,
     mut vitals: ResMut<PlayerVitals>,
     gate: InputGate,
+    debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     if gate.paused() {
         return;
@@ -56,7 +57,7 @@ pub fn tick_player_vitals(
     vitals.0.player_damage_flash_timer = (vitals.0.player_damage_flash_timer - delta).max(0.0);
 
     let game = &mut session.game;
-    tick_player_controller(game, &mut vitals.0, delta, false);
+    tick_player_controller(game, &mut vitals.0, delta, debug_flags.fullbright);
 }
 
 /// `ls.player.slowMultiplier = getSlowMultiplier(gameState.playerStatusEffects);`

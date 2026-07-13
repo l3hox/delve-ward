@@ -15,6 +15,7 @@ use delve_core::enemy_ai::{EnemyActionType, EnemyUpdateContext, update_enemies};
 use delve_core::game_state::{
     DoorState, GameState, LayerState, ThinWallSide, door_key, layer_door_key, thin_wall_key,
 };
+use delve_core::grid::get_facing_cell;
 use delve_core::loot::{DropsOverride, LootTables};
 use delve_core::random::Mulberry32;
 use delve_core::status_effects::apply_effect;
@@ -62,6 +63,7 @@ pub struct EnemyRenderState<'w, 's> {
     visibility: Query<'w, 's, &'static mut Visibility>,
     hud: ResMut<'w, crate::hud::HudState>,
     dungeon: Res<'w, DungeonRes>,
+    debug_flags: Res<'w, crate::debug::DebugFlags>,
 }
 
 fn sprite_asset_path(sprite_path: &str) -> String {
@@ -513,10 +515,11 @@ pub fn tick_enemies(
                     // is actually standing on; `player_col`/`player_row`
                     // alone can't tell layers apart, since TS passes the
                     // same player position to every layer's AI tick.
-                    // `debugFullbright` has no Rust equivalent yet (no
-                    // debug toggle reaches this code), so only the layer
-                    // half of TS's gate applies here.
-                    if layer_index != saved_layer {
+                    // Fullbright is invincibility (`main.ts:976`,
+                    // `playerController.ts:22/36` suppress every other
+                    // source of player damage the same way), so it blocks
+                    // this hit outright regardless of layer.
+                    if layer_index != saved_layer || render.debug_flags.fullbright {
                         continue;
                     }
                     let Some((enemy_atk, enemy_type)) = game
@@ -663,6 +666,16 @@ pub fn attack_input(
     let Ok(player) = players.single() else {
         return;
     };
+    // TS: `if (ctx.debugState.debugFullbright) { ... enemy.hp = 1; }`
+    // (`main.ts:242-247`) — sets the facing enemy's hp to 1 right before
+    // the swing resolves, so any nonzero weapon damage kills it outright.
+    if kill_effects.debug_flags.fullbright {
+        let (facing_col, facing_row) = get_facing_cell(player.grid_state());
+        let key = door_key(i64::from(facing_col), i64::from(facing_row));
+        if let Some(enemy) = session.game.active_layer_mut().enemies.get_mut(&key) {
+            enemy.hp = 1.0;
+        }
+    }
     let layer_y_offset = session.game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
     let results = {
         let rng = &mut rng.0;
@@ -857,6 +870,7 @@ pub struct KillEffects<'w, 's> {
     feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
     hud: ResMut<'w, crate::hud::HudState>,
     barrels: ResMut<'w, BarrelHandles>,
+    debug_flags: Res<'w, crate::debug::DebugFlags>,
 }
 
 /// The enemy a kill applies to — bundled so `handle_kill` stays under the

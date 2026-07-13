@@ -10,6 +10,7 @@ mod boulders;
 mod char_creation;
 mod chests;
 mod damage_numbers;
+mod debug;
 mod dialog_overlay;
 mod doors;
 mod dungeon;
@@ -405,6 +406,7 @@ fn main() {
                 }),
         )
         .init_resource::<transition::Transition>()
+        .init_resource::<debug::DebugFlags>()
         .init_resource::<LevelSnapshots>()
         .init_resource::<sconces::SconceFlicker>()
         .init_resource::<char_creation::CharCreation>()
@@ -425,6 +427,13 @@ fn main() {
         .add_systems(
             Update,
             (
+                // Runs before anything below reads `DebugFlags` this same
+                // frame — TS's keydown handler updates `debugFullbright`
+                // synchronously, outside (and therefore always before) the
+                // `requestAnimationFrame` game-loop tick that follows, so
+                // every per-frame system already sees the new value on the
+                // very frame it changes.
+                (debug::toggle_fullbright, debug::layer_fly).chain(),
                 // Split across two tuples (Bevy's `.chain()` tuple impl tops
                 // out at 20 elements) but chained together at the outer
                 // level below, so ordering is identical to one long chain.
@@ -514,5 +523,9 @@ fn main() {
             PostUpdate,
             particles::init_embers.after(TransformSystems::Propagate),
         )
+        // Recomputed every frame from the window's current size rather than
+        // once at spawn plus a resize listener (TS's own split) — see
+        // `zones::apply_camera_view_crop`'s doc comment for why that's safe.
+        .add_systems(Update, zones::apply_camera_view_crop)
         .run();
 }

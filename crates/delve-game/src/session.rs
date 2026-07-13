@@ -258,7 +258,7 @@ fn move_forward_with_secret_wall_reveal(
     let before = player.grid_state();
     let (before_col, before_row, before_facing) = (before.col, before.row, before.facing);
 
-    with_move_rules(&session.game, |rules| player.move_forward(rules));
+    with_move_rules(&session.game, |rules| player.move_forward(rules, false));
 
     let after = player.grid_state();
     if (after.col, after.row) != (before_col, before_row) {
@@ -292,7 +292,7 @@ fn move_forward_with_secret_wall_reveal(
     } else {
         "A secret passage!"
     });
-    with_move_rules(&session.game, |rules| player.move_forward(rules));
+    with_move_rules(&session.game, |rules| player.move_forward(rules, false));
 }
 
 pub fn player_input(
@@ -302,6 +302,7 @@ pub fn player_input(
     mut players: Query<&mut Player>,
     mut wall_entities: WallEntityRender,
     mut hud: ResMut<crate::hud::HudState>,
+    debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     if gate.blocked() {
         return;
@@ -309,23 +310,30 @@ pub fn player_input(
     let Ok(mut player) = players.single_mut() else {
         return;
     };
+    // TS ties `debugNoClip` 1:1 to `debugFullbright` (`inputSystem.ts:342`)
+    // rather than exposing a separate flag, so this reads the same one.
+    let no_clip = debug_flags.fullbright;
     if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
-        move_forward_with_secret_wall_reveal(
-            &mut session,
-            &mut player,
-            &mut wall_entities,
-            &mut hud,
-        );
+        if no_clip {
+            with_move_rules(&session.game, |rules| player.move_forward(rules, true));
+        } else {
+            move_forward_with_secret_wall_reveal(
+                &mut session,
+                &mut player,
+                &mut wall_entities,
+                &mut hud,
+            );
+        }
     }
     with_move_rules(&session.game, |rules| {
         if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
-            player.move_back(rules);
+            player.move_back(rules, no_clip);
         }
         if keys.just_pressed(KeyCode::KeyA) {
-            player.strafe_left(rules);
+            player.strafe_left(rules, no_clip);
         }
         if keys.just_pressed(KeyCode::KeyD) {
-            player.strafe_right(rules);
+            player.strafe_right(rules, no_clip);
         }
         if keys.just_pressed(KeyCode::KeyQ) || keys.just_pressed(KeyCode::ArrowLeft) {
             player.turn_left(rules);
@@ -346,7 +354,7 @@ pub fn player_input(
 /// already-destructured `Session` fields can call this directly without
 /// re-borrowing the whole struct. Returns whether the switch actually
 /// happened (a missing level/layer leaves everything untouched).
-fn switch_active_layer(
+pub(crate) fn switch_active_layer(
     game: &mut GameState,
     grid: &mut Vec<String>,
     walkable: &mut HashSet<char>,
@@ -460,12 +468,14 @@ pub fn player_update(
     mut session: ResMut<Session>,
     dungeon: Res<DungeonRes>,
     mut players: Query<(&mut Player, &mut Transform)>,
+    debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     let Ok((mut player, mut transform)) = players.single_mut() else {
         return;
     };
+    let no_clip = debug_flags.fullbright;
     let landed = with_move_rules(&session.game, |rules| {
-        player.update(time.delta_secs(), &mut transform, rules)
+        player.update(time.delta_secs(), &mut transform, rules, no_clip)
     });
     if let Some(landing_layer) = landed {
         land_on_layer(&mut session, &dungeon, &mut player, landing_layer);

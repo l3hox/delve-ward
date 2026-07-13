@@ -539,6 +539,7 @@ pub fn tick_boulders_system(
     gate: crate::overlay::InputGate,
     mut vitals: ResMut<PlayerVitals>,
     mut render: BoulderRenderState,
+    debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     if gate.blocked() {
         return;
@@ -562,7 +563,7 @@ pub fn tick_boulders_system(
         player_layer,
         player_col: i64::from(player_col),
         player_row: i64::from(player_row),
-        debug_fullbright: false,
+        debug_fullbright: debug_flags.fullbright,
         is_resting: &is_resting,
     };
     let events = tick_boulders(game, &context, &mut vitals.0);
