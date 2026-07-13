@@ -14,6 +14,7 @@ use crate::zones::{self, LevelZones};
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use delve_core::game_state::{DoorState, LayerState, door_key, layer_door_key};
+use delve_core::types::CharDef;
 use std::collections::{HashMap, HashSet};
 use std::f32::consts::FRAC_PI_2;
 
@@ -35,6 +36,27 @@ pub enum DoorOrientation {
     EW,
 }
 
+/// Which world axis a door panel slides along when opening. `Y` (the
+/// default) slides the panel up into the ceiling void; `X`/`Z` slide it
+/// sideways into the wall plane when there's nothing solid above to slide
+/// into, ported from `doorAnimator.ts`'s `SlideAxis`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlideAxis {
+    X,
+    Y,
+    Z,
+}
+
+impl SlideAxis {
+    fn component_index(self) -> usize {
+        match self {
+            SlideAxis::X => 0,
+            SlideAxis::Y => 1,
+            SlideAxis::Z => 2,
+        }
+    }
+}
+
 /// Panel entities by door cell key, for open/close animation lookups.
 #[derive(Resource, Default)]
 pub struct DoorPanels {
@@ -44,30 +66,31 @@ pub struct DoorPanels {
 #[derive(Debug, Clone, Copy)]
 pub struct DoorBounce {
     reopening: bool,
-    bounce_y: f32,
+    bounce_val: f32,
 }
 
 #[derive(Component)]
 pub struct DoorPanel {
-    pub closed_y: f32,
-    pub open_y: f32,
-    pub target_y: f32,
+    pub axis: SlideAxis,
+    pub closed_val: f32,
+    pub open_val: f32,
+    pub target_val: f32,
     bounce: Option<DoorBounce>,
 }
 
 impl DoorPanel {
     pub fn set_open(&mut self, open: bool) {
-        self.target_y = if open { self.open_y } else { self.closed_y };
+        self.target_val = if open { self.open_val } else { self.closed_val };
     }
 
     /// Animate the door closing 20% then bouncing back to open.
     pub fn bounce(&mut self) {
-        let range = self.open_y - self.closed_y;
+        let range = self.open_val - self.closed_val;
         self.bounce = Some(DoorBounce {
             reopening: false,
-            bounce_y: self.open_y - range * BOUNCE_FRACTION,
+            bounce_val: self.open_val - range * BOUNCE_FRACTION,
         });
-        self.target_y = self.open_y;
+        self.target_val = self.open_val;
     }
 }
 
@@ -155,6 +178,65 @@ pub fn detect_door_orientation(
     DoorOrientation::NS
 }
 
+/// Whether this layer renders its own ceiling geometry, mirroring
+/// `dungeon.rs`'s `ceiling_enabled`: a lower layer's ceiling doubles as the
+/// floor of the layer above it, so only the topmost layer can go
+/// ceiling-less.
+fn layer_has_ceiling(layer_spawn: &crate::dungeon::LayerSpawn) -> bool {
+    let is_top_layer = layer_spawn.index + 1 == layer_spawn.level.layers.len();
+    if is_top_layer {
+        layer_spawn
+            .layer_def
+            .ceiling
+            .or(layer_spawn.level.ceiling)
+            .unwrap_or(true)
+    } else {
+        true
+    }
+}
+
+/// Whether a door's panel has nothing solid to slide up into: either this
+/// layer has no ceiling at all, or the layer above has no solid cell
+/// directly over the door. Ported from `levelSceneBuilder.ts`'s per-door
+/// `ceilingOpenAbove` check.
+fn ceiling_open_above(
+    has_ceiling: bool,
+    above_grid: Option<&[String]>,
+    char_defs: &[CharDef],
+    col: i64,
+    row: i64,
+) -> bool {
+    if !has_ceiling {
+        return true;
+    }
+    let Some(above_char) = above_grid.and_then(|grid| {
+        let line = grid.get(usize::try_from(row).ok()?)?;
+        line.chars().nth(usize::try_from(col).ok()?)
+    }) else {
+        return false;
+    };
+    let is_solid_wall = above_char == '#'
+        || char_defs
+            .iter()
+            .any(|def| def.character == above_char && def.solid && def.see_through != Some(true));
+    !is_solid_wall
+}
+
+/// The axis a door panel slides along when opening, ported from
+/// `levelSceneBuilder.ts`'s per-door `slideAxis` selection: with nothing
+/// solid above to slide into, the panel slides sideways along its own width
+/// axis (NS-oriented doors along Z, EW-oriented doors along X) instead of up.
+fn slide_axis_for(orientation: DoorOrientation, ceiling_open_above: bool) -> SlideAxis {
+    if !ceiling_open_above {
+        return SlideAxis::Y;
+    }
+    if orientation == DoorOrientation::NS {
+        SlideAxis::Z
+    } else {
+        SlideAxis::X
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_doors(
     commands: &mut Commands,
@@ -169,6 +251,13 @@ pub fn spawn_doors(
     let mut panels = DoorPanels::default();
     let layer_index = layer_spawn.index;
     let layer_y_offset = layer_spawn.y_offset;
+    let has_ceiling = layer_has_ceiling(layer_spawn);
+    let above_grid = layer_spawn
+        .level
+        .layers
+        .get(layer_spawn.index + 1)
+        .map(|layer_def| layer_def.grid.as_slice());
+    let char_defs: &[CharDef] = layer_spawn.level.char_defs.as_deref().unwrap_or(&[]);
 
     let panel_width = CELL_SIZE - FRAME_WIDTH * 2.0;
     let panel_height = WALL_HEIGHT - FRAME_WIDTH;
@@ -235,26 +324,40 @@ pub fn spawn_doors(
             }
         }
 
-        // Panel: slides up when open.
+        // Panel: slides up when open, unless there's nothing solid above to
+        // slide into, in which case it slides sideways into the wall plane.
         let material = if door.key_id.is_some() {
             materials.locked_door.clone()
         } else {
             materials.door.clone()
         };
-        let closed_y = panel_height / 2.0 + layer_y_offset;
-        let open_y = WALL_HEIGHT + panel_height / 2.0 + layer_y_offset;
+        let slide_axis = slide_axis_for(
+            orientation,
+            ceiling_open_above(has_ceiling, above_grid, char_defs, door.col, door.row),
+        );
+        let (closed_val, open_val) = match slide_axis {
+            SlideAxis::Y => (
+                panel_height / 2.0 + layer_y_offset,
+                WALL_HEIGHT + panel_height / 2.0 + layer_y_offset,
+            ),
+            SlideAxis::X => (center_x, center_x + panel_width + 0.05),
+            SlideAxis::Z => (center_z, center_z - panel_width - 0.05),
+        };
         let is_open = door.state == DoorState::Open;
-        let start_y = if is_open { open_y } else { closed_y };
+        let target_val = if is_open { open_val } else { closed_val };
+        let mut start = Vec3::new(center_x, panel_height / 2.0 + layer_y_offset, center_z);
+        start[slide_axis.component_index()] = target_val;
         let panel = commands
             .spawn((
                 LevelEntity,
                 Mesh3d(panel_mesh.clone()),
                 MeshMaterial3d(material),
-                Transform::from_xyz(center_x, start_y, center_z).with_rotation(rotation),
+                Transform::from_translation(start).with_rotation(rotation),
                 DoorPanel {
-                    closed_y,
-                    open_y,
-                    target_y: start_y,
+                    axis: slide_axis,
+                    closed_val,
+                    open_val,
+                    target_val,
                     bounce: None,
                 },
             ))
@@ -274,45 +377,124 @@ pub fn animate_door_panels(time: Res<Time>, mut panels: Query<(&mut DoorPanel, &
     let bounce_step = BOUNCE_SPEED * time.delta_secs();
 
     for (mut panel, mut transform) in &mut panels {
-        let current = transform.translation.y;
+        let axis = panel.axis.component_index();
+        let current = transform.translation[axis];
 
         if let Some(bounce) = panel.bounce {
             if bounce.reopening {
-                let direction = if panel.open_y < current { -1.0 } else { 1.0 };
+                let direction = if panel.open_val < current { -1.0 } else { 1.0 };
                 let next = current + direction * bounce_step;
-                if (direction < 0.0 && next <= panel.open_y)
-                    || (direction > 0.0 && next >= panel.open_y)
+                if (direction < 0.0 && next <= panel.open_val)
+                    || (direction > 0.0 && next >= panel.open_val)
                 {
-                    transform.translation.y = panel.open_y;
+                    transform.translation[axis] = panel.open_val;
                     panel.bounce = None;
                 } else {
-                    transform.translation.y = next;
+                    transform.translation[axis] = next;
                 }
             } else {
-                let direction = if bounce.bounce_y < current { -1.0 } else { 1.0 };
+                let direction = if bounce.bounce_val < current {
+                    -1.0
+                } else {
+                    1.0
+                };
                 let next = current + direction * bounce_step;
-                if (direction < 0.0 && next <= bounce.bounce_y)
-                    || (direction > 0.0 && next >= bounce.bounce_y)
+                if (direction < 0.0 && next <= bounce.bounce_val)
+                    || (direction > 0.0 && next >= bounce.bounce_val)
                 {
-                    transform.translation.y = bounce.bounce_y;
+                    transform.translation[axis] = bounce.bounce_val;
                     panel.bounce = Some(DoorBounce {
                         reopening: true,
-                        bounce_y: bounce.bounce_y,
+                        bounce_val: bounce.bounce_val,
                     });
                 } else {
-                    transform.translation.y = next;
+                    transform.translation[axis] = next;
                 }
             }
             continue;
         }
 
-        if (current - panel.target_y).abs() < 0.001 {
+        if (current - panel.target_val).abs() < 0.001 {
             continue;
         }
-        transform.translation.y = if current < panel.target_y {
-            (current + step).min(panel.target_y)
+        transform.translation[axis] = if current < panel.target_val {
+            (current + step).min(panel.target_val)
         } else {
-            (current - step).max(panel.target_y)
+            (current - step).max(panel.target_val)
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn grid(rows: &[&str]) -> Vec<String> {
+        rows.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn ceiling_open_above_is_true_when_layer_has_no_ceiling() {
+        assert!(ceiling_open_above(false, None, &[], 0, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_false_when_no_layer_above_exists() {
+        assert!(!ceiling_open_above(true, None, &[], 0, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_false_under_a_hash_wall() {
+        let above = grid(&["#."]);
+        assert!(!ceiling_open_above(true, Some(&above), &[], 0, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_true_under_a_walkable_cell() {
+        let above = grid(&["#."]);
+        assert!(ceiling_open_above(true, Some(&above), &[], 1, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_false_under_a_solid_opaque_char_def() {
+        let above = grid(&["W"]);
+        let wall = CharDef {
+            character: 'W',
+            solid: true,
+            see_through: None,
+            textures: delve_core::types::TextureSet::default(),
+        };
+        assert!(!ceiling_open_above(true, Some(&above), &[wall], 0, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_true_under_a_solid_see_through_char_def() {
+        let above = grid(&["W"]);
+        let grate = CharDef {
+            character: 'W',
+            solid: true,
+            see_through: Some(true),
+            textures: delve_core::types::TextureSet::default(),
+        };
+        assert!(ceiling_open_above(true, Some(&above), &[grate], 0, 0));
+    }
+
+    #[test]
+    fn ceiling_open_above_is_false_when_door_cell_out_of_bounds() {
+        let above = grid(&["#"]);
+        assert!(!ceiling_open_above(true, Some(&above), &[], 5, 5));
+        assert!(!ceiling_open_above(true, Some(&above), &[], -1, 0));
+    }
+
+    #[test]
+    fn slide_axis_for_stays_vertical_with_something_solid_above() {
+        assert_eq!(slide_axis_for(DoorOrientation::NS, false), SlideAxis::Y);
+        assert_eq!(slide_axis_for(DoorOrientation::EW, false), SlideAxis::Y);
+    }
+
+    #[test]
+    fn slide_axis_for_goes_sideways_along_the_doors_own_width_axis() {
+        assert_eq!(slide_axis_for(DoorOrientation::NS, true), SlideAxis::Z);
+        assert_eq!(slide_axis_for(DoorOrientation::EW, true), SlideAxis::X);
     }
 }
