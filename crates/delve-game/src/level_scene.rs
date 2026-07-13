@@ -17,9 +17,11 @@ use crate::keys::{self, KeyBillboards};
 use crate::levers::{self, LeverHandles};
 use crate::npcs::{self, NpcBillboards};
 use crate::plates::{self, PlateHandles};
+use crate::props;
 use crate::ramps;
 use crate::sconces::{self, SconceParts};
 use crate::signs;
+use crate::skybox;
 use crate::spawners::{self, SpawnerHandles};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
@@ -411,7 +413,23 @@ pub fn spawn_level_scene(
             &layer_spawn,
         );
         boulder_animator.extend(layer_boulders);
+
+        props::spawn_props(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            &layer_spawn,
+        );
     }
+
+    skybox::spawn_skybox(
+        commands,
+        assets.meshes,
+        assets.images,
+        assets.materials,
+        scene.level,
+    );
 
     LevelSceneHandles {
         door_panels,
