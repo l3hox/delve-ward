@@ -12,6 +12,7 @@ pub mod enemies;
 pub mod enemy_ai;
 pub mod entities;
 pub mod env_zones;
+pub mod forest_placement;
 pub mod game_state;
 pub mod grid;
 pub mod interaction;
