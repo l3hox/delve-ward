@@ -6,29 +6,25 @@ Session-to-session state. Read this at the start of every session.
 
 ## Current Phase
 
-**Phase 5: M4 parity, the vertical world.** Phases 0-4 are merged to main. Work happens on branch `port/phase-5-vertical-world` following `planning/PHASE5-PLAN.md`'s slice breakdown (spawner/boulder/env-zone core logic already ported and tested). See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions, and `planning/PARITY-GAPS.md` for the audited gap inventory.
+**Phase 5: M4 parity, the vertical world — at the gate.** Phases 0-4 are merged to main. Every phase 5 slice is committed on `port/phase-5-vertical-world`; remaining before merge: the final cross-review round closes, `PARITY-GAPS.md` refresh lands, gates re-run, bundle rebuild. See `planning/PORT-PLAN.md` for scope, `planning/DECISIONS.md` for resolved decisions (D16 is new), and `planning/PARITY-GAPS.md` for the audited gap inventory.
 
 ## Next Steps
 
 Landed on this branch:
 
-- [x] Core: dialog and quest runtimes (`dialog_manager.rs`, `quest_manager.rs`), quest state threaded into dialog `questStage` conditions
-- [x] Core: player controller tick — status-effect damage, temp buffs, hunger drain, starvation — and inventory-action dispatch (equip/unequip/use/drop/swap), `player_controller.rs`
-- [x] Core: enemy spawner BFS placement (`spawners.rs`), boulder state machine (`boulders.rs`), and the environment zone map builder (`env_zones.rs`) — phase 5 core logic landing ahead of its shell, the same pattern that carried phase 3-5 core logic in ahead of schedule during phase 2
-- [x] Game: signal entities render — levers, pressure plates, tripwires (`levers.rs`, `plates.rs`, `tripwires.rs`), wired to the signal manager
-- [x] Game: projectile shell — fireballs and darts travel and render (`projectiles.rs`), trap launchers fire them, status effects tick and tint affected enemies (`status_effects.rs`), combat correctly pauses during transitions and character creation
-- [x] Game: blocked-door retry cycle — a signal-driven close onto an occupied cell defers and retries every frame until the cell clears (`session.rs`'s `blocked_doors`/`tick_blocked_doors`), ported from the TS `blockedDoors` map
-- [x] Game: HUD compass rose, minimap, and torch-fuel indicator; player vitals wired end to end — torch fuel drains outside dungeon/mist environments, hunger drains and shows on its own bar, status-effect and starvation damage flash the screen
-- [x] Fix: stair cells no longer double-render flat floor/ceiling/wall geometry under the stepped stair mesh; corner-anchored box UVs so stair and door texture coursing matches the surrounding walls
-- [x] Docs: `PORT-PLAN.md` has a home for every feature the parity audit found orphaned; `PHASE4-PLAN.md` and `PHASE5-PLAN.md` lay out the next two phases in slice-level detail
+- [x] Multi-layer scene: every layer renders simultaneously, Y-stacked by `LAYER_HEIGHT` or explicit offsets; all entity types spawn per layer with layer-keyed handle maps; blocked-door retries and lever targets resolve their own layer
+- [x] Player Y-channel: ramps (smooth slope + stepped geometry, movement rules, same-scene layer crossing) and falling through holes/open pit traps (kinematic fall, landing-layer switch without a scene rebuild)
+- [x] Spawner and boulder render shells — BFS-placed enemy spawns with billboards and health bars in place; boulders roll/descend/fall via a visual-state animator that gates the core tick (`is_resting`), with layer-aware damage events
+- [x] Environment zones: N camera entities (one per zone) replace TS's single-camera N-pass loop — RenderLayers `[0, zone]`, ordered passes, first zone clears color+depth while later zones load both; per-cell zone tagging on every cell-positioned entity type's meshes; single-zone levels keep the one-camera fast path
+- [x] Skybox: procedural inverted sphere (starry-night/daylight/sunset), seeded canvas textures, per-frame recentering, zone-1 tagging in multi-zone levels
+- [x] Thin walls: S/E edge planes with four seeded texture variants, same/mixed-texture material split, alpha-cutout masking, zone tagging; edge blocking now consulted by player movement, interaction, projectiles, AND enemies
+- [x] Forest: seeded placement math in delve-core (pinned parity tests) + billboard rendering reusing the camera-yaw system; whole-layer zone tagging with TS's `indexOf+1||1` fallback
+- [x] Decorative props: pillars, rubble scatter, stalactites/stalagmites, statues, crate stacks, banners
+- [x] Particles + light culling: dust motes, sconce embers (deferred one-shot source snapshot), water drips with splash rings, fireflies; light visibility culled by camera distance — all wired, overlay-gated to match TS
+- [x] Enemy tick parity: all layers tick (background enemies move), per-layer hole avoidance from the layer below's live grid, thin-wall edge blocking, attacks land only from the player's layer, onHit status effects (spider poison) roll on the injected RNG
+- [x] Cross-review round fixes: zone-camera depth clearing, billboard material sidedness (double_sided vs cull_mode across nine files), pillar segment count, forest back-face lighting, zone-tagging remediation for all previously untagged entity types
 
-- [x] Game: environment objects — chests with animated lids and signal wiring, breakable and secret walls (wall-entity cells own their floor/ceiling; destruction persists across transitions via `destroyed_walls` replay), pushable blocks, signs
-- [x] Game: save/load — file-backed slots under `saves/`, slot-picker overlay, autosave on level arrival, death/restart flow (`save_store.rs`, `save_load_overlay.rs`, `Transition::PendingAction`)
-- [x] Game: combat feedback — sword swing overlay, enemy health bars (child billboards, logic unit-tested), enemy damage flash composed with the status tint in a single-writer system, hit shake, level-up toast
-- [x] Adversarial review round 2 fixes: active-layer launcher fires delivered via `apply_world_events` (they were silently discarded), destroyed-wall grid replay, overlay-pause (`paused()`) vs transition-freeze (`blocked()`) gating per system, move-only pickups
-- [x] Phase 3 gate: fmt/clippy/test green plus smoke runs, merged to main
-
-Interactive verification still owed (needs human keys, flagged for the user): save/load round-trip through the overlay, death → restart flow, trap launchers firing after a lever/plate trigger, chest/block/secret-wall interactions.
+Interactive verification owed (needs human keys, flagged for the user): everything from the phase 3-4 list (save/load round-trip, death → restart, trap launchers, chest/block/secret-wall interactions, dialogs/trading/quests) PLUS phase 5 content — falling into open pits and landing a layer down (`pit-traps`), walking ramps between layers (`test_ramps`), multi-zone sightlines and fog transitions (`dungeon_m1`), skybox variants (`ruins`, `forest_test`), forest trees (`forest_test`), lever-triggered boulders crushing enemies (`test_m4g`), enemy spawners (`test_m4f`), dust motes and embers (`dungeon2`), water drips (`ruins` floor 2), fireflies (`forest_test`), and background-layer enemies moving (`ruins`).
 
 Key Rust API notes for the shell work: `GameState::new` takes `GameStateDeps` (item DB `Arc`, enemy/npc registrar boxes — `EnemyDatabase`/`NpcDatabase` need registrar impls or wrappers) plus an injected `random` closure; TS callbacks became `WorldEvent`s drained via `gs.take_events()`; signal events are applied by `gs.handle_signal_events`; `interaction::interact` mirrors the TS use-key flow; `enemy_ai::update_enemies` takes a snapshot-based `is_door_open` closure (build it from door states before the call to avoid borrow conflicts). Pure-logic core modules that tick per-frame state (`player_controller`, `spawners`, `boulders`) take an injected read-only context struct for grid/database data GameState doesn't own itself, and return events for the shell to act on instead of driving rendering directly — `enemy_ai::EnemyUpdateContext` is the template every one of them follows.
 
