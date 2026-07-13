@@ -150,7 +150,12 @@ impl Player {
         }
     }
 
-    fn is_animating(&self) -> bool {
+    /// `pub(crate)` so the move-blocked handler can distinguish "the move
+    /// command was enqueued because a tween is mid-flight" (position
+    /// unchanged, nothing was attempted) from "the move was attempted and
+    /// rejected" — TS's `onMoveBlocked` only fires for the latter
+    /// (`player.ts`'s `isMoving` path queues silently).
+    pub(crate) fn is_animating(&self) -> bool {
         self.is_falling
             || self.pending_fall.is_some()
             || self.current_pos.distance(self.target_pos) > ANIM_THRESHOLD

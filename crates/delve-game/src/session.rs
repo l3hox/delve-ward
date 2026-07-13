@@ -19,11 +19,12 @@ use crate::tripwires::{self, TripwireHandles};
 use crate::wall_entities::{self, WallEntityHandles};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use delve_core::boulders::can_boulder_roll_to;
 use delve_core::game_state::{
     DoorState, GameState, LeverState, MultiLayerSnapshot, PitTrapState, WorldEvent, door_key,
     layer_door_key,
 };
-use delve_core::grid::{Facing, MoveRules, build_walkable_set};
+use delve_core::grid::{Facing, MoveRules, build_walkable_set, is_walkable};
 use delve_core::interaction::{InteractionType, interact};
 use delve_core::player_controller::{InventoryAction, process_inventory_action};
 use delve_core::random::Mulberry32;
@@ -242,57 +243,203 @@ pub struct WallEntityRender<'w, 's> {
     pub visibility: Query<'w, 's, &'static mut Visibility>,
 }
 
-/// Walking straight into an unopened secret wall reveals it — the only way
-/// TS triggers a reveal (there is no facing-and-interact path for secret
-/// walls). Detected by comparing the player's cell before and after the
-/// move: if forward movement was blocked and a secret wall sits in the
-/// facing cell, open it and retry the move once, matching the TS
-/// `setOnMoveBlocked` → `openSecretWall` → `retry()` flow. Multi-layer
-/// neighbor rebuilds are skipped — see `wall_entities`'s module doc comment.
-fn move_forward_with_secret_wall_reveal(
+/// Rendering handles [`move_with_blocked_handling`] needs beyond `Session`
+/// itself: secret-wall reveal visuals, block-push mesh animation, plate
+/// press/release visuals, and the HUD toast for a secret-wall reveal
+/// message.
+#[derive(SystemParam)]
+pub struct MoveBlockedRender<'w, 's> {
+    pub wall_entities: WallEntityRender<'w, 's>,
+    pub block: BlockRender<'w, 's>,
+    pub plate: PlateRender<'w, 's>,
+    pub hud: ResMut<'w, crate::hud::HudState>,
+}
+
+/// TS's `directionFromDelta` (`main.ts:816-821`).
+fn direction_from_delta(delta: (i32, i32)) -> Facing {
+    match delta {
+        (_, -1) => Facing::N,
+        (_, 1) => Facing::S,
+        (1, _) => Facing::E,
+        _ => Facing::W,
+    }
+}
+
+/// Ported from TS's `setOnMoveBlocked` handler (`main.ts:840-950`), fired
+/// whenever `attempt` leaves the player's cell unchanged. Three branches,
+/// each falling through to the next only if it doesn't apply:
+///
+/// 1. **Secret wall** (facing-gated — only `moveForward`'s own delta
+///    qualifies, matching TS's `isForward` check): reveal it, show a
+///    message, retry. Multi-layer neighbor rebuilds are skipped — see
+///    `wall_entities`'s module doc comment.
+/// 2. **Block push**: a boulder sitting past the block gets nudged instead
+///    if it can actually roll there — the block stays put and there's no
+///    retry either way, matching walking straight into a boulder. With no
+///    boulder past it, the block itself is pushed if the destination is
+///    walkable and clear of enemies/blocks/barrels/edges — animate the
+///    mesh, press the destination plate if one's there, release the source
+///    plate if it was active, then retry.
+/// 3. **Direct boulder push**: unguarded — `push_boulder`'s own
+///    `pushable && Idle` gate is the only check. An invalid push still
+///    starts the boulder rolling; `tick_boulders` bounces or idles it back
+///    on the next tick the same way it resolves every other non-idle
+///    boulder, regardless of how it got that way.
+///
+/// `retry` in TS is a closure stored on `this` and invoked later from
+/// inside the same callback scope that still holds `gameState`/`ls.player`
+/// — awkward to express in Rust without interior mutability. The direct
+/// translation is a second, ordinary call to `attempt` after the mutation
+/// completes, once the first call's borrow of `session.game` has already
+/// ended: no stored closures, the same snapshot-then-mutate shape the enemy
+/// tick (and this function's forward-only, secret-wall-only predecessor)
+/// already used.
+/// A queued command that gets rejected when it finally drains
+/// (`Player::update`'s internal replay) never reaches this handler — TS's
+/// replayed closures re-invoke the move method, `onMoveBlocked` included, so
+/// TS re-fires pushes on every drained attempt while this port fires once
+/// per fresh, non-animating press (`main.ts:840-950`; `player.ts`'s queue).
+/// A feel difference under held keys, not a correctness one — accepted over
+/// threading render params into the drain path.
+fn move_with_blocked_handling(
     session: &mut Session,
     player: &mut Player,
-    wall_entities: &mut WallEntityRender,
-    hud: &mut crate::hud::HudState,
+    delta: (i32, i32),
+    attempt: fn(&mut Player, &MoveRules, bool),
+    render: &mut MoveBlockedRender,
 ) {
     let before = player.grid_state();
-    let (before_col, before_row, before_facing) = (before.col, before.row, before.facing);
+    let (before_col, before_row, facing) = (before.col, before.row, before.facing);
+    // Captured before the attempt: when a tween is mid-flight the attempt
+    // only enqueues (position unchanged without anything being blocked),
+    // and TS's onMoveBlocked never fires on enqueue.
+    let was_animating = player.is_animating();
 
-    with_move_rules(&session.game, |rules| player.move_forward(rules, false));
+    with_move_rules(&session.game, |rules| attempt(player, rules, false));
 
     let after = player.grid_state();
     if (after.col, after.row) != (before_col, before_row) {
         return; // moved normally, nothing was blocking
     }
+    if was_animating {
+        return; // the command was enqueued, not attempted — nothing blocked
+    }
 
-    let (delta_col, delta_row) = before_facing.delta();
     let (col, row) = (
-        i64::from(before_col + delta_col),
-        i64::from(before_row + delta_row),
+        i64::from(before_col + delta.0),
+        i64::from(before_row + delta.1),
     );
-    let should_open = session
-        .game
-        .get_secret_wall(col, row)
-        .is_some_and(|wall| !wall.opened);
-    if !should_open {
+    let is_forward = delta == facing.delta();
+
+    // --- Secret wall reveal (facing-gated) ---
+    if is_forward {
+        let should_open = session
+            .game
+            .get_secret_wall(col, row)
+            .is_some_and(|wall| !wall.opened);
+        if should_open {
+            let (opened, persistent) = session.game.open_secret_wall(col, row, &mut session.grid);
+            if opened {
+                wall_entities::reveal_wall_entity(
+                    &render.wall_entities.handles,
+                    &mut render.wall_entities.visibility,
+                    &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
+                    persistent,
+                );
+                render.hud.show_message(if persistent {
+                    "An illusionary wall!"
+                } else {
+                    "A secret passage!"
+                });
+                with_move_rules(&session.game, |rules| attempt(player, rules, false));
+                return;
+            }
+        }
+    }
+
+    // --- Block push ---
+    if session.game.get_block(col, row).is_some() {
+        let (dest_col, dest_row) = (col + i64::from(delta.0), row + i64::from(delta.1));
+
+        if session.game.is_boulder_at(dest_col, dest_row) {
+            let beyond_col = dest_col + i64::from(delta.0);
+            let beyond_row = dest_row + i64::from(delta.1);
+            if can_boulder_roll_to(
+                &session.game,
+                &session.grid,
+                &session.walkable,
+                dest_col,
+                dest_row,
+                beyond_col,
+                beyond_row,
+            ) {
+                session
+                    .game
+                    .push_boulder(dest_col, dest_row, direction_from_delta(delta));
+            }
+            return;
+        }
+
+        let (Ok(dest_col32), Ok(dest_row32)) = (i32::try_from(dest_col), i32::try_from(dest_row))
+        else {
+            return;
+        };
+        let is_door_open = |c: i32, r: i32| session.game.is_door_open(i64::from(c), i64::from(r));
+        let can_push = is_walkable(
+            &session.grid,
+            dest_col32,
+            dest_row32,
+            &session.walkable,
+            Some(&is_door_open),
+            None,
+        ) && !session.game.is_blocked_by_enemy(dest_col, dest_row)
+            && !session.game.is_block_at(dest_col, dest_row)
+            && !session.game.is_barrel_at(dest_col, dest_row)
+            && !session.game.is_edge_blocked(col, row, dest_col, dest_row);
+        if can_push {
+            let src_key = door_key(col, row);
+            let dest_key = door_key(dest_col, dest_row);
+            let src_was_activated = session
+                .game
+                .active_layer()
+                .plates
+                .get(&src_key)
+                .is_some_and(|plate| plate.activated);
+            let dest_plate_exists = session.game.active_layer().plates.contains_key(&dest_key);
+
+            session.game.push_block(col, row, dest_col, dest_row);
+
+            let layer_index = session.game.active_layer_index;
+            let from_render_key = layer_door_key(layer_index, &src_key);
+            let to_render_key = layer_door_key(layer_index, &dest_key);
+            blocks::animate_block_push(
+                &mut render.block,
+                &from_render_key,
+                to_render_key.clone(),
+                dest_col,
+                dest_row,
+            );
+
+            let layer_y_offset = layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
+            if dest_plate_exists {
+                plates::press_plate(&mut render.plate, &to_render_key, layer_y_offset);
+            }
+            if src_was_activated {
+                session.game.deactivate_pressure_plate(col, row);
+                plates::release_plate(&mut render.plate, &from_render_key, layer_y_offset);
+            }
+
+            with_move_rules(&session.game, |rules| attempt(player, rules, false));
+        }
         return;
     }
-    let (opened, persistent) = session.game.open_secret_wall(col, row, &mut session.grid);
-    if !opened {
-        return;
+
+    // --- Direct boulder push (unguarded — push_boulder's own gate decides) ---
+    if session.game.is_boulder_at(col, row) {
+        session
+            .game
+            .push_boulder(col, row, direction_from_delta(delta));
     }
-    wall_entities::reveal_wall_entity(
-        &wall_entities.handles,
-        &mut wall_entities.visibility,
-        &layer_door_key(session.game.active_layer_index, &door_key(col, row)),
-        persistent,
-    );
-    hud.show_message(if persistent {
-        "An illusionary wall!"
-    } else {
-        "A secret passage!"
-    });
-    with_move_rules(&session.game, |rules| player.move_forward(rules, false));
 }
 
 pub fn player_input(
@@ -300,8 +447,7 @@ pub fn player_input(
     mut session: ResMut<Session>,
     gate: crate::overlay::InputGate,
     mut players: Query<&mut Player>,
-    mut wall_entities: WallEntityRender,
-    mut hud: ResMut<crate::hud::HudState>,
+    mut render: MoveBlockedRender,
     debug_flags: Res<crate::debug::DebugFlags>,
 ) {
     if gate.blocked() {
@@ -313,28 +459,64 @@ pub fn player_input(
     // TS ties `debugNoClip` 1:1 to `debugFullbright` (`inputSystem.ts:342`)
     // rather than exposing a separate flag, so this reads the same one.
     let no_clip = debug_flags.fullbright;
+
     if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
         if no_clip {
             with_move_rules(&session.game, |rules| player.move_forward(rules, true));
         } else {
-            move_forward_with_secret_wall_reveal(
+            let delta = player.grid_state().facing.delta();
+            move_with_blocked_handling(
                 &mut session,
                 &mut player,
-                &mut wall_entities,
-                &mut hud,
+                delta,
+                Player::move_forward,
+                &mut render,
+            );
+        }
+    }
+    if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
+        if no_clip {
+            with_move_rules(&session.game, |rules| player.move_back(rules, true));
+        } else {
+            let (fdc, fdr) = player.grid_state().facing.delta();
+            move_with_blocked_handling(
+                &mut session,
+                &mut player,
+                (-fdc, -fdr),
+                Player::move_back,
+                &mut render,
+            );
+        }
+    }
+    if keys.just_pressed(KeyCode::KeyA) {
+        if no_clip {
+            with_move_rules(&session.game, |rules| player.strafe_left(rules, true));
+        } else {
+            let delta = player.grid_state().facing.turned_left().delta();
+            move_with_blocked_handling(
+                &mut session,
+                &mut player,
+                delta,
+                Player::strafe_left,
+                &mut render,
+            );
+        }
+    }
+    if keys.just_pressed(KeyCode::KeyD) {
+        if no_clip {
+            with_move_rules(&session.game, |rules| player.strafe_right(rules, true));
+        } else {
+            let delta = player.grid_state().facing.turned_right().delta();
+            move_with_blocked_handling(
+                &mut session,
+                &mut player,
+                delta,
+                Player::strafe_right,
+                &mut render,
             );
         }
     }
     with_move_rules(&session.game, |rules| {
-        if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
-            player.move_back(rules, no_clip);
-        }
-        if keys.just_pressed(KeyCode::KeyA) {
-            player.strafe_left(rules, no_clip);
-        }
-        if keys.just_pressed(KeyCode::KeyD) {
-            player.strafe_right(rules, no_clip);
-        }
         if keys.just_pressed(KeyCode::KeyQ) || keys.just_pressed(KeyCode::ArrowLeft) {
             player.turn_left(rules);
         }
@@ -1025,8 +1207,10 @@ pub struct InteractEffects<'w, 's> {
     >,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn interact_input(
     keys: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
     mut session: ResMut<Session>,
     transition: Res<Transition>,
     mut players: Query<&mut Player>,
@@ -1090,6 +1274,11 @@ pub fn interact_input(
                     ),
                 ),
             );
+            // `inputSystem.ts:170-173` pairs extinguishSconce with an
+            // immediate setSources re-collect; the deferred rebuild sees the
+            // zeroed light intensity because extinguish_sconce mutates it
+            // synchronously and init_embers runs later in PostUpdate.
+            commands.insert_resource(crate::particles::EmbersPending);
         }
         InteractionType::LeverActivated => {
             for target in result.targets.iter().flatten() {
@@ -1127,13 +1316,43 @@ pub fn interact_input(
         }
         InteractionType::BlockPushed => {
             if let (Some(to_col), Some(to_row)) = (result.target_col, result.target_row) {
+                let to_render_key =
+                    layer_door_key(session.game.active_layer_index, &door_key(to_col, to_row));
                 blocks::animate_block_push(
                     &mut effects.blocks,
                     &facing_render_key,
-                    layer_door_key(session.game.active_layer_index, &door_key(to_col, to_row)),
+                    to_render_key.clone(),
                     to_col,
                     to_row,
                 );
+                // `inputSystem.ts:180-188`: press the destination plate the
+                // push just activated, unconditionally deactivate the source
+                // plate, release its visual if it exists and is no longer
+                // active.
+                let layer_y_offset =
+                    session.game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
+                let dest_activated = session
+                    .game
+                    .active_layer()
+                    .plates
+                    .get(&door_key(to_col, to_row))
+                    .is_some_and(|plate| plate.activated);
+                if dest_activated {
+                    plates::press_plate(&mut signal.plate, &to_render_key, layer_y_offset);
+                }
+                let (facing_col, facing_row) = (i64::from(facing_cell.0), i64::from(facing_cell.1));
+                session
+                    .game
+                    .deactivate_pressure_plate(facing_col, facing_row);
+                let origin_released = session
+                    .game
+                    .active_layer()
+                    .plates
+                    .get(&facing_key)
+                    .is_some_and(|plate| !plate.activated);
+                if origin_released {
+                    plates::release_plate(&mut signal.plate, &facing_render_key, layer_y_offset);
+                }
             }
         }
         InteractionType::ChestOpened => {
