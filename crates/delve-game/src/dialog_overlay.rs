@@ -161,10 +161,18 @@ pub fn open_dialog_for_npc(
     };
 
     let session = start_dialog(npc_id, tree);
-    let events = match get_current_node(&session) {
-        Some(node) => execute_effects(node.effects.as_deref(), game, npc_id),
-        None => Vec::new(),
+    // TS's showDialogNode closes the panel the moment the current node
+    // fails to resolve; a tree whose start node is missing must not open
+    // an overlay that would block input while drawing nothing.
+    let Some(node) = get_current_node(&session) else {
+        warn!(
+            "dialog '{}' has a missing start node — not opening",
+            npc_def.dialog
+        );
+        hud.show_message(&format!("{}: \"...\"", npc_def.name));
+        return;
     };
+    let events = execute_effects(node.effects.as_deref(), game, npc_id);
     dialog_state.session = Some(session);
     dialog_state.highlighted = -1;
     *overlay = ActiveOverlay::Dialog;
@@ -314,10 +322,16 @@ fn apply_dialog_step(
         return;
     };
     let (next, events) = step(&mut session, &mut effects.session.game, &effects.quests.0);
-    if next.is_some() {
+    // A dangling `next` id leaves the session pointing at a node that
+    // doesn't exist; TS's showDialogNode closes the panel immediately in
+    // that case rather than blocking input on a blank overlay.
+    if next.is_some() && get_current_node(&session).is_some() {
         effects.dialog_state.session = Some(session);
         effects.dialog_state.highlighted = -1;
     } else {
+        if next.is_some() {
+            warn!("dialog step led to a missing node — closing the dialog");
+        }
         effects.dialog_state.session = None;
         *overlay = ActiveOverlay::None;
     }
