@@ -71,3 +71,7 @@ D10's seeding convention extends past startup textures to every runtime visual R
 ## D17: The player's grid copy is synced explicitly on every runtime mutation
 
 TS hands its player controller the same `string[]` the game state mutates, so `damageBreakableWall`'s and `openSecretWall`'s in-place writes reach walkability checks for free. Rust can't share one `Vec<String>` between the `Session` resource and the `Player` component, so `Player` keeps a clone and every site that opens a cell calls `Player::open_cell` alongside the `GameState` call. Chosen over threading the grid through `Player`'s whole move API (`run`, `debug_move`, `update`, plus every call site) or wrapping it in shared interior mutability; the mutation sites are few and each is a single added line. New grid-mutating features must call both.
+
+## D18: Ground item sprites render at double the TS size
+
+`EQUIPMENT_SIZE`/`CONSUMABLE_SIZE` in `ground_items.rs` are 0.8/0.7 against TS's 0.4/0.35 — a deliberate art-direction deviation requested during playtesting, not a port bug. `height` still derives from `size` (`size / 2 + 0.02`), so the larger sprites rest on the floor unchanged. `SPREAD_RADIUS` stays at TS's 0.3, so several items dropped in one cell now overlap more than in TS; revisit only if that reads badly. The first intentional break from numeric parity (D9 covers faithful porting of behaviour).

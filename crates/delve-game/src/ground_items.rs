@@ -17,9 +17,11 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 /// Equipment and consumables render at slightly different sizes for visual
-/// distinction.
-const EQUIPMENT_SIZE: f32 = 0.4;
-const CONSUMABLE_SIZE: f32 = 0.35;
+/// distinction. Both are double TS's own `EQUIPMENT_SIZE`/`CONSUMABLE_SIZE`
+/// (0.4/0.35) — a deliberate deviation from parity, see D18. `height` keeps
+/// deriving from `size`, so the larger sprites still rest on the floor.
+const EQUIPMENT_SIZE: f32 = 0.8;
+const CONSUMABLE_SIZE: f32 = 0.7;
 const SPREAD_RADIUS: f64 = 0.3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
