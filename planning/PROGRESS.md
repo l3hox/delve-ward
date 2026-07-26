@@ -6,7 +6,9 @@ Session-to-session state. Read this at the start of every session.
 
 ## Current Phase
 
-**Phase 6: parity audit and polish — agent-side work complete.** Phases 0-5 are merged to main; phase 6 is on `port/phase-6-parity-polish`, gated and ready to merge. What remains in phase 6 is the user's half: the interactive checklist below and the side-by-side visual comparison. See `planning/PHASE6-PLAN.md` for the full phase record (landed items, performance pass results, deferred follow-ups) and `planning/PARITY-GAPS.md` for the fully re-verified gap inventory.
+**Phase 7: closing the remaining parity gaps — planned, not started.** Phases 0-6 are merged to main. The plan is `planning/PHASE7-PLAN.md`, written from a code-verified sweep of what is genuinely still missing: the `drop_item`/ground-item/asset-sweep fixes, fuel-scaled torch light, trap launcher meshes, pit-trap chamber force-rendering, ramp landing half-tiles, the two deferred performance items, and a full re-verification of `PARITY-GAPS.md` (which has drifted — several rows list features that have since landed).
+
+Phase 6 merged along with a run of playthrough fixes the user found: player spawn height, culling frustum vs the cropped camera, stair targets, hollow-layer rendering, projectile height, breakable-wall walkability and geometry, damage-number depth, item icon resolution, particle sizing, neutral billboard lighting, and the zone-boundary splits for dungeon geometry and doors. See `planning/PHASE6-PLAN.md` for that phase's record.
 
 ## Next Steps
 
