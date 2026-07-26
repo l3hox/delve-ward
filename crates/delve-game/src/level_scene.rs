@@ -188,11 +188,17 @@ pub fn spawn_level_scene(
             })
             .unwrap_or_default();
 
-        let ramp_base_cells: HashMap<String, delve_core::grid::Facing> = layer
-            .ramps
-            .values()
-            .map(|ramp| (door_key(ramp.col, ramp.row), ramp.facing))
-            .collect();
+        // A ramp climbs a full layer, so this layer's geometry answers to its
+        // own ramps and to the ones landing on it from the layer below —
+        // TS reads the second set the same way, off `li - 1`
+        // (`rendering/sceneUtils.ts:84-99`).
+        let ramps_landing_from_below = layer_index
+            .checked_sub(1)
+            .and_then(|below_index| scene.game.layer(below_index))
+            .map(|below| below.ramps.values())
+            .into_iter()
+            .flatten();
+        let ramp_cells = ramps::build_ramp_info(layer.ramps.values(), ramps_landing_from_below);
 
         // Only the active layer's doors split their cell, and only in a
         // multi-zone level — TS's own `(li === activeLayerIdx && multiZone) ?
@@ -213,7 +219,7 @@ pub fn spawn_level_scene(
             &wall_entity_keys,
             &pit_trap_cells,
             &force_renderable_cells,
-            &ramp_base_cells,
+            &ramp_cells,
             &level_zones,
             &door_cells,
         );

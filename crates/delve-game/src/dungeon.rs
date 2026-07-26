@@ -11,6 +11,7 @@
 //! alongside the pit-ceiling toggle it sits next to in `session.rs`.
 
 use crate::level_scene::LevelEntity;
+use crate::ramps::RampCellInfo;
 use crate::textures::DungeonMaterials;
 use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
@@ -238,7 +239,8 @@ fn adjacent_cell_is_open(
         .is_some_and(|character| crate::session::is_solid_floor_char(character, char_defs))
 }
 
-/// Which way a cell's geometry is cut when the zone changes across it.
+/// Which way a cell's geometry is cut, whether by a zone boundary crossing
+/// it or by a ramp landing in it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SplitAxis {
     /// The boundary runs east-west; the cell splits into north and south
@@ -326,6 +328,28 @@ fn half_mesh(width: f32, height: f32, uv_axis: usize) -> Mesh {
     mesh
 }
 
+/// Where a ramp's kept half sits relative to the whole piece's centre: a
+/// quarter cell toward the direction it is named for. TS writes this out per
+/// case as `oz = keepDir === 'S' ? CELL_SIZE / 4 : -CELL_SIZE / 4` and three
+/// siblings (`rendering/dungeon.ts:210,217,374,378`); each one is that
+/// facing's own grid delta scaled by a quarter cell.
+fn kept_half_offset(keep: Facing) -> Vec3 {
+    let quarter = CELL_SIZE / 4.0;
+    let (dcol, drow) = keep.delta();
+    Vec3::new(dcol as f32 * quarter, 0.0, drow as f32 * quarter)
+}
+
+/// A kept half is what a cut across its own axis leaves behind: a north or
+/// south half comes from a north-south cut, an east or west half from an
+/// east-west one — TS picks between `halfTileNS` and `halfTileEW` on the same
+/// test (`rendering/dungeon.ts:207`).
+fn kept_half_axis(keep: Facing) -> SplitAxis {
+    match keep {
+        Facing::N | Facing::S => SplitAxis::NorthSouth,
+        Facing::E | Facing::W => SplitAxis::WestEast,
+    }
+}
+
 // Wall faces against a solid charDef neighbor use that neighbor's wallTexture.
 fn wall_material_for_face(
     grid: &[Vec<char>],
@@ -355,6 +379,11 @@ fn wall_material_for_face(
 /// cell's own environment zone (`zones::tag_cell`, a no-op when `zones` isn't
 /// multi-zone) — except door cells that two zones meet inside, whose geometry
 /// is cut in half so the seam falls in the doorway (see [`ZoneSplit`]).
+///
+/// `ramp_cells` carries the deviations ramps impose on the cells they reach
+/// (see [`crate::ramps::build_ramp_info`]). Every one of them is checked
+/// ahead of the zone split, as TS checks them, so a cell that is both a ramp
+/// landing and a zone boundary is cut by the ramp rather than twice.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_dungeon(
     commands: &mut Commands,
@@ -365,7 +394,7 @@ pub fn spawn_dungeon(
     wall_entity_cells: &HashSet<String>,
     pit_trap_cells: &HashSet<String>,
     force_renderable_cells: &HashSet<String>,
-    ramp_base_cells: &HashMap<String, Facing>,
+    ramp_cells: &HashMap<String, RampCellInfo>,
     zones: &LevelZones,
     door_cells: &HashSet<String>,
 ) {
@@ -463,6 +492,7 @@ pub fn spawn_dungeon(
             // The two halves' offsets from the cell centre, along whichever
             // axis the split runs.
             let half_offset = CELL_SIZE / 4.0;
+            let ramp_info = ramp_cells.get(&key);
 
             // Pit-trap cells keep their normal ceiling/walls here but get a
             // separate, toggleable floor tile from `spawn_pit_floors`
@@ -472,7 +502,34 @@ pub fn spawn_dungeon(
             if !pit_trap_cells.contains(&key) && !openness.open_bottom(col_index, row_index) {
                 let floor_material = materials.floor(&textures.floor);
                 let flat = Quat::from_rotation_x(-FRAC_PI_2);
-                if let Some(split) = &split {
+                if let Some(keep) = ramp_info.and_then(|info| info.keep_floor_half) {
+                    // A ramp from the layer below arrives at this floor's
+                    // level, halfway across this cell. Only the half ahead of
+                    // the climb is floor; the near half is the opening the
+                    // ramp comes up through, and a whole tile would cap it.
+                    let mesh = match kept_half_axis(keep) {
+                        SplitAxis::NorthSouth => half_tile_north_south.clone(),
+                        SplitAxis::WestEast => half_tile_west_east.clone(),
+                    };
+                    let center = Vec3::new(center_x, layer_y_offset, center_z);
+                    let floor = commands
+                        .spawn((
+                            LevelEntity,
+                            Mesh3d(mesh),
+                            MeshMaterial3d(floor_material),
+                            Transform::from_translation(center + kept_half_offset(keep))
+                                .with_rotation(flat),
+                        ))
+                        .id();
+                    zones::tag_cell(
+                        commands,
+                        zones,
+                        layer.index,
+                        floor,
+                        i64::from(col),
+                        i64::from(row),
+                    );
+                } else if let Some(split) = &split {
                     let (mesh, leading_position, trailing_position) = match split.axis {
                         SplitAxis::NorthSouth => (
                             half_tile_north_south.clone(),
@@ -523,9 +580,8 @@ pub fn spawn_dungeon(
             // A ramp based at this cell rises up through where the ceiling
             // would be — TS's `buildRampInfo` marks every ramp base cell
             // `skipCeiling: true` unconditionally.
-            let ramp_facing = ramp_base_cells.get(&key).copied();
-            if ceiling_enabled && ramp_facing.is_none() && !openness.open_top(col_index, row_index)
-            {
+            let skip_ceiling = ramp_info.is_some_and(|info| info.skip_ceiling);
+            if ceiling_enabled && !skip_ceiling && !openness.open_top(col_index, row_index) {
                 let ceiling_material = materials.ceiling(&textures.ceiling);
                 let ceiling_y = WALL_HEIGHT + layer_y_offset;
                 let facing_down = Quat::from_rotation_x(FRAC_PI_2);
@@ -577,30 +633,32 @@ pub fn spawn_dungeon(
                 }
             }
 
-            // (rotation, neighbor delta, wall plane center offset, the axis the
-            // wall runs along — a wall only splits when the zone boundary
-            // crosses its length, so north/south walls answer to an east-west
-            // boundary and east/west walls to a north-south one)
+            // (which side of the cell, its rotation, its wall plane's centre
+            // offset, the axis the wall runs along — a wall only splits when
+            // the zone boundary crosses its length, so north/south walls
+            // answer to an east-west boundary and east/west walls to a
+            // north-south one)
             let faces = [
-                (0.0, (0, -1), (0.0, -CELL_SIZE / 2.0), SplitAxis::WestEast),
-                (PI, (0, 1), (0.0, CELL_SIZE / 2.0), SplitAxis::WestEast),
+                (Facing::N, 0.0, (0.0, -CELL_SIZE / 2.0), SplitAxis::WestEast),
+                (Facing::S, PI, (0.0, CELL_SIZE / 2.0), SplitAxis::WestEast),
                 (
+                    Facing::E,
                     -FRAC_PI_2,
-                    (1, 0),
                     (CELL_SIZE / 2.0, 0.0),
                     SplitAxis::NorthSouth,
                 ),
                 (
+                    Facing::W,
                     FRAC_PI_2,
-                    (-1, 0),
                     (-CELL_SIZE / 2.0, 0.0),
                     SplitAxis::NorthSouth,
                 ),
             ];
-            for (rotation_y, (dcol, drow), (offset_x, offset_z), split_when) in faces {
+            for (face, rotation_y, (offset_x, offset_z), split_when) in faces {
+                let (dcol, drow) = face.delta();
                 // The wall a ramp opens through is skipped too — TS's
                 // `rampDirs?.includes(direction)` check.
-                if ramp_facing.is_some_and(|facing| facing.delta() == (dcol, drow)) {
+                if ramp_info.is_some_and(|info| info.suppressed_walls.contains(&face)) {
                     continue;
                 }
                 // A face toward a breakable or secret wall belongs to that
@@ -636,6 +694,30 @@ pub fn spawn_dungeon(
                 let wall_material = materials.wall(&wall_texture);
                 let wall_y = WALL_HEIGHT / 2.0 + layer_y_offset;
                 let rotation = Quat::from_rotation_y(rotation_y);
+                if let Some(keep) = ramp_info.and_then(|info| info.wall_half(face)) {
+                    // The ramp's own rising geometry stands where the other
+                    // half of this wall would, so only the half past the
+                    // climb is built.
+                    let plane = Vec3::new(center_x + offset_x, wall_y, center_z + offset_z);
+                    let half = commands
+                        .spawn((
+                            LevelEntity,
+                            Mesh3d(half_wall_mesh.clone()),
+                            MeshMaterial3d(wall_material),
+                            Transform::from_translation(plane + kept_half_offset(keep))
+                                .with_rotation(rotation),
+                        ))
+                        .id();
+                    zones::tag_cell(
+                        commands,
+                        zones,
+                        layer.index,
+                        half,
+                        i64::from(col),
+                        i64::from(row),
+                    );
+                    continue;
+                }
                 if let Some(split) = split.as_ref().filter(|split| split.axis == split_when) {
                     let (leading_position, trailing_position) = match split.axis {
                         SplitAxis::NorthSouth => (
@@ -947,6 +1029,30 @@ mod tests {
         assert!(split.axis == SplitAxis::WestEast);
         assert_eq!(split.leading, 2, "west half joins the western zone");
         assert_eq!(split.trailing, 5);
+    }
+
+    /// A ramp's kept half sits a quarter cell toward the direction it is
+    /// named for. That sign is what decides whether the surviving floor is in
+    /// front of the ramp mouth or capping it, and whether a halved wall
+    /// stands past the climb or through it.
+    #[test]
+    fn a_kept_half_sits_a_quarter_cell_toward_its_own_direction() {
+        let quarter = CELL_SIZE / 4.0;
+        assert_eq!(kept_half_offset(Facing::N), Vec3::new(0.0, 0.0, -quarter));
+        assert_eq!(kept_half_offset(Facing::S), Vec3::new(0.0, 0.0, quarter));
+        assert_eq!(kept_half_offset(Facing::E), Vec3::new(quarter, 0.0, 0.0));
+        assert_eq!(kept_half_offset(Facing::W), Vec3::new(-quarter, 0.0, 0.0));
+    }
+
+    /// The mesh a kept half uses follows the same axis its offset moves
+    /// along, so a north half is a full-width tile nudged north rather than a
+    /// narrow one nudged sideways.
+    #[test]
+    fn a_kept_half_is_cut_across_the_axis_its_direction_runs_along() {
+        assert!(kept_half_axis(Facing::N) == SplitAxis::NorthSouth);
+        assert!(kept_half_axis(Facing::S) == SplitAxis::NorthSouth);
+        assert!(kept_half_axis(Facing::E) == SplitAxis::WestEast);
+        assert!(kept_half_axis(Facing::W) == SplitAxis::WestEast);
     }
 
     /// A cell whose neighbours are all in its own zone is not a boundary and

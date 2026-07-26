@@ -13,26 +13,11 @@
 //! cell never counts as solid (`rampTopCells` in TS, `ramp_top_cells` here)
 //! — two ramps landing on adjacent cells don't wall each other off.
 //!
-//! `dungeon.rs`'s own per-cell pass already handles the ramp's *base*
-//! cell — full ceiling and the wall in the ramp's own facing direction both
-//! skipped there (`spawn_dungeon`'s `ramp_base_cells` param) — matching TS's
-//! `mergeRampCell(doorKey(ramp.col, ramp.row), { wallDirs: [ramp.facing],
-//! skipCeiling: true, skipFloor: false })`. This module's own base-cell
-//! character lookup already relies on the base cell being non-renderable in
-//! that pass to source the ramp's own textures.
-//!
-//! **Deliberately not ported — needs half-tile geometry `dungeon.rs` has no
-//! primitive for yet** (verified this doesn't block the three behaviors
-//! above, which are entirely within this module and the ramp's own top
-//! cell): TS's *second* `mergeRampCell` call in `sceneUtils.ts::buildRampInfo`
-//! (the top cell's own `wallDirs`/`keepHalf`, halving its wall facing back
-//! down the ramp rather than skipping it outright), the `rampHalfWalls` map
-//! (halving neighbors' walls that face a ramp's top cell), and the
-//! layer-above's half-floor patch at the landing (`buildRampInfo`'s
-//! `if (li > 0)` peek). All three are cosmetic — avoiding a wall or floor
-//! visually clipping through the ramp's rising geometry right at the
-//! landing — not gameplay-relevant, and remain a disclosed, bounded scope
-//! decision rather than a silent gap.
+//! Every cell a ramp touches other than the ramp mesh itself is built by
+//! `dungeon.rs`'s ordinary per-cell pass, from the [`RampCellInfo`] map
+//! [`build_ramp_info`] produces here — the same split TS draws between
+//! `sceneUtils.ts::buildRampInfo` and the geometry decisions
+//! `rendering/dungeon.ts` makes from its output.
 
 use crate::dungeon::{CELL_SIZE, LAYER_HEIGHT, LayerSpawn, WALL_HEIGHT};
 use crate::level_scene::LevelEntity;
@@ -41,14 +26,160 @@ use crate::zones::{self, LevelZones};
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
-use delve_core::game_state::{LayerState, RampStyle};
+use delve_core::game_state::{LayerState, RampInstance, RampStyle, door_key};
 use delve_core::grid::{Facing, build_walkable_set};
 use delve_core::texture_resolver::resolve_textures;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 const RAMP_STEP_COUNT: usize = 8;
 const RAMP_STEP_HEIGHT: f32 = LAYER_HEIGHT / RAMP_STEP_COUNT as f32;
 const RAMP_STEP_DEPTH: f32 = CELL_SIZE / RAMP_STEP_COUNT as f32;
+
+fn opposite(facing: Facing) -> Facing {
+    match facing {
+        Facing::N => Facing::S,
+        Facing::S => Facing::N,
+        Facing::E => Facing::W,
+        Facing::W => Facing::E,
+    }
+}
+
+/// The cell a ramp lands in: one step along its facing from its base cell.
+fn landing_cell(ramp: &RampInstance) -> (i64, i64) {
+    let (dcol, drow) = ramp.facing.delta();
+    (ramp.col + i64::from(dcol), ramp.row + i64::from(drow))
+}
+
+/// How one cell's floor, ceiling, and walls deviate from ordinary geometry
+/// because a ramp reaches it — TS's `RampCellInfo`
+/// (`rendering/dungeon.ts:98-106`) with its sibling `rampHalfWalls` map
+/// (`:109-112`) folded into the same record. TS keys that map separately only
+/// because the cells it names are the landing's lateral *neighbours* rather
+/// than the ramp's own cells; a record carrying nothing but an override reads
+/// identically to no record at all at every one of `spawn_dungeon`'s use
+/// sites.
+///
+/// TS's `skipFloor` has no counterpart here: all three of `buildRampInfo`'s
+/// merge calls pass it `false` and the merge only ever ORs, so nothing can
+/// ever set it.
+#[derive(Default)]
+pub struct RampCellInfo {
+    /// Wall faces this cell does not build at all — TS's `wallDirs`.
+    pub suppressed_walls: Vec<Facing>,
+    pub skip_ceiling: bool,
+    /// The floor builds only the half lying this way — TS's `floorKeepHalf`.
+    pub keep_floor_half: Option<Facing>,
+    /// The two wall faces perpendicular to this direction build only the half
+    /// lying this way — TS's `keepHalf`.
+    pub keep_wall_half: Option<Facing>,
+    /// Per-face override of [`Self::keep_wall_half`], applied ahead of it and
+    /// without its perpendicularity rule — TS's `rampHalfWalls` entries.
+    pub wall_half_overrides: HashMap<Facing, Facing>,
+}
+
+impl RampCellInfo {
+    /// Which half of `face`'s wall survives, when the wall is halved at all.
+    /// TS reads the per-face override first and falls back to the cell-wide
+    /// keep, which applies only to the two faces perpendicular to it — an
+    /// east or west keep halves the north and south faces, a north or south
+    /// keep the east and west ones
+    /// (`rendering/dungeon.ts:396-399,409-412,422-425,435-438`).
+    pub fn wall_half(&self, face: Facing) -> Option<Facing> {
+        if let Some(keep) = self.wall_half_overrides.get(&face) {
+            return Some(*keep);
+        }
+        let keep = self.keep_wall_half?;
+        let perpendicular = match face {
+            Facing::N | Facing::S => matches!(keep, Facing::E | Facing::W),
+            Facing::E | Facing::W => matches!(keep, Facing::N | Facing::S),
+        };
+        perpendicular.then_some(keep)
+    }
+}
+
+fn suppress_wall(cell: &mut RampCellInfo, face: Facing) {
+    if !cell.suppressed_walls.contains(&face) {
+        cell.suppressed_walls.push(face);
+    }
+}
+
+/// Everything one layer's ordinary cell geometry owes to ramps — ported from
+/// `rendering/sceneUtils.ts:46-116`'s `buildRampInfo`, in its order.
+///
+/// Three cell roles. A ramp's base cell loses its ceiling, which the ramp
+/// rises through, and the wall it climbs out of. The cell it lands in loses
+/// the wall facing back down the climb, and halves the two walls flanking
+/// that climb so only the far half past the ramp mouth stands; the two cells
+/// flanking the landing halve the wall they turn toward it for the same
+/// reason. Those are all on the ramp's own layer.
+///
+/// The third role is not: a ramp climbs a full `LAYER_HEIGHT`, so it arrives
+/// at the floor level of the layer *above* it. `ramps_on_layer_below` are the
+/// ramps whose landing cells are cells of this layer, and that floor keeps
+/// only the half ahead of the ramp — the near half is the hole the climb
+/// arrives through, and a whole tile there would cap the ramp off.
+///
+/// Ramps iterate in whatever order their map yields, which decides only which
+/// of two ramps landing in the same cell wins the half it keeps. TS resolves
+/// that by insertion order; no shipped level has two ramps sharing a landing.
+pub fn build_ramp_info<'a>(
+    ramps_on_layer: impl IntoIterator<Item = &'a RampInstance>,
+    ramps_on_layer_below: impl IntoIterator<Item = &'a RampInstance>,
+) -> HashMap<String, RampCellInfo> {
+    let own_layer: Vec<&RampInstance> = ramps_on_layer.into_iter().collect();
+    let mut cells: HashMap<String, RampCellInfo> = HashMap::new();
+
+    for ramp in &own_layer {
+        let base = cells.entry(door_key(ramp.col, ramp.row)).or_default();
+        suppress_wall(base, ramp.facing);
+        base.skip_ceiling = true;
+
+        let (landing_col, landing_row) = landing_cell(ramp);
+        let landing = cells.entry(door_key(landing_col, landing_row)).or_default();
+        suppress_wall(landing, opposite(ramp.facing));
+        if landing.keep_wall_half.is_none() {
+            landing.keep_wall_half = Some(ramp.facing);
+        }
+    }
+
+    for ramp in ramps_on_layer_below {
+        let (landing_col, landing_row) = landing_cell(ramp);
+        let landing = cells.entry(door_key(landing_col, landing_row)).or_default();
+        suppress_wall(landing, opposite(ramp.facing));
+        if landing.keep_floor_half.is_none() {
+            landing.keep_floor_half = Some(ramp.facing);
+        }
+    }
+
+    for ramp in &own_layer {
+        let (landing_col, landing_row) = landing_cell(ramp);
+        // The two cells flanking the landing, and the face each turns toward
+        // it — a climb running north or south is flanked east and west, and
+        // the other way round for one running east or west.
+        let flanks = if matches!(ramp.facing, Facing::N | Facing::S) {
+            [
+                ((landing_col + 1, landing_row), Facing::W),
+                ((landing_col - 1, landing_row), Facing::E),
+            ]
+        } else {
+            [
+                ((landing_col, landing_row + 1), Facing::N),
+                ((landing_col, landing_row - 1), Facing::S),
+            ]
+        };
+        for ((col, row), face) in flanks {
+            // TS's `Map.set` — a later ramp overwrites an earlier one here,
+            // the opposite of the first-wins merge the fields above use.
+            cells
+                .entry(door_key(col, row))
+                .or_default()
+                .wall_half_overrides
+                .insert(face, ramp.facing);
+        }
+    }
+
+    cells
+}
 
 /// Canonical orientation: bottom cell at +Z (south), top cell at -Z (north)
 /// — `facing = N` needs no rotation, matching TS's `FACING_ROTATION`.
@@ -330,14 +461,11 @@ fn spawn_stepped_ramp(
 /// midpoint between the bottom and top cell centers and rotated to the
 /// ramp's facing (`buildSingleRamp`'s exact placement math); each side's
 /// conditional top-cell wall panel, included only where that side's
-/// neighbor is actually solid and textured from the top cell; the ramp's
-/// own base cell getting neither a ceiling nor a wall in its facing
-/// direction, handled by `dungeon.rs`'s `spawn_dungeon` via its
-/// `ramp_base_cells` param rather than here.
+/// neighbor is actually solid and textured from the top cell.
 ///
-/// Deliberately not ported — see the module doc comment for the half-tile
-/// boundary: the top cell's own half-wall facing back down the ramp, and
-/// the layer-above's half-floor patch at the landing spot.
+/// Everything a ramp changes about ordinary cell geometry — the base cell's
+/// missing ceiling and wall, the landing's half walls and half floor — comes
+/// from [`build_ramp_info`] and is built by `dungeon.rs`, not here.
 pub fn spawn_ramps(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -517,5 +645,153 @@ mod tests {
         assert_eq!(top_cell_side_offsets(Facing::S), ((1, 0), (-1, 0)));
         assert_eq!(top_cell_side_offsets(Facing::E), ((0, -1), (0, 1)));
         assert_eq!(top_cell_side_offsets(Facing::W), ((0, 1), (0, -1)));
+    }
+
+    fn ramp(col: i64, row: i64, facing: Facing) -> RampInstance {
+        RampInstance {
+            id: None,
+            col,
+            row,
+            facing,
+            style: RampStyle::Ramp,
+        }
+    }
+
+    #[test]
+    fn a_ramp_opens_its_own_cells_ceiling_and_the_wall_it_climbs_out_of() {
+        let cells = build_ramp_info(&[ramp(4, 6, Facing::N)], &[]);
+        let base = &cells[&door_key(4, 6)];
+        assert_eq!(base.suppressed_walls, vec![Facing::N]);
+        assert!(base.skip_ceiling);
+        assert_eq!(base.keep_floor_half, None);
+        assert_eq!(base.keep_wall_half, None);
+    }
+
+    /// On the ramp's own layer the landing keeps its floor and ceiling whole:
+    /// what it loses is the wall facing back down the climb, and half of each
+    /// wall beside it.
+    #[test]
+    fn a_landing_on_the_ramps_own_layer_keeps_the_wall_halves_past_the_climb() {
+        let cells = build_ramp_info(&[ramp(4, 6, Facing::N)], &[]);
+        let landing = &cells[&door_key(4, 5)];
+        assert_eq!(landing.suppressed_walls, vec![Facing::S]);
+        assert_eq!(landing.keep_wall_half, Some(Facing::N));
+        assert!(!landing.skip_ceiling);
+        assert_eq!(landing.keep_floor_half, None);
+    }
+
+    /// The override is always set on a face perpendicular to the half it
+    /// keeps, which is what puts the surviving half in the wall's own plane.
+    #[test]
+    fn the_cells_flanking_a_landing_halve_the_wall_they_turn_toward_it() {
+        let climbing_north = build_ramp_info(&[ramp(4, 6, Facing::N)], &[]);
+        assert_eq!(
+            climbing_north[&door_key(5, 5)].wall_half(Facing::W),
+            Some(Facing::N)
+        );
+        assert_eq!(
+            climbing_north[&door_key(3, 5)].wall_half(Facing::E),
+            Some(Facing::N)
+        );
+
+        let climbing_east = build_ramp_info(&[ramp(4, 6, Facing::E)], &[]);
+        assert_eq!(
+            climbing_east[&door_key(5, 7)].wall_half(Facing::N),
+            Some(Facing::E)
+        );
+        assert_eq!(
+            climbing_east[&door_key(5, 5)].wall_half(Facing::S),
+            Some(Facing::E)
+        );
+    }
+
+    /// The half-floor patch belongs to the landing cell on the layer *above*
+    /// the ramp, never to the ramp's base cell — the climb arrives at that
+    /// layer's floor level halfway across the landing.
+    #[test]
+    fn a_ramp_from_the_layer_below_halves_the_floor_it_lands_on() {
+        let cells = build_ramp_info(&[], &[ramp(4, 6, Facing::N)]);
+        let landing = &cells[&door_key(4, 5)];
+        assert_eq!(landing.keep_floor_half, Some(Facing::N));
+        assert_eq!(landing.suppressed_walls, vec![Facing::S]);
+        assert_eq!(
+            landing.keep_wall_half, None,
+            "only a ramp on this layer halves a landing's walls"
+        );
+        assert!(
+            !cells.contains_key(&door_key(4, 6)),
+            "the cell over the ramp's base is ordinary geometry"
+        );
+    }
+
+    /// Every facing keeps the half it climbs toward, in the cell one step
+    /// that way — the pairing that decides whether the hole is in front of
+    /// the ramp mouth or behind it.
+    #[test]
+    fn each_facing_halves_the_landing_one_step_ahead_of_it() {
+        for (facing, landing_col, landing_row) in [
+            (Facing::N, 4, 5),
+            (Facing::S, 4, 7),
+            (Facing::E, 5, 6),
+            (Facing::W, 3, 6),
+        ] {
+            let cells = build_ramp_info(&[], &[ramp(4, 6, facing)]);
+            assert_eq!(
+                cells[&door_key(landing_col, landing_row)].keep_floor_half,
+                Some(facing),
+            );
+        }
+    }
+
+    /// `stairs.json` chains ramps: layer 1's ramp at (3,1) starts in the very
+    /// cell layer 0's ramp at (2,1) lands in, so that cell is both a base and
+    /// a landing and loses the walls at both ends of the climb.
+    #[test]
+    fn a_ramp_starting_where_the_one_below_lands_merges_both_roles() {
+        let cells = build_ramp_info(&[ramp(3, 1, Facing::E)], &[ramp(2, 1, Facing::E)]);
+        let shared = &cells[&door_key(3, 1)];
+        assert!(shared.skip_ceiling);
+        assert_eq!(shared.suppressed_walls, vec![Facing::E, Facing::W]);
+        assert_eq!(shared.keep_floor_half, Some(Facing::E));
+        assert_eq!(shared.keep_wall_half, None);
+    }
+
+    #[test]
+    fn wall_half_prefers_a_per_face_override_over_the_cell_wide_keep() {
+        let mut info = RampCellInfo {
+            keep_wall_half: Some(Facing::N),
+            ..Default::default()
+        };
+        info.wall_half_overrides.insert(Facing::E, Facing::S);
+        assert_eq!(info.wall_half(Facing::E), Some(Facing::S));
+        assert_eq!(info.wall_half(Facing::W), Some(Facing::N));
+    }
+
+    /// A keep direction halves only the walls it runs along; the wall it
+    /// points at is either suppressed outright or stands whole.
+    #[test]
+    fn a_cell_wide_keep_halves_only_the_two_faces_perpendicular_to_it() {
+        let keeping_north = RampCellInfo {
+            keep_wall_half: Some(Facing::N),
+            ..Default::default()
+        };
+        assert_eq!(keeping_north.wall_half(Facing::E), Some(Facing::N));
+        assert_eq!(keeping_north.wall_half(Facing::W), Some(Facing::N));
+        assert_eq!(keeping_north.wall_half(Facing::N), None);
+        assert_eq!(keeping_north.wall_half(Facing::S), None);
+
+        let keeping_east = RampCellInfo {
+            keep_wall_half: Some(Facing::E),
+            ..Default::default()
+        };
+        assert_eq!(keeping_east.wall_half(Facing::N), Some(Facing::E));
+        assert_eq!(keeping_east.wall_half(Facing::S), Some(Facing::E));
+        assert_eq!(keeping_east.wall_half(Facing::E), None);
+        assert_eq!(keeping_east.wall_half(Facing::W), None);
+    }
+
+    #[test]
+    fn a_cell_no_ramp_reaches_has_no_entry_at_all() {
+        assert!(build_ramp_info(&[], &[]).is_empty());
     }
 }
