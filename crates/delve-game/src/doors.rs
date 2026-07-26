@@ -1,12 +1,11 @@
 //! Door rendering: a stone frame per door cell plus a sliding panel that
 //! animates open/closed, ported from the TS door renderer and animator.
 //!
-//! A door whose cell sits at a zone boundary is tagged whole to its own
-//! cell's zone (`buildDoorFrame`'s unsplit-case fallback in `doorRenderer.ts`)
-//! rather than Z-split into two zone-tagged halves with a boundary
-//! `PointLight` — that split needs the same half-tile infrastructure
-//! `dungeon.rs`'s zone-boundary simplification also defers, so it's the same
-//! disclosed, bounded gap rather than a new one.
+//! A door standing where two environment zones meet is cut along the passage
+//! it blocks, each half tagged to the zone on its own side, so the frame and
+//! panel are shaded by the environment the viewer is standing in rather than
+//! by whichever one owns the cell. That doorway also carries a light on its
+//! indoor side which brightens as the door opens — see [`DoorBoundaryLight`].
 use crate::dungeon::{CELL_SIZE, WALL_HEIGHT};
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
@@ -78,9 +77,43 @@ pub struct DoorPanel {
     bounce: Option<DoorBounce>,
 }
 
+/// The light TS hangs in a zone-boundary doorway (`doorRenderer.ts:338-347`),
+/// tagged to the indoor zone only, so an opening door spills light into the
+/// room rather than out into the open air. Its brightness tracks how far the
+/// panel has actually travelled, not whether the door is logically open, so
+/// it comes up and down with the slide (`main.ts:1226-1231`).
+#[derive(Component)]
+pub struct DoorBoundaryLight {
+    /// The panel whose travel drives this light.
+    pub panel: Entity,
+}
+
+/// TS's `PointLight(0xffeedd, 3, 10, 2)`, whose intensity the game loop then
+/// overwrites every frame with `fraction * 2` — so 3 is never actually seen
+/// and 2 is the real maximum.
+const BOUNDARY_LIGHT_MAX_INTENSITY: f32 = 2.0;
+const BOUNDARY_LIGHT_RANGE: f32 = 10.0;
+const BOUNDARY_LIGHT_COLOR: Color = Color::srgb_u8(0xff, 0xee, 0xdd);
+/// Below this the light is switched off outright rather than left at a
+/// vanishingly dim value (`main.ts:1230`).
+const BOUNDARY_LIGHT_MIN_FRACTION: f32 = 0.01;
+
 impl DoorPanel {
     pub fn set_open(&mut self, open: bool) {
         self.target_val = if open { self.open_val } else { self.closed_val };
+    }
+
+    /// How far the panel has slid from closed to open, 0 to 1 — ported from
+    /// `doorAnimator.ts`'s `getOpenFraction`, including its degenerate-range
+    /// guard. Reads the live transform rather than `target_val`, so it follows
+    /// the animation instead of jumping with the state change.
+    pub fn open_fraction(&self, transform: &Transform) -> f32 {
+        let range = self.open_val - self.closed_val;
+        if range.abs() < 0.001 {
+            return 0.0;
+        }
+        let current = transform.translation[self.axis.component_index()];
+        ((current - self.closed_val) / range).clamp(0.0, 1.0)
     }
 
     /// Animate the door closing 20% then bouncing back to open.
@@ -92,6 +125,31 @@ impl DoorPanel {
         });
         self.target_val = self.open_val;
     }
+}
+
+/// The zones on either side of a door, in the frame's own local space where
+/// -Z and +Z are the two ends of the passage it blocks.
+///
+/// Ported from `doorRenderer.ts:234-254`. Which world neighbours those ends
+/// correspond to depends on the door's orientation, because an NS door's
+/// frame is rotated a quarter turn: an EW door looks north and south, an NS
+/// door west and east. A door is only split when both sides resolve to zones
+/// and those zones differ.
+fn door_split_zones(
+    zones: &LevelZones,
+    layer_index: usize,
+    orientation: DoorOrientation,
+    col: i64,
+    row: i64,
+) -> Option<(usize, usize)> {
+    let (negative_z, positive_z) = if orientation == DoorOrientation::EW {
+        ((col, row - 1), (col, row + 1))
+    } else {
+        ((col - 1, row), (col + 1, row))
+    };
+    let negative_zone = zones.zone_at(layer_index, negative_z.0, negative_z.1)?;
+    let positive_zone = zones.zone_at(layer_index, positive_z.0, positive_z.1)?;
+    (negative_zone != positive_zone).then_some((negative_zone, positive_zone))
 }
 
 /// Scale box UVs so each face samples texture proportional to its size,
@@ -266,6 +324,13 @@ pub fn spawn_doors(
     let lintel_mesh = box_mesh(meshes, CELL_SIZE, FRAME_WIDTH, FRAME_DEPTH, false);
     let button_mesh = box_mesh(meshes, BUTTON_SIZE, BUTTON_SIZE, BUTTON_DEPTH, false);
     let panel_mesh = box_mesh(meshes, panel_width, panel_height, PANEL_DEPTH, true);
+    // Half-depth counterparts for doors cut along the passage — each piece
+    // keeps the full cross-section and half the depth, so the pair occupies
+    // exactly the space the whole piece did.
+    let half_frame_depth = FRAME_DEPTH / 2.0;
+    let half_pillar_mesh = box_mesh(meshes, FRAME_WIDTH, WALL_HEIGHT, half_frame_depth, false);
+    let half_lintel_mesh = box_mesh(meshes, CELL_SIZE, FRAME_WIDTH, half_frame_depth, false);
+    let half_panel_mesh = box_mesh(meshes, panel_width, panel_height, PANEL_DEPTH / 2.0, true);
 
     for door in layer_state.doors.values() {
         let center_x = door.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
@@ -285,27 +350,61 @@ pub fn spawn_doors(
                 Visibility::default(),
             ))
             .id();
+        let split = door_split_zones(zones, layer_index, orientation, door.col, door.row);
+        // Each half sits a quarter-depth either side of the frame's centre
+        // plane, which is where the two zones meet.
+        let half_offset = half_frame_depth / 2.0;
+
         let pillar_x = panel_width / 2.0 + FRAME_WIDTH / 2.0;
         for x in [-pillar_x, pillar_x] {
-            let pillar = commands
+            if let Some((negative_zone, positive_zone)) = split {
+                for (z, zone) in [(-half_offset, negative_zone), (half_offset, positive_zone)] {
+                    let half = commands
+                        .spawn((
+                            Mesh3d(half_pillar_mesh.clone()),
+                            MeshMaterial3d(materials.door_frame.clone()),
+                            Transform::from_xyz(x, WALL_HEIGHT / 2.0, z),
+                        ))
+                        .id();
+                    commands.entity(frame).add_child(half);
+                    zones::tag_zone(commands, half, zone);
+                }
+            } else {
+                let pillar = commands
+                    .spawn((
+                        Mesh3d(pillar_mesh.clone()),
+                        MeshMaterial3d(materials.door_frame.clone()),
+                        Transform::from_xyz(x, WALL_HEIGHT / 2.0, 0.0),
+                    ))
+                    .id();
+                commands.entity(frame).add_child(pillar);
+                zones::tag_cell(commands, zones, layer_index, pillar, door.col, door.row);
+            }
+        }
+        let lintel_y = WALL_HEIGHT - FRAME_WIDTH / 2.0;
+        if let Some((negative_zone, positive_zone)) = split {
+            for (z, zone) in [(-half_offset, negative_zone), (half_offset, positive_zone)] {
+                let half = commands
+                    .spawn((
+                        Mesh3d(half_lintel_mesh.clone()),
+                        MeshMaterial3d(materials.door_frame.clone()),
+                        Transform::from_xyz(0.0, lintel_y, z),
+                    ))
+                    .id();
+                commands.entity(frame).add_child(half);
+                zones::tag_zone(commands, half, zone);
+            }
+        } else {
+            let lintel = commands
                 .spawn((
-                    Mesh3d(pillar_mesh.clone()),
+                    Mesh3d(lintel_mesh.clone()),
                     MeshMaterial3d(materials.door_frame.clone()),
-                    Transform::from_xyz(x, WALL_HEIGHT / 2.0, 0.0),
+                    Transform::from_xyz(0.0, lintel_y, 0.0),
                 ))
                 .id();
-            commands.entity(frame).add_child(pillar);
-            zones::tag_cell(commands, zones, layer_index, pillar, door.col, door.row);
+            commands.entity(frame).add_child(lintel);
+            zones::tag_cell(commands, zones, layer_index, lintel, door.col, door.row);
         }
-        let lintel = commands
-            .spawn((
-                Mesh3d(lintel_mesh.clone()),
-                MeshMaterial3d(materials.door_frame.clone()),
-                Transform::from_xyz(0.0, WALL_HEIGHT - FRAME_WIDTH / 2.0, 0.0),
-            ))
-            .id();
-        commands.entity(frame).add_child(lintel);
-        zones::tag_cell(commands, zones, layer_index, lintel, door.col, door.row);
 
         if !door.mechanical {
             for z in [
@@ -320,7 +419,21 @@ pub fn spawn_doors(
                     ))
                     .id();
                 commands.entity(frame).add_child(button);
-                zones::tag_cell(commands, zones, layer_index, button, door.col, door.row);
+                // A button is small enough to leave whole; it joins the zone
+                // on the side it faces (`doorRenderer.ts:262-268`).
+                match split {
+                    Some((negative_zone, positive_zone)) => {
+                        let zone = if z < 0.0 {
+                            negative_zone
+                        } else {
+                            positive_zone
+                        };
+                        zones::tag_zone(commands, button, zone);
+                    }
+                    None => {
+                        zones::tag_cell(commands, zones, layer_index, button, door.col, door.row);
+                    }
+                }
             }
         }
 
@@ -347,29 +460,108 @@ pub fn spawn_doors(
         let target_val = if is_open { open_val } else { closed_val };
         let mut start = Vec3::new(center_x, panel_height / 2.0 + layer_y_offset, center_z);
         start[slide_axis.component_index()] = target_val;
-        let panel = commands
-            .spawn((
-                LevelEntity,
-                Mesh3d(panel_mesh.clone()),
-                MeshMaterial3d(material),
-                Transform::from_translation(start).with_rotation(rotation),
-                DoorPanel {
-                    axis: slide_axis,
-                    closed_val,
-                    open_val,
-                    target_val,
-                    bounce: None,
-                },
-            ))
-            .id();
-        zones::tag_cell(commands, zones, layer_index, panel, door.col, door.row);
+        let panel_transform = Transform::from_translation(start).with_rotation(rotation);
+        let door_panel = DoorPanel {
+            axis: slide_axis,
+            closed_val,
+            open_val,
+            target_val,
+            bounce: None,
+        };
+        let panel = if let Some((negative_zone, positive_zone)) = split {
+            // The animated entity carries no mesh of its own; the two halves
+            // ride along as children, so the slide still moves one transform.
+            let panel_root = commands
+                .spawn((
+                    LevelEntity,
+                    panel_transform,
+                    Visibility::default(),
+                    door_panel,
+                ))
+                .id();
+            let panel_half_offset = PANEL_DEPTH / 4.0;
+            for (z, zone) in [
+                (-panel_half_offset, negative_zone),
+                (panel_half_offset, positive_zone),
+            ] {
+                let half = commands
+                    .spawn((
+                        Mesh3d(half_panel_mesh.clone()),
+                        MeshMaterial3d(material.clone()),
+                        Transform::from_xyz(0.0, 0.0, z),
+                    ))
+                    .id();
+                commands.entity(panel_root).add_child(half);
+                zones::tag_zone(commands, half, zone);
+            }
+            panel_root
+        } else {
+            let panel = commands
+                .spawn((
+                    LevelEntity,
+                    Mesh3d(panel_mesh.clone()),
+                    MeshMaterial3d(material),
+                    panel_transform,
+                    door_panel,
+                ))
+                .id();
+            zones::tag_cell(commands, zones, layer_index, panel, door.col, door.row);
+            panel
+        };
         panels.by_key.insert(
             layer_door_key(layer_index, &door_key(door.col, door.row)),
             panel,
         );
+
+        if let Some((negative_zone, positive_zone)) = split {
+            // TS picks the higher zone index as the indoor side
+            // (`doorRenderer.ts:340`), which holds because
+            // `buildEnvZoneMap` numbers zones in the order it first meets
+            // them, starting from the level's own default environment.
+            let indoor_zone = negative_zone.max(positive_zone);
+            let light = commands
+                .spawn((
+                    LevelEntity,
+                    DoorBoundaryLight { panel },
+                    PointLight {
+                        color: BOUNDARY_LIGHT_COLOR,
+                        intensity: 0.0,
+                        range: BOUNDARY_LIGHT_RANGE,
+                        shadow_maps_enabled: false,
+                        ..default()
+                    },
+                    Transform::from_xyz(center_x, WALL_HEIGHT * 0.7 + layer_y_offset, center_z),
+                    Visibility::Hidden,
+                ))
+                .id();
+            zones::tag_zone(commands, light, indoor_zone);
+        }
     }
 
     panels
+}
+
+/// Drives each boundary doorway's light from how far its panel has slid, so
+/// the light comes up as the door opens and fades as it closes
+/// (`main.ts:1226-1231`). Intensity converts through
+/// [`LUMENS_PER_THREE_UNIT`] like every other light in this port.
+pub fn update_door_boundary_lights(
+    mut lights: Query<(&DoorBoundaryLight, &mut PointLight, &mut Visibility)>,
+    panels: Query<(&DoorPanel, &Transform)>,
+) {
+    for (boundary, mut light, mut visibility) in &mut lights {
+        let Ok((panel, transform)) = panels.get(boundary.panel) else {
+            continue;
+        };
+        let fraction = panel.open_fraction(transform);
+        light.intensity =
+            fraction * BOUNDARY_LIGHT_MAX_INTENSITY * crate::torch::LUMENS_PER_THREE_UNIT;
+        *visibility = if fraction > BOUNDARY_LIGHT_MIN_FRACTION {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
 }
 
 pub fn animate_door_panels(time: Res<Time>, mut panels: Query<(&mut DoorPanel, &mut Transform)>) {
@@ -431,6 +623,57 @@ mod tests {
 
     fn grid(rows: &[&str]) -> Vec<String> {
         rows.iter().map(ToString::to_string).collect()
+    }
+
+    /// A panel that hasn't moved reads as shut, one at its stop as fully
+    /// open, and halfway as half — the curve the boundary light follows.
+    #[test]
+    fn open_fraction_tracks_the_panel_along_its_slide() {
+        let panel = DoorPanel {
+            axis: SlideAxis::Y,
+            closed_val: 1.0,
+            open_val: 3.0,
+            target_val: 3.0,
+            bounce: None,
+        };
+        let at = |y: f32| panel.open_fraction(&Transform::from_xyz(0.0, y, 0.0));
+        assert_eq!(at(1.0), 0.0);
+        assert_eq!(at(2.0), 0.5);
+        assert_eq!(at(3.0), 1.0);
+    }
+
+    /// The bounce animation drives the panel past its stops, and a door with
+    /// nowhere to slide has no range at all; neither may produce a fraction
+    /// outside 0..1 for the light to multiply by.
+    #[test]
+    fn open_fraction_stays_within_range() {
+        let panel = DoorPanel {
+            axis: SlideAxis::Y,
+            closed_val: 1.0,
+            open_val: 3.0,
+            target_val: 3.0,
+            bounce: None,
+        };
+        assert_eq!(
+            panel.open_fraction(&Transform::from_xyz(0.0, 0.0, 0.0)),
+            0.0
+        );
+        assert_eq!(
+            panel.open_fraction(&Transform::from_xyz(0.0, 9.0, 0.0)),
+            1.0
+        );
+
+        let degenerate = DoorPanel {
+            axis: SlideAxis::Y,
+            closed_val: 2.0,
+            open_val: 2.0,
+            target_val: 2.0,
+            bounce: None,
+        };
+        assert_eq!(
+            degenerate.open_fraction(&Transform::from_xyz(0.0, 2.0, 0.0)),
+            0.0
+        );
     }
 
     #[test]

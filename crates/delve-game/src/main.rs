@@ -493,6 +493,9 @@ fn main() {
                     billboard::face_billboards,
                     billboard::apply_neutral_lighting,
                     doors::animate_door_panels,
+                    // After the slide, so the light matches the frame the
+                    // player sees rather than trailing it by one.
+                    doors::update_door_boundary_lights.after(doors::animate_door_panels),
                     levers::animate_levers,
                     torch::torch_update,
                     skybox::follow_skybox_camera,
