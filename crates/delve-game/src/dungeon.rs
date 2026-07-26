@@ -356,6 +356,19 @@ pub fn spawn_dungeon(
                 if ramp_facing.is_some_and(|facing| facing.delta() == (dcol, drow)) {
                     continue;
                 }
+                // A face toward a breakable or secret wall belongs to that
+                // entity, which owns both the closed and opened look of its own
+                // cell (`wall_entities.rs`). TS skips it here for the same
+                // reason (`rendering/dungeon.ts:393,406`'s `skipN`/`skipS` and
+                // their east/west siblings); without the skip a second,
+                // permanent wall stands in the same plane and the cell still
+                // looks solid after the entity's own wall is hidden — walkable
+                // but visually intact.
+                let neighbor_key =
+                    delve_core::game_state::door_key(i64::from(col + dcol), i64::from(row + drow));
+                if wall_entity_cells.contains(&neighbor_key) {
+                    continue;
+                }
                 if !is_solid_for_wall(&grid, col + dcol, row + drow, &renderable, ceiling_enabled) {
                     continue;
                 }
