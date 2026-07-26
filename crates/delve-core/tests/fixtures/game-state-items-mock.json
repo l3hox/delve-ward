@@ -68,6 +68,12 @@
             "quality": "common", "icon": "axe", "weight": 6, "value": 40,
             "description": "Test axe with a high strength requirement.",
             "stats": { "atk": 8 }, "modifiers": [], "requirements": { "str": 20 }
+        },
+        {
+            "id": "ring_of_vitality", "name": "Ring of Vitality", "type": "accessory", "subtype": "ring",
+            "quality": "common", "icon": "ring", "weight": 1, "value": 60,
+            "description": "Test ring granting vitality.",
+            "stats": { "vit": 2 }, "modifiers": [], "requirements": {}
         }
     ]
 }

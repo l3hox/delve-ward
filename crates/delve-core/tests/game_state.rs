@@ -869,7 +869,7 @@ fn pickup_equipment_auto_equips() {
     assert!(
         state
             .entity_registry
-            .ground_items(&state.current_level_id, 3, 3)
+            .ground_items(&state.current_level_id, 3, 3, None)
             .is_empty()
     );
 
@@ -893,7 +893,7 @@ fn equipment_registry_across_levels() {
         1
     );
     assert_eq!(
-        state.entity_registry.ground_items("test_level", 1, 1)[0].item_id,
+        state.entity_registry.ground_items("test_level", 1, 1, None)[0].item_id,
         "sword"
     );
 
@@ -932,7 +932,7 @@ fn pickup_consumable_flows() {
     assert!(
         state
             .entity_registry
-            .ground_items("test_level", 2, 2)
+            .ground_items("test_level", 2, 2, None)
             .is_empty()
     );
 
@@ -950,7 +950,9 @@ fn pickup_consumable_flows() {
     }
     assert!(full.pickup_consumable_at(1, 1).is_none());
     assert_eq!(
-        full.entity_registry.ground_items("test_level", 1, 1).len(),
+        full.entity_registry
+            .ground_items("test_level", 1, 1, None)
+            .len(),
         1
     );
 
@@ -1081,11 +1083,17 @@ fn registry_persistence_across_levels_and_snapshots() {
     let mut restored = gs_level(json!([]), "test_level");
     restored.load_level_state(&snapshot);
     assert_eq!(
-        restored.entity_registry.ground_items("test_level", 1, 1)[0].item_id,
+        restored
+            .entity_registry
+            .ground_items("test_level", 1, 1, None)[0]
+            .item_id,
         "sword"
     );
     assert_eq!(
-        restored.entity_registry.ground_items("test_level", 2, 2)[0].item_id,
+        restored
+            .entity_registry
+            .ground_items("test_level", 2, 2, None)[0]
+            .item_id,
         "hp1"
     );
 
@@ -1872,6 +1880,36 @@ fn drop_item_flows() {
 
     let mut missing = gs_level(json!([]), "test_level");
     assert!(!missing.drop_item("item_9999", 1, 1));
+}
+
+/// TS's `dropItem` (`gameState.ts` at the pinned commit) recalculates maxHp
+/// after the item leaves the player, same as `equipFromBackpack` and
+/// `unequipToBackpack`. Using a VIT-bearing ring (rather than TS's own
+/// no-bonus sword fixture) makes the recalculation observable: a regression
+/// here would leave the ring's VIT bonus applied to max_hp after the drop.
+#[test]
+fn drop_item_recalculates_max_hp_from_effective_stats() {
+    let mut state = gs_level(json!([]), "test_level");
+    state.entity_registry.create_item(
+        "ring_of_vitality",
+        ItemQuality::Common,
+        ItemLocation::Backpack { slot: 0 },
+        Vec::new(),
+    );
+    let base_max_hp = state.player.max_hp;
+
+    let equip_result = state.equip_from_backpack(0);
+    assert!(equip_result.success);
+    let equipped_instance_id = state
+        .entity_registry
+        .get_equipped(EquipSlot::Ring1)
+        .expect("ring equipped")
+        .instance_id
+        .clone();
+    assert_eq!(state.player.max_hp, base_max_hp + 10.0);
+
+    assert!(state.drop_item(&equipped_instance_id, 0, 0));
+    assert_eq!(state.player.max_hp, base_max_hp);
 }
 
 #[test]

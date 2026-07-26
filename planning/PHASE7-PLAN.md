@@ -18,11 +18,14 @@ spawn paths are verified by smoke run, following this crate's existing split.
 
 ## 1. Logic deviations (small, testable, no rendering)
 
-**`drop_item` recalculates `max_hp`.** `game_state.rs:2756` reassigns
-`player.max_hp` from effective stats after a drop; TS's `dropItem` does not.
-Remove the line and pin the difference with a test that drops a VIT-bearing
-item and asserts `max_hp` is unchanged. Faithful-port doctrine (D9) decides
-this: match TS even though recalculating is arguably more correct.
+**`drop_item` recalculates `max_hp` — not a gap. Already matches TS.**
+`gameState.ts:683` is `if (r) this.maxHp = this.getEffectiveStats().maxHp;`,
+the same reassignment `game_state.rs:2756` makes. The long-standing
+`PARITY-GAPS.md` claim that TS "does not" recalculate is false and was carried
+forward here without being checked against the TS source. Closed by pinning the
+real behaviour instead: `drop_item_recalculates_max_hp_from_effective_stats`
+drops a VIT-bearing item and asserts `max_hp` returns to base, so the parity
+holds if anyone later "fixes" it toward the phantom gap.
 
 **`EntityRegistry::ground_items` ignores the layer.** `entities.rs:144` filters
 on level/col/row only, while its sibling `all_ground_items_for_level` also

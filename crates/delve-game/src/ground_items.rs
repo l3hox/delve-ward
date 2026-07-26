@@ -312,6 +312,7 @@ fn first_remaining_of_kind(
             &game.current_level_id,
             i32::try_from(col).unwrap_or(0),
             i32::try_from(row).unwrap_or(0),
+            Some(i32::try_from(game.active_layer_index).unwrap_or(0)),
         )
         .into_iter()
         .find(|entity| {

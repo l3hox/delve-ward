@@ -141,6 +141,48 @@ fn every_shipped_data_file_parses() {
 }
 
 #[test]
+fn every_enemy_npc_and_item_sprite_resolves_to_a_file() {
+    // Ported from `assetCheck.ts`, which walks every enemy sprite and item
+    // icon path at startup and reports missing files over HTTP rather than
+    // failing a build gate. Extended to npc sprites too, which share the
+    // same path-based field as enemy sprites but aren't in the TS checker's
+    // scope. A missing PNG here would otherwise surface only as a silent
+    // invisible sprite in the running game.
+    let (enemies, npcs) = databases();
+    let items = ItemDatabase::from_json(&read(&assets_dir().join("data/items.json")))
+        .expect("items.json loads");
+
+    let resolves = |relative_path: &str| {
+        assets_dir()
+            .join(relative_path.trim_start_matches('/'))
+            .is_file()
+    };
+
+    let mut missing: Vec<String> = Vec::new();
+    for enemy in enemies.all_enemies() {
+        if !resolves(&enemy.sprite.path) {
+            missing.push(format!("enemy {}: {}", enemy.id, enemy.sprite.path));
+        }
+    }
+    for npc in npcs.all_npcs() {
+        if !resolves(&npc.sprite.path) {
+            missing.push(format!("npc {}: {}", npc.id, npc.sprite.path));
+        }
+    }
+    for item in items.all_items() {
+        let icon_path = format!("sprites/items/{}.png", item.icon);
+        if !resolves(&icon_path) {
+            missing.push(format!("item {}: {}", item.id, icon_path));
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "missing sprite/icon files: {missing:#?}"
+    );
+}
+
+#[test]
 fn npc_dialog_references_resolve_to_dialog_files() {
     // nameless_girl has no dialog file in the TS repo either (its dialog would
     // 404 at runtime there too) — tracked in planning/PROGRESS.md Known Issues.

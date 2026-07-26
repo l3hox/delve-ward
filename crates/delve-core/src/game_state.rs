@@ -2767,6 +2767,7 @@ impl GameState {
                 &self.current_level_id,
                 i32::try_from(col).unwrap_or(0),
                 i32::try_from(row).unwrap_or(0),
+                Some(i32::try_from(self.active_layer_index).unwrap_or(0)),
             );
             ground
                 .iter()
@@ -2828,6 +2829,7 @@ impl GameState {
                 &self.current_level_id,
                 i32::try_from(col).unwrap_or(0),
                 i32::try_from(row).unwrap_or(0),
+                Some(i32::try_from(self.active_layer_index).unwrap_or(0)),
             );
             let entity = ground.iter().find(|entity| match &items {
                 None => true,

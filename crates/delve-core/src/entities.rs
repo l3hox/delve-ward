@@ -139,14 +139,30 @@ impl EntityRegistry {
         }
     }
 
-    /// Items sitting on the ground at a specific cell.
+    /// Items sitting on the ground at a specific cell, optionally filtered by layer.
     #[must_use]
-    pub fn ground_items(&self, level_id: &str, col: i32, row: i32) -> Vec<&ItemEntity> {
+    pub fn ground_items(
+        &self,
+        level_id: &str,
+        col: i32,
+        row: i32,
+        layer_index: Option<i32>,
+    ) -> Vec<&ItemEntity> {
         self.items
             .iter()
-            .filter(|item| {
-                matches!(&item.location, ItemLocation::World { level_id: id, col: c, row: r, .. }
-                    if id == level_id && *c == col && *r == row)
+            .filter(|item| match &item.location {
+                ItemLocation::World {
+                    level_id: id,
+                    col: c,
+                    row: r,
+                    layer_index: item_layer,
+                } => {
+                    id == level_id
+                        && *c == col
+                        && *r == row
+                        && layer_index.is_none_or(|wanted| item_layer.unwrap_or(0) == wanted)
+                }
+                _ => false,
             })
             .collect()
     }
@@ -389,7 +405,7 @@ mod tests {
         let mut registry = EntityRegistry::new();
         registry.create_item("sword_iron", Common, world("l1", 2, 3), Vec::new());
         registry.create_item("dagger_iron", Common, world("l1", 5, 7), Vec::new());
-        let items = registry.ground_items("l1", 2, 3);
+        let items = registry.ground_items("l1", 2, 3, None);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].item_id, "sword_iron");
     }
@@ -399,18 +415,18 @@ mod tests {
         let mut registry = EntityRegistry::new();
         registry.create_item("sword_iron", Common, world("l1", 1, 1), Vec::new());
         registry.create_item("dagger_iron", Common, world("l1", 1, 1), Vec::new());
-        assert_eq!(registry.ground_items("l1", 1, 1).len(), 2);
+        assert_eq!(registry.ground_items("l1", 1, 1, None).len(), 2);
     }
 
     #[test]
     fn ground_items_excludes_other_cells_levels_and_locations() {
         let mut registry = EntityRegistry::new();
         registry.create_item("sword_iron", Common, world("l1", 0, 0), Vec::new());
-        assert!(registry.ground_items("l1", 9, 9).is_empty());
+        assert!(registry.ground_items("l1", 9, 9, None).is_empty());
 
         registry.clear();
         registry.create_item("sword_iron", Common, world("l2", 1, 1), Vec::new());
-        assert!(registry.ground_items("l1", 1, 1).is_empty());
+        assert!(registry.ground_items("l1", 1, 1, None).is_empty());
 
         registry.clear();
         registry.create_item("sword_iron", Common, backpack(0), Vec::new());
@@ -420,7 +436,49 @@ mod tests {
             equipped(EquipSlot::Weapon),
             Vec::new(),
         );
-        assert!(registry.ground_items("l1", 0, 0).is_empty());
+        assert!(registry.ground_items("l1", 0, 0, None).is_empty());
+    }
+
+    /// A shipped level never stacks ground items across layers at the same
+    /// cell, so this overlap has to be constructed by hand: without layer
+    /// filtering, `ground_items` would return both the requested layer's
+    /// item and its neighbour's, letting a walk-over pickup on one layer
+    /// grab an item that is really sitting on the layer below it.
+    #[test]
+    fn ground_items_filters_by_layer_when_two_layers_share_a_cell() {
+        let mut registry = EntityRegistry::new();
+        registry.create_item(
+            "sword_iron",
+            Common,
+            ItemLocation::World {
+                level_id: "l1".to_string(),
+                col: 4,
+                row: 4,
+                layer_index: Some(0),
+            },
+            Vec::new(),
+        );
+        registry.create_item(
+            "dagger_iron",
+            Common,
+            ItemLocation::World {
+                level_id: "l1".to_string(),
+                col: 4,
+                row: 4,
+                layer_index: Some(1),
+            },
+            Vec::new(),
+        );
+
+        let ground_floor = registry.ground_items("l1", 4, 4, Some(0));
+        assert_eq!(ground_floor.len(), 1);
+        assert_eq!(ground_floor[0].item_id, "sword_iron");
+
+        let upper_floor = registry.ground_items("l1", 4, 4, Some(1));
+        assert_eq!(upper_floor.len(), 1);
+        assert_eq!(upper_floor[0].item_id, "dagger_iron");
+
+        assert_eq!(registry.ground_items("l1", 4, 4, None).len(), 2);
     }
 
     #[test]
