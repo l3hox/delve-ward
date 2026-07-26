@@ -292,6 +292,15 @@ fn setup(
     commands.insert_resource(ProjectileManagerRes::default());
     commands.insert_resource(ProjectileBillboards::default());
 
+    let mut player = Player::new(
+        grid,
+        start.col,
+        start.row,
+        start.facing,
+        walkable,
+        stairs_map,
+    );
+    player.snap_y_offset_to_layer(layer_index);
     let player_entity = commands
         .spawn((
             Transform::default(),
@@ -300,14 +309,7 @@ fn setup(
             // hierarchy-consistency check (B0004) finds children with a
             // component this entity lacks.
             Visibility::Inherited,
-            Player::new(
-                grid,
-                start.col,
-                start.row,
-                start.facing,
-                walkable,
-                stairs_map,
-            ),
+            player,
         ))
         .id();
     let mut clear_color = ClearColor::default();

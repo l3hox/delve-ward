@@ -198,6 +198,18 @@ impl Player {
         self.target_y_offset = value;
     }
 
+    /// Snaps the Y channel to a layer's height with no lerp — the
+    /// scene-build initialization TS performs on every build
+    /// (`levelSceneBuilder.ts:623-624`: `player.yOffset = activeLayerIdx *
+    /// LAYER_HEIGHT; player.targetYOffset = player.yOffset;`). Without it a
+    /// level whose active layer isn't array index 0 (ruins' forest level
+    /// starts above a basement layer) renders the player one layer below
+    /// where the game logic places them.
+    pub fn snap_y_offset_to_layer(&mut self, layer_index: usize) {
+        self.y_offset = layer_index as f32 * LAYER_HEIGHT;
+        self.target_y_offset = self.y_offset;
+    }
+
     fn enqueue(&mut self, command: Command) {
         if self.command_queue.len() < MAX_QUEUED_COMMANDS {
             self.command_queue.push_back(command);

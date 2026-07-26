@@ -318,14 +318,16 @@ pub fn perform_level_swap(
         .values()
         .map(|stair| (door_key(stair.col, stair.row), stair.direction))
         .collect();
-    commands.entity(player_entity).insert(Player::new(
+    let mut swap_player = Player::new(
         session.grid.clone(),
         spawn_col,
         spawn_row,
         facing_before,
         session.walkable.clone(),
         stairs_map,
-    ));
+    );
+    swap_player.snap_y_offset_to_layer(session.game.active_layer_index);
+    commands.entity(player_entity).insert(swap_player);
 
     let mut scene_assets = SceneAssets {
         meshes: &mut assets.meshes,
@@ -507,14 +509,16 @@ pub fn perform_restart(
         .values()
         .map(|stair| (door_key(stair.col, stair.row), stair.direction))
         .collect();
-    commands.entity(player_entity).insert(Player::new(
+    let mut restart_player = Player::new(
         session.grid.clone(),
         start.col,
         start.row,
         start.facing,
         session.walkable.clone(),
         stairs_map,
-    ));
+    );
+    restart_player.snap_y_offset_to_layer(session.game.active_layer_index);
+    commands.entity(player_entity).insert(restart_player);
 
     let mut scene_assets = SceneAssets {
         meshes: &mut assets.meshes,
@@ -676,14 +680,16 @@ pub fn perform_load(
         .values()
         .map(|stair| (door_key(stair.col, stair.row), stair.direction))
         .collect();
-    commands.entity(player_entity).insert(Player::new(
+    let mut loaded_player = Player::new(
         session.grid.clone(),
         player_col,
         player_row,
         player_facing,
         session.walkable.clone(),
         stairs_map,
-    ));
+    );
+    loaded_player.snap_y_offset_to_layer(session.game.active_layer_index);
+    commands.entity(player_entity).insert(loaded_player);
 
     let mut scene_assets = SceneAssets {
         meshes: &mut assets.meshes,
