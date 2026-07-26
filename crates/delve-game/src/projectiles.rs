@@ -56,7 +56,10 @@ const FIREBALL_LIGHT_RANGE: f32 = 6.0;
 const EXPLOSION_PARTICLE_COUNT: usize = 18;
 const EXPLOSION_LIFETIME: f32 = 0.45;
 const EXPLOSION_SPEED: f64 = 3.5;
-const EXPLOSION_SIZE: f32 = 0.12;
+/// TS's `EXPLOSION_SIZE` (0.12) is a `THREE.PointsMaterial` size; the burst
+/// is quads here, so it converts like every other point sprite in this port
+/// — see `particles::point_quad_size`.
+const EXPLOSION_SIZE: f32 = crate::particles::point_quad_size(0.12);
 const EXPLOSION_COLOR: Color = Color::srgb_u8(0xFF, 0x44, 0x00);
 const EXPLOSION_LIGHT_RANGE: f32 = 8.0;
 const EXPLOSION_FLASH_FRACTION: f32 = 0.15;

@@ -130,16 +130,36 @@ use crate::player::Player;
 use crate::sconces::SconceParts;
 use crate::torch::{TorchFill, TorchMain};
 
+/// Converts a `THREE.PointsMaterial` size into the world-space quad size
+/// that covers the same pixels, since this port draws billboard quads where
+/// TS draws point sprites (see the rendering-approach note above).
+///
+/// THREE sizes a perspective point sprite as `gl_PointSize = size * (scale /
+/// -mvPosition.z)` with `scale = viewport_height / 2`
+/// (`points.glsl.js:34-40`, `WebGLMaterials.js:297`), so a point covers
+/// `size * height / (2 * distance)` pixels. A world-space quad of height `S`
+/// covers `S * height / (2 * distance * tan(fov / 2))`. Equal pixel coverage
+/// therefore means `S = size * tan(fov / 2)` — distance cancels, so one
+/// constant holds at every depth.
+///
+/// [`point_quad_size`] is what the per-system constants below are derived
+/// with; `POINT_SIZE_TO_QUAD` is `tan(CAMERA_FOV_DEGREES / 2)` spelled out
+/// because `f32::tan` isn't const. `point_size_conversion_matches_the_camera
+/// _fov` pins it to the camera so the two can't drift apart.
+const POINT_SIZE_TO_QUAD: f32 = 0.767_327;
+
+pub(crate) const fn point_quad_size(point_size: f32) -> f32 {
+    point_size * POINT_SIZE_TO_QUAD
+}
+
 // --- Dust motes (particles.ts:7-16) ---
 
 const DUST_COUNT: usize = 40;
 const DUST_SPAWN_RADIUS: f32 = 3.5;
 const DUST_MIN_LIFETIME: f32 = 3.0;
 const DUST_MAX_LIFETIME: f32 = 6.0;
-/// Approximate world-space quad size. TS's `DUST_SIZE` (0.035) is a
-/// `THREE.PointsMaterial` screen-perspective point size, a different unit
-/// space than a world-space quad — not a literal conversion, matching D10.
-const DUST_QUAD_SIZE: f32 = 0.08;
+/// TS's `DUST_SIZE` (0.035) as a quad — see [`point_quad_size`].
+const DUST_QUAD_SIZE: f32 = point_quad_size(0.035);
 const DUST_DRIFT_SPEED: f32 = 0.15;
 const DUST_OPACITY: f32 = 0.25;
 const DUST_COLOR: Color = Color::srgb_u8(0xff, 0xdd, 0xaa);
@@ -150,7 +170,8 @@ const DUST_SEED: u32 = 0xA53C_1DE5;
 const EMBER_COUNT_PER_SCONCE: usize = 4;
 const EMBER_MIN_LIFETIME: f32 = 0.6;
 const EMBER_MAX_LIFETIME: f32 = 1.4;
-const EMBER_QUAD_SIZE: f32 = 0.05;
+/// TS's `EMBER_SIZE` (0.05) as a quad — see [`point_quad_size`].
+const EMBER_QUAD_SIZE: f32 = point_quad_size(0.05);
 const EMBER_RISE_SPEED: f32 = 0.8;
 const EMBER_DRIFT: f32 = 0.3;
 const EMBER_SPAWN_INTERVAL: f32 = 0.15;
@@ -182,7 +203,8 @@ const FLY_FADE_DURATION: f32 = 1.0;
 const FLY_SPAWN_RADIUS: f32 = 5.0;
 const FLY_MIN_LIFETIME: f32 = 8.0;
 const FLY_MAX_LIFETIME: f32 = 20.0;
-const FLY_QUAD_SIZE: f32 = 0.09;
+/// TS's `FLY_SIZE` (0.06) as a quad — see [`point_quad_size`].
+const FLY_QUAD_SIZE: f32 = point_quad_size(0.06);
 const FLY_DRIFT_SPEED: f32 = 0.2;
 const FLY_MAX_HEIGHT: f32 = 0.9;
 const FLY_MIN_HEIGHT: f32 = 0.05;
@@ -1139,10 +1161,44 @@ pub fn cull_distant_lights(
 #[cfg(test)]
 mod tests {
     use super::{
-        FLY_FADE_DURATION, LIGHT_CULL_DISTANCE, SPLASH_LIFETIME, distance_fade, drip_fall_stretch,
-        drip_form_opacity, firefly_blink, firefly_life_fade, light_culled, splash_ring_progress,
+        FLY_FADE_DURATION, LIGHT_CULL_DISTANCE, POINT_SIZE_TO_QUAD, SPLASH_LIFETIME, distance_fade,
+        drip_fall_stretch, drip_form_opacity, firefly_blink, firefly_life_fade, light_culled,
+        point_quad_size, splash_ring_progress,
     };
     use std::f32::consts::PI;
+
+    /// `POINT_SIZE_TO_QUAD` is a spelled-out `tan(fov / 2)` because `f32::tan`
+    /// isn't const; if the camera's field of view ever changes, this catches
+    /// the stale constant instead of letting every particle silently take on
+    /// the wrong size.
+    #[test]
+    fn point_size_conversion_matches_the_camera_fov() {
+        let expected = (crate::zones::CAMERA_FOV_DEGREES.to_radians() / 2.0).tan();
+        assert!(
+            (POINT_SIZE_TO_QUAD - expected).abs() < 1e-6,
+            "{POINT_SIZE_TO_QUAD} vs {expected}"
+        );
+    }
+
+    /// A point sprite and its replacement quad have to cover the same pixels:
+    /// at any distance `d`, THREE's point spans `size * h / (2 * d)` pixels
+    /// and a quad of height `S` spans `S * h / (2 * d * tan(fov / 2))`.
+    #[test]
+    fn a_converted_quad_covers_the_same_pixels_as_the_ts_point_sprite() {
+        let viewport_height = 1080.0_f32;
+        let half_fov_tangent = (crate::zones::CAMERA_FOV_DEGREES.to_radians() / 2.0).tan();
+        for point_size in [0.035_f32, 0.05, 0.06, 0.12] {
+            let quad = point_quad_size(point_size);
+            for distance in [1.0_f32, 4.0, 12.5] {
+                let point_pixels = point_size * viewport_height / (2.0 * distance);
+                let quad_pixels = quad * viewport_height / (2.0 * distance * half_fov_tangent);
+                assert!(
+                    (point_pixels - quad_pixels).abs() < 1e-3,
+                    "{point_size} at {distance}: {point_pixels} vs {quad_pixels}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn light_culled_matches_ts_threshold() {

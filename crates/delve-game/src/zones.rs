@@ -216,9 +216,14 @@ pub fn tag_by_key<'a>(
 #[derive(Component)]
 pub struct ZoneCamera(pub Environment);
 
+/// TS's `CAMERA_FOV` (`main.ts:81`), the vertical field of view every
+/// camera in this port is built with. Named because `particles.rs` derives
+/// its point-sprite-to-quad size conversion from it.
+pub const CAMERA_FOV_DEGREES: f32 = 75.0;
+
 fn default_projection() -> Projection {
     Projection::Perspective(PerspectiveProjection {
-        fov: 75_f32.to_radians(),
+        fov: CAMERA_FOV_DEGREES.to_radians(),
         near: 0.1,
         far: 200.0,
         ..default()
