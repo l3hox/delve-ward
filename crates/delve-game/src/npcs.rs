@@ -47,9 +47,8 @@ pub fn spawn_npc_billboards(
 
         let material = materials.add(StandardMaterial {
             base_color_texture: Some(asset_server.load(texture_path)),
-            perceptual_roughness: 1.0,
-            metallic: 0.0,
-            reflectance: 0.0,
+            // Lit by `billboard::apply_neutral_lighting` — see `NeutrallyLit`.
+            unlit: true,
             alpha_mode: AlphaMode::Mask(0.5),
             double_sided: true,
             cull_mode: None,
@@ -61,6 +60,7 @@ pub fn spawn_npc_billboards(
             .spawn((
                 LevelEntity,
                 crate::billboard::FacesCamera,
+                crate::billboard::NeutrallyLit,
                 Mesh3d(meshes.add(Rectangle::new(size, size))),
                 MeshMaterial3d(material),
                 Transform::from_xyz(

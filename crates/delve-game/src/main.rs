@@ -491,6 +491,7 @@ fn main() {
                     status_effects::apply_slow_multiplier,
                     status_effects::tint_enemy_status_effects,
                     billboard::face_billboards,
+                    billboard::apply_neutral_lighting,
                     doors::animate_door_panels,
                     levers::animate_levers,
                     torch::torch_update,
