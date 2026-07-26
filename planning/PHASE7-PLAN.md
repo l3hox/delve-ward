@@ -59,6 +59,12 @@ pure function of the ratio and gets unit tests at the 0.35 knee and either side
 of it; the system change is then mechanical. Note the flicker *range* scales
 too, so a guttering torch is both dimmer and steadier.
 
+**Found while implementing this item, not yet done:** TS gates only the
+*flicker* update behind `!anyOverlayOpen` — `torchLight.distance` and
+`torchFillLight.distance` update unconditionally. `torch_update` has no overlay
+gating at all, so the torch keeps flickering under an open overlay. Pre-existing
+and separate from the fuel scaling; fold it in whenever `torch.rs` is next open.
+
 ## 3. Trap launcher meshes
 
 Launchers tick, fire, and hit correctly — only the mesh is missing, so
