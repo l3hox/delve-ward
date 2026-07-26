@@ -136,11 +136,24 @@ geometry changes when a smoke run looks wrong.
 
 ## 6. Deferred performance work
 
-**`draw_hud` allocates its canvas every frame.** Now a 3.7MB allocation at
-`HUD_SCALE` 2 rather than the 900KB it was when the finding was first recorded
-(PHASE6-PLAN). Keep a persistent buffer in `HudState` and zero it in place. The
-measured HUD cost is ~3.5ms/frame; allocation is a fraction of that, so measure
-before and after rather than assuming the win.
+**`draw_hud` allocates its canvas every frame — tried, measured, reverted.**
+Reusing the previous frame's buffer instead of allocating a fresh 3.7MB one was
+implemented and correct (byte-identical output to a fresh canvas, proven by
+test), and made no difference: `draw_hud`'s median cost went 3521us to 3508us,
+about 0.4%, on `ruins` in a release build with a few thousand samples each.
+
+Two things worth keeping from the attempt. The measurement is only meaningful on
+an otherwise idle machine — an initial run put the baseline at 5140us purely
+because other work was compiling at the same time, which would have "proven" a
+31% win that does not exist. And this is the second allocation-shaped theory
+about this system to measure flat, after the opaque-write fast path in
+`blend_stored_pixel` (D19): the cost is the per-pixel fill work over four times
+the pixels, not allocation or blend arithmetic. A third attempt in this
+direction should start by profiling where the time actually goes.
+
+Reverted rather than kept, because the buffer round-trip added a latent
+invariant — `image.data` sits `None` mid-function, so any future early return
+in `draw_hud` would leave the HUD image empty — and bought nothing measurable.
 
 **`tick_enemies` rebuilds per-layer snapshots every tick** — a full grid clone
 plus fresh door and thin-wall edge sets, per layer, per frame. The fix shape is
