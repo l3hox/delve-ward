@@ -94,10 +94,32 @@ the omission already.
 
 Port both halves together — the set is computed from the layer above's open
 pits and passed into `spawn_dungeon`, where it forces the cell renderable and
-its neighbours' walls to generate. Carry TS's limitation with it: the set is
-computed at scene build, so a pit opened later by a signal doesn't retroactively
-build the chamber. Faithful, and worth a note in the module doc rather than a
-silent improvement.
+its neighbours' walls to generate.
+
+**Correction to this item as originally written.** It claimed that computing the
+set once at scene build is "TS's limitation" and therefore faithful. It is not:
+`main.ts:748-764`, inside `onPitTrapSignalChanged`, disposes and rebuilds the
+whole layer below by calling `buildLayerDungeonGeometry` again, which recomputes
+`forceRenderable` from current pit state. **TS builds the chamber on demand.**
+The build-time-only behaviour is this port's limitation, inherited from that
+rebuild being unported — and it means the landed half only ever fires for pits
+authored `"state": "open"`. In `pit-traps.json` exactly one pit qualifies; the
+other nine sit over rock but start closed, so they still open into blackness.
+
+### Follow-ups this item uncovered — both still open
+
+**The layer-below rebuild on pit signal** (`main.ts:748-764`). Without it the
+chamber-building above is inert for signal-opened pits, which is most of them.
+This is the piece that makes item 4 actually pay off in play.
+
+**The pit-ceiling toggle** (`main.ts:739-746` against TS's `pitCeilingMap`,
+built at `sceneUtils.ts:326-342`): cells two layers below a pit whose ceiling
+hides while the pit is open. This port has no equivalent. The comment in
+`session.rs` that used to justify skipping it was factually wrong — it claimed
+non-topmost layers never spawn ceilings, but `dungeon.rs`'s `ceiling_enabled` is
+unconditionally true below the top layer, so those ceilings do exist and simply
+never toggle. Comment corrected; the feature is still missing, and
+`pit-traps.json`'s open pit exercises it today.
 
 ## 5. Ramp landing half-tiles
 

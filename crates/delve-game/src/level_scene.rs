@@ -171,6 +171,23 @@ pub fn spawn_level_scene(
             .map(|pit| door_key(pit.col, pit.row))
             .collect();
 
+        // Chambers for the layer ABOVE's open pits, so a pit over solid rock
+        // drops the player somewhere built — TS reads the same set off
+        // `li + 1` (`rendering/sceneUtils.ts:309-325`). The states read here
+        // are the ones the scene is built with; see `dungeon.rs`'s module
+        // doc for what that costs.
+        let force_renderable_cells = scene
+            .game
+            .layer(layer_index + 1)
+            .map(|above| {
+                dungeon::force_renderable_cells_below_open_pits(
+                    &layer_def.grid,
+                    scene.walkable,
+                    above.pit_traps.values(),
+                )
+            })
+            .unwrap_or_default();
+
         let ramp_base_cells: HashMap<String, delve_core::grid::Facing> = layer
             .ramps
             .values()
@@ -195,6 +212,7 @@ pub fn spawn_level_scene(
             &stair_cells,
             &wall_entity_keys,
             &pit_trap_cells,
+            &force_renderable_cells,
             &ramp_base_cells,
             &level_zones,
             &door_cells,

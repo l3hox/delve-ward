@@ -1,12 +1,20 @@
 //! Dungeon geometry: floors, walls, and ceilings built from the level grid,
 //! ported from the TS `buildDungeon` basics. Later phases add stairs, ramps,
 //! environment zones, and wall entities.
+//!
+//! The force-renderable set ([`force_renderable_cells_below_open_pits`]) is
+//! captured once per scene build from the pit states the layer above holds at
+//! that moment, so a pit a signal opens later leaves the rock below it
+//! unbuilt for the rest of the scene's life. TS refreshes it by rebuilding
+//! the whole layer below from inside `onPitTrapSignalChanged`
+//! (`main.ts:748-764`); that rebuild is a separate unported piece, recorded
+//! alongside the pit-ceiling toggle it sits next to in `session.rs`.
 
 use crate::level_scene::LevelEntity;
 use crate::textures::DungeonMaterials;
 use crate::zones::{self, LevelZones};
 use bevy::prelude::*;
-use delve_core::game_state::{LayerState, PitTrapState, door_key, layer_door_key};
+use delve_core::game_state::{LayerState, PitTrapInstance, PitTrapState, door_key, layer_door_key};
 use delve_core::grid::Facing;
 use delve_core::texture_resolver::resolve_textures;
 use delve_core::types::{CharDef, DungeonLevel, LayerDef};
@@ -67,28 +75,73 @@ fn is_solid(grid: &[Vec<char>], col: i32, row: i32, renderable: &HashSet<char>) 
 }
 
 /// Ported from TS's `solidCheck` (`rendering/dungeon.ts:350-356`): identical
-/// to [`is_solid`] except an out-of-bounds neighbor is treated as open, not
-/// solid, when this layer's own ceiling is disabled — an open-air top layer
-/// has no boundary walls at its grid edges, matching TS's own comment there
-/// ("OOB neighbors are treated as non-solid so no walls are generated at the
-/// perimeter"). A layer with its ceiling on keeps every OOB neighbor solid,
-/// identical to plain `is_solid`. TS's `forceRenderable` half of the same
-/// closure (pit-trap fall-through cells on the layer below forced walkable)
-/// has no Rust caller-side data yet and isn't ported here — a separate,
-/// pre-existing gap from this one.
+/// to [`is_solid`] except for two neighbors it treats as open rather than
+/// solid. An out-of-bounds neighbor is open when this layer's own ceiling is
+/// disabled — an open-air top layer has no boundary walls at its grid edges,
+/// matching TS's own comment there ("OOB neighbors are treated as non-solid
+/// so no walls are generated at the perimeter"); with the ceiling on, every
+/// OOB neighbor stays solid, identical to plain `is_solid`. A force-renderable
+/// neighbor is open unconditionally, which is what lets the walls around a
+/// pit chamber generate: the chamber cell is rock, so without this its
+/// neighbors would wall themselves off from it and the chamber would be
+/// sealed inside solid geometry.
 fn is_solid_for_wall(
     grid: &[Vec<char>],
     col: i32,
     row: i32,
     renderable: &HashSet<char>,
     ceiling_enabled: bool,
+    force_renderable_cells: &HashSet<String>,
 ) -> bool {
     let out_of_bounds =
         row < 0 || row as usize >= grid.len() || col < 0 || col as usize >= grid[0].len();
     if !ceiling_enabled && out_of_bounds {
         return false;
     }
+    if force_renderable_cells.contains(&door_key(i64::from(col), i64::from(row))) {
+        return false;
+    }
     is_solid(grid, col, row, renderable)
+}
+
+/// Cells on this layer that must be built as a chamber because a pit on the
+/// layer above stands open over them, ported from TS's `forceRenderable` map
+/// (`rendering/sceneUtils.ts:309-325`). A pit that opens over solid rock
+/// drops the player into a cell the grid says is wall, which would otherwise
+/// render nothing at all — blackness with a lit ceiling somewhere overhead.
+/// Forcing the cell through `spawn_dungeon`'s per-cell pass gives it a floor
+/// and boxes it in with walls, so the fall lands somewhere built.
+///
+/// TS's map values carry a `skipCeiling` flag that `rendering/dungeon.ts:261`
+/// reads, but `sceneUtils` only ever inserts `{}` — nothing sets it. A set
+/// carries the same information as the map TS actually populates.
+///
+/// TS's bounds check reads the column against the grid's FIRST row and then
+/// indexes the actual row, so an in-bounds column over a shorter ragged row
+/// reads `undefined`, which is not walkable and therefore forced.
+pub fn force_renderable_cells_below_open_pits<'a>(
+    grid: &[String],
+    walkable: &HashSet<char>,
+    pit_traps_above: impl IntoIterator<Item = &'a PitTrapInstance>,
+) -> HashSet<String> {
+    let width = grid.first().map_or(0, |first| first.chars().count());
+    let mut forced = HashSet::new();
+    for pit in pit_traps_above {
+        if pit.state != PitTrapState::Open {
+            continue;
+        }
+        let (Ok(col), Ok(row)) = (usize::try_from(pit.col), usize::try_from(pit.row)) else {
+            continue;
+        };
+        if row >= grid.len() || col >= width {
+            continue;
+        }
+        let cell = grid[row].chars().nth(col);
+        if !cell.is_some_and(|character| walkable.contains(&character)) {
+            forced.insert(door_key(pit.col, pit.row));
+        }
+    }
+    forced
 }
 
 /// Per-cell vertical openness for one layer, ported from the
@@ -311,6 +364,7 @@ pub fn spawn_dungeon(
     stair_cells: &HashSet<String>,
     wall_entity_cells: &HashSet<String>,
     pit_trap_cells: &HashSet<String>,
+    force_renderable_cells: &HashSet<String>,
     ramp_base_cells: &HashMap<String, Facing>,
     zones: &LevelZones,
     door_cells: &HashSet<String>,
@@ -354,15 +408,20 @@ pub fn spawn_dungeon(
 
     for (row_index, row) in grid.iter().enumerate() {
         for (col_index, &cell_char) in row.iter().enumerate() {
-            if !renderable.contains(&cell_char) {
-                continue;
-            }
             let col = col_index as i32;
             let row = row_index as i32;
+            let key = delve_core::game_state::door_key(i64::from(col), i64::from(row));
+
+            // A cell under an open pit is built even though its grid char is
+            // rock — TS's own `|| forceRenderable?.has(...)` escape hatch on
+            // the same skip (`rendering/dungeon.ts:137`). Everything past
+            // here treats it as an ordinary cell, textures included, so the
+            // chamber is finished in the rock's own materials.
+            if !renderable.contains(&cell_char) && !force_renderable_cells.contains(&key) {
+                continue;
+            }
             let center_x = col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
             let center_z = row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
-
-            let key = delve_core::game_state::door_key(i64::from(col), i64::from(row));
 
             // Stair cells own their floor, ceiling, and walls (stepped
             // geometry plus side/back walls come from the stair renderer).
@@ -557,7 +616,14 @@ pub fn spawn_dungeon(
                 if wall_entity_cells.contains(&neighbor_key) {
                     continue;
                 }
-                if !is_solid_for_wall(&grid, col + dcol, row + drow, &renderable, ceiling_enabled) {
+                if !is_solid_for_wall(
+                    &grid,
+                    col + dcol,
+                    row + drow,
+                    &renderable,
+                    ceiling_enabled,
+                    force_renderable_cells,
+                ) {
                     continue;
                 }
                 let wall_texture = wall_material_for_face(
@@ -716,44 +782,134 @@ mod tests {
         rows.iter().map(|row| row.chars().collect()).collect()
     }
 
+    fn no_forced_cells() -> HashSet<String> {
+        HashSet::new()
+    }
+
     #[test]
     fn is_solid_for_wall_treats_out_of_bounds_as_open_when_ceiling_is_disabled() {
         let grid = grid(&["##", "##"]);
         let renderable = HashSet::from(['.']);
-        assert!(!is_solid_for_wall(&grid, -1, 0, &renderable, false));
-        assert!(!is_solid_for_wall(&grid, 0, -1, &renderable, false));
-        assert!(!is_solid_for_wall(&grid, 5, 0, &renderable, false));
-        assert!(!is_solid_for_wall(&grid, 0, 5, &renderable, false));
+        let forced = no_forced_cells();
+        assert!(!is_solid_for_wall(
+            &grid,
+            -1,
+            0,
+            &renderable,
+            false,
+            &forced
+        ));
+        assert!(!is_solid_for_wall(
+            &grid,
+            0,
+            -1,
+            &renderable,
+            false,
+            &forced
+        ));
+        assert!(!is_solid_for_wall(&grid, 5, 0, &renderable, false, &forced));
+        assert!(!is_solid_for_wall(&grid, 0, 5, &renderable, false, &forced));
     }
 
     #[test]
     fn is_solid_for_wall_keeps_out_of_bounds_solid_when_ceiling_is_enabled() {
         let grid = grid(&["##", "##"]);
         let renderable = HashSet::from(['.']);
-        assert!(is_solid_for_wall(&grid, -1, 0, &renderable, true));
-        assert!(is_solid_for_wall(&grid, 5, 0, &renderable, true));
+        let forced = no_forced_cells();
+        assert!(is_solid_for_wall(&grid, -1, 0, &renderable, true, &forced));
+        assert!(is_solid_for_wall(&grid, 5, 0, &renderable, true, &forced));
     }
 
     #[test]
     fn is_solid_for_wall_still_reads_in_bounds_cells_normally_when_ceiling_is_disabled() {
         let grid = grid(&["#."]);
         let renderable = HashSet::from(['.']);
-        assert!(is_solid_for_wall(&grid, 0, 0, &renderable, false));
-        assert!(!is_solid_for_wall(&grid, 1, 0, &renderable, false));
+        let forced = no_forced_cells();
+        assert!(is_solid_for_wall(&grid, 0, 0, &renderable, false, &forced));
+        assert!(!is_solid_for_wall(&grid, 1, 0, &renderable, false, &forced));
     }
 
     #[test]
     fn is_solid_for_wall_matches_is_solid_exactly_when_ceiling_is_enabled() {
         let grid = grid(&["#.", ".#"]);
         let renderable = HashSet::from(['.']);
+        let forced = no_forced_cells();
         for row in -1..3 {
             for col in -1..3 {
                 assert_eq!(
-                    is_solid_for_wall(&grid, col, row, &renderable, true),
+                    is_solid_for_wall(&grid, col, row, &renderable, true, &forced),
                     is_solid(&grid, col, row, &renderable),
                 );
             }
         }
+    }
+
+    /// A rock neighbour that a pit above forced renderable stops counting as
+    /// solid, so the cells around it do not wall themselves off from the
+    /// chamber (`rendering/dungeon.ts:354`).
+    #[test]
+    fn is_solid_for_wall_treats_a_force_renderable_neighbour_as_open() {
+        let grid = grid(&["##", "##"]);
+        let renderable = HashSet::from(['.']);
+        let forced = HashSet::from([door_key(1, 0)]);
+        assert!(!is_solid_for_wall(&grid, 1, 0, &renderable, true, &forced));
+        assert!(is_solid_for_wall(&grid, 0, 0, &renderable, true, &forced));
+    }
+
+    fn pit(col: i64, row: i64, state: PitTrapState) -> PitTrapInstance {
+        PitTrapInstance {
+            id: None,
+            col,
+            row,
+            state,
+            gate_mode: None,
+        }
+    }
+
+    /// The whole feature in one assertion: an open pit over rock builds a
+    /// chamber below it, an open pit over floor needs none, and a closed pit
+    /// builds nothing at all.
+    #[test]
+    fn only_open_pits_over_non_walkable_cells_force_a_chamber() {
+        let below = lines(&["###", "#.#"]);
+        let walkable = HashSet::from(['.']);
+        let pits = [
+            pit(0, 0, PitTrapState::Open),
+            pit(1, 1, PitTrapState::Open),
+            pit(2, 0, PitTrapState::Closed),
+        ];
+        let forced = force_renderable_cells_below_open_pits(&below, &walkable, &pits);
+        assert_eq!(forced, HashSet::from([door_key(0, 0)]));
+    }
+
+    /// Walkability comes from the level's charDefs, not the literal '.' — a
+    /// non-solid charDef below an open pit is already a built cell and needs
+    /// no chamber, while a solid one does.
+    #[test]
+    fn force_renderable_walkability_honors_char_defs() {
+        let below = lines(&["bg"]);
+        let walkable = HashSet::from(['.', 'b']);
+        let pits = [pit(0, 0, PitTrapState::Open), pit(1, 0, PitTrapState::Open)];
+        let forced = force_renderable_cells_below_open_pits(&below, &walkable, &pits);
+        assert_eq!(forced, HashSet::from([door_key(1, 0)]));
+    }
+
+    /// A pit whose coordinates fall outside the layer below is skipped
+    /// entirely. TS bounds-checks the column against the grid's first row, so
+    /// an in-bounds column over a shorter ragged row reads `undefined`, which
+    /// is not walkable and is therefore forced.
+    #[test]
+    fn force_renderable_bounds_follow_ts_first_row_indexing() {
+        let below = lines(&["###", "#"]);
+        let walkable = HashSet::from(['.']);
+        let pits = [
+            pit(3, 0, PitTrapState::Open),
+            pit(0, 2, PitTrapState::Open),
+            pit(-1, 0, PitTrapState::Open),
+            pit(1, 1, PitTrapState::Open),
+        ];
+        let forced = force_renderable_cells_below_open_pits(&below, &walkable, &pits);
+        assert_eq!(forced, HashSet::from([door_key(1, 1)]));
     }
 
     fn lines(rows: &[&str]) -> Vec<String> {

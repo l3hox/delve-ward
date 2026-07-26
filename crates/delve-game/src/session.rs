@@ -1145,14 +1145,21 @@ pub fn apply_world_events(
                 );
             }
             // Floor-mesh toggle, ported from TS's `onPitTrapSignalChanged`
-            // (`main.ts:734-789`) — the ceiling-2-layers-below toggle and
-            // the layer-below geometry rebuild that function also performs
-            // are deliberately not ported here (see the phase-5 report):
-            // this port never spawns a separate ceiling mesh for a
-            // non-topmost layer in the first place (`dungeon.rs`'s
-            // `is_top_layer` check — the layer above's floor already serves
-            // as that visual), so TS's redundant second mesh has nothing to
-            // toggle on this side.
+            // (`main.ts:734-789`). Two things that function also does are
+            // still unported, both of which need cells this port does build:
+            //
+            // - The ceiling toggle two layers below (`main.ts:739-746`
+            //   against TS's `pitCeilingMap`). An earlier note here claimed
+            //   this port never spawns ceilings for non-topmost layers, so
+            //   there was nothing to toggle. That was wrong:
+            //   `dungeon.rs`'s `ceiling_enabled` is unconditionally true
+            //   below the top layer — `is_top_layer` only decides whether
+            //   the TOP layer may opt out — so those ceilings do exist and
+            //   simply never toggle.
+            // - The layer-below geometry rebuild (`main.ts:748-764`), which
+            //   recomputes the force-renderable set from current pit state.
+            //   Without it, `dungeon.rs`'s chamber-building only ever fires
+            //   for pits authored open, never for one a signal opens.
             WorldEvent::PitTrapSignalChanged { col, row, open } => {
                 let render_key = layer_door_key(active_layer_index, &door_key(col, row));
                 if let Some(&entity) = signal.pit_floor_handles.by_key.get(&render_key) {
