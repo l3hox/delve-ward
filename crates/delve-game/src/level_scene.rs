@@ -28,6 +28,7 @@ use crate::spawners::{self, SpawnerHandles};
 use crate::stairs;
 use crate::textures::DungeonMaterials;
 use crate::thin_walls;
+use crate::trap_launchers;
 use crate::tripwires::{self, TripwireHandles};
 use crate::wall_entities::{self, WallEntityHandles};
 use crate::zones::{self, LevelZones};
@@ -368,6 +369,17 @@ pub fn spawn_level_scene(
             layer_levers.by_key.iter(),
         );
         lever_handles.by_key.extend(layer_levers.by_key);
+
+        // No `tag_by_key` counterpart: TS calls `layers.enableAll()` on the
+        // whole trap launcher group (`levelSceneBuilder.ts:533`), so these
+        // meshes stay on the shared default layer every zone camera draws.
+        trap_launchers::spawn_trap_launchers(
+            commands,
+            assets.meshes,
+            assets.materials,
+            layer,
+            y_offset,
+        );
 
         let layer_plates = plates::spawn_plates(
             commands,

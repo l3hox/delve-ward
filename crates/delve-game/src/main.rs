@@ -55,6 +55,7 @@ mod thin_walls;
 mod torch;
 mod trading_overlay;
 mod transition;
+mod trap_launchers;
 mod tripwires;
 mod wall_entities;
 mod zones;
