@@ -844,12 +844,31 @@ pub fn on_player_moved(
     });
     apply_world_events(events, game, (col, row), &mut signal, fall_trigger);
 
+    // TS resolves the stepped-on stair instance back to its level entity and
+    // transitions toward that entity's `target` — the id of the stair at the
+    // OTHER end (`main.ts:684-694` feeding `transitionSystem.ts:47`'s
+    // `stairEntity.target`). Passing the stair's own id instead would send
+    // the player right back in front of the stair they just entered.
     if moved
         && let Some(stair) = game.get_stair(col, row)
         && let Some(stair_id) = &stair.id
+        && let Some(level) = level
+        && let Some(target) = stair_target(level, stair_id)
     {
-        transition.begin_stair(stair_id.clone());
+        transition.begin_stair(target);
     }
+}
+
+/// `main.ts:688-689`: find the entity whose id matches the stair instance's
+/// (no type filter, matching TS), then read where it leads. A stair entity
+/// without a `target` triggers no transition — TS would start a fade that
+/// finds no destination and lands the player back where they stood, so the
+/// observable behavior matches.
+fn stair_target(level: &DungeonLevel, stair_id: &str) -> Option<String> {
+    delve_core::level_loader::get_all_level_entities(level)
+        .find(|entity| entity.id.as_deref() == Some(stair_id))
+        .and_then(|entity| entity.prop_str("target"))
+        .map(str::to_string)
 }
 
 /// Bundled rendering handles for door, lever, plate, and tripwire visuals,
@@ -1554,5 +1573,47 @@ pub fn quick_slot_input(
             session.game.use_consumable_from_registry(&instance_id);
         }
         break;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use delve_core::level_loader::{ValidationContext, validate_dungeon_str};
+
+    fn ruins_level(level_id: &str) -> DungeonLevel {
+        let path = crate::assets_dir().join("levels/ruins.json");
+        let json = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let mut warnings = Vec::new();
+        let dungeon = validate_dungeon_str(
+            &json,
+            "ruins.json",
+            &ValidationContext::default(),
+            &mut warnings,
+        )
+        .expect("shipped ruins.json validates");
+        dungeon
+            .levels
+            .into_iter()
+            .find(|level| level.id.as_deref() == Some(level_id))
+            .unwrap_or_else(|| panic!("ruins.json has {level_id}"))
+    }
+
+    /// Stepping onto ruins' `stairs_1` must transition toward `stairs_2` on
+    /// the other level — the entity's `target` — not back toward `stairs_1`
+    /// itself, which would respawn the player in front of the stair they
+    /// just entered and read as "stairs don't go anywhere."
+    #[test]
+    fn stair_target_resolves_to_the_other_end_not_the_stepped_on_stair() {
+        let forest = ruins_level("level_forest");
+        assert_eq!(stair_target(&forest, "stairs_1"), Some("stairs_2".into()));
+        assert_eq!(stair_target(&forest, "stairs_3"), Some("stairs_4".into()));
+    }
+
+    #[test]
+    fn stair_target_is_none_for_an_unknown_entity_id() {
+        let forest = ruins_level("level_forest");
+        assert_eq!(stair_target(&forest, "no_such_stair"), None);
     }
 }
