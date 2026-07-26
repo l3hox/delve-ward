@@ -291,6 +291,10 @@ fn setup(
     commands.insert_resource(GameRng(rng));
     commands.insert_resource(ProjectileManagerRes::default());
     commands.insert_resource(ProjectileBillboards::default());
+    // Placeholder until `spawn_level_scene` below inserts the real value —
+    // keeps `position_projectile_meshes`'s plain `Res` satisfiable from the
+    // first schedule run.
+    commands.insert_resource(projectiles::ProjectileGroupY::default());
 
     let mut player = Player::new(
         grid,

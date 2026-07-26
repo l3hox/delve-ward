@@ -4,13 +4,16 @@
 //! the `gameState.onLauncherFire`/`projectileManager.setHitCallback` wiring
 //! in `main.ts`, and `rendering/projectileRenderer.ts`.
 //!
-//! Two adaptations from the TS renderer, both forced by this engine's
-//! current single-active-layer scene (there is no `LAYER_HEIGHT` stacking
-//! here — see `dungeon.rs`): projectile/explosion *visuals* only render for
-//! the player's own layer, even though the underlying `ProjectileManager`
-//! ticks every layer with projectiles on it (matching TS exactly for game
-//! logic — a launcher on a layer you can't currently see still fires, hits,
-//! and damages things correctly, it just isn't drawn). And `FireballExplosions`'
+//! Heights follow TS's split exactly: every projectile mesh — whatever
+//! layer it flies on — renders at the scene-build active layer's height
+//! plus `PROJECTILE_HEIGHT` (TS parents all projectile meshes to one group
+//! whose `position.y` is set once per scene build,
+//! `levelSceneBuilder.ts:565`, captured here as [`ProjectileGroupY`]),
+//! while hit visuals (damage numbers, fireball explosions) use the hit
+//! layer's own height — TS's hit callback reads `activeLayerIndex` while
+//! `tickProjectiles` has it swapped to the ticked projectile's layer.
+//!
+//! One adaptation from the TS renderer: `FireballExplosions`'
 //! `THREE.Points` burst becomes individual small billboard quads sharing one
 //! fading material — this engine has no point-sprite/particle-buffer
 //! primitive, but every other effect here (damage numbers, item pickups)
@@ -65,6 +68,15 @@ const PROJECTILE_STATUS_EFFECT_DURATION: f64 = 6.0;
 #[derive(Resource, Default)]
 pub struct ProjectileManagerRes(pub ProjectileManager);
 
+/// TS's `projectileMeshes.group.position.y = activeLayerIdx * LAYER_HEIGHT`
+/// (`levelSceneBuilder.ts:565`): the one Y every projectile mesh renders at,
+/// captured from whichever layer is active at scene-build time and untouched
+/// by later same-scene layer switches (falling, ramps) — the same
+/// build-time-capture rule `LevelZones` follows. Re-inserted by
+/// `spawn_level_scene` on every build.
+#[derive(Resource, Default)]
+pub struct ProjectileGroupY(pub f32);
+
 /// The mesh (and, for fireballs, the accompanying point light) for one
 /// active projectile. Kept as independent entities rather than a Bevy
 /// parent/child pair — no other renderer in this crate uses hierarchy, so
@@ -105,6 +117,7 @@ fn spawn_projectile_visual(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     projectile_type: &str,
+    translation: Vec3,
 ) -> ProjectileVisual {
     let size = quad_size_for(projectile_type);
     let color = color_for(projectile_type);
@@ -138,7 +151,7 @@ fn spawn_projectile_visual(
             FacesCamera,
             Mesh3d(mesh),
             MeshMaterial3d(material),
-            Transform::from_xyz(0.0, PROJECTILE_HEIGHT, 0.0),
+            Transform::from_translation(translation),
         ))
         .id();
 
@@ -153,7 +166,7 @@ fn spawn_projectile_visual(
                     shadow_maps_enabled: false,
                     ..default()
                 },
-                Transform::from_xyz(0.0, PROJECTILE_HEIGHT, 0.0),
+                Transform::from_translation(translation),
             ))
             .id()
     });
@@ -183,6 +196,9 @@ pub(crate) struct Explosion {
     particles: Vec<Entity>,
 }
 
+/// `FireballExplosions.spawn(worldX, worldZ, yOffset)`
+/// (`projectileRenderer.ts:56-59`): particles burst from `PROJECTILE_HEIGHT`
+/// above the hit layer's base height.
 fn spawn_fireball_explosion(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -190,8 +206,9 @@ fn spawn_fireball_explosion(
     random: &mut dyn FnMut() -> f64,
     world_x: f32,
     world_z: f32,
+    y_offset: f32,
 ) {
-    let base_y = PROJECTILE_HEIGHT;
+    let base_y = PROJECTILE_HEIGHT + y_offset;
     let particle_mesh = meshes.add(Rectangle::new(EXPLOSION_SIZE, EXPLOSION_SIZE));
     let material = materials.add(StandardMaterial {
         base_color: EXPLOSION_COLOR,
@@ -414,17 +431,18 @@ pub struct ProjectileTickEffects<'w, 's> {
     visibility: Query<'w, 's, &'static mut Visibility>,
     hud: ResMut<'w, crate::hud::HudState>,
     debug_flags: Res<'w, crate::debug::DebugFlags>,
+    group_y: Res<'w, ProjectileGroupY>,
 }
 
 /// Applies one projectile hit's gameplay effects (damage, status effect,
-/// enemy kill) and, only when the projectile was on the player's own layer,
-/// its visuals (damage number, fireball explosion) — ported from the TS
-/// `projectileManager.setHitCallback` body in `main.ts`.
+/// enemy kill) and its visuals (damage number, fireball explosion) — ported
+/// from the TS `projectileManager.setHitCallback` body in `main.ts`. Runs
+/// with `game.active_layer_index` swapped to the hit projectile's layer,
+/// exactly the state TS's callback reads its heights from.
 fn apply_projectile_hit(
     game: &mut GameState,
     effects: &mut ProjectileTickEffects,
     event: ProjectileHitEvent,
-    render_visuals: bool,
 ) {
     match event.hit_type {
         // TS: `if (hitType === 'player' && !debugFullbright)` (`main.ts:976`)
@@ -476,28 +494,23 @@ fn apply_projectile_hit(
                 }
                 (enemy.enemy_type.clone(), enemy.drops.clone())
             };
-            // Only entities on the player's own layer have a spawned
-            // billboard/health bar in this single-active-layer engine (see
-            // the module doc comment), so these no-op cleanly for
-            // background-layer hits — matching TS's own `render_visuals`
-            // gate on the mesh-dependent parts of this same callback.
             if let Some(&entity) = effects.enemies.by_key.get(&render_key) {
                 effects.feedback.flash(entity);
                 effects.feedback.trigger_hit_shake(entity);
             }
             let killed = game.damage_enemy(event.col, event.row, event.projectile.damage);
-            if render_visuals {
-                let layer_y_offset = game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
-                crate::damage_numbers::spawn_damage_number(
-                    &mut effects.item_render.commands,
-                    &mut effects.item_render.meshes,
-                    &mut effects.images,
-                    &mut effects.item_render.materials,
-                    event.projectile.damage,
-                    (event.col, event.row),
-                    layer_y_offset,
-                );
-            }
+            // `main.ts:993`: at the hit layer's own height (activeLayerIndex
+            // is the projectile's layer here), on every layer.
+            let layer_y_offset = game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
+            crate::damage_numbers::spawn_damage_number(
+                &mut effects.item_render.commands,
+                &mut effects.item_render.meshes,
+                &mut effects.images,
+                &mut effects.item_render.materials,
+                event.projectile.damage,
+                (event.col, event.row),
+                layer_y_offset,
+            );
             if killed {
                 let (enemy_type, drops_override) = dying_enemy;
                 let target = KillTarget {
@@ -534,7 +547,9 @@ fn apply_projectile_hit(
         HitType::Wall | HitType::Door => {}
     }
 
-    if render_visuals && event.projectile.projectile_type == "fireball" {
+    if event.projectile.projectile_type == "fireball" {
+        // `main.ts:1001-1007`: unconditional, at the hit layer's height.
+        let layer_y_offset = game.active_layer_index as f32 * crate::dungeon::LAYER_HEIGHT;
         let ProjectileTickEffects {
             item_render, rng, ..
         } = effects;
@@ -546,24 +561,18 @@ fn apply_projectile_hit(
             &mut random,
             event.projectile.col as f32 * CELL_SIZE,
             event.projectile.row as f32 * CELL_SIZE,
+            layer_y_offset,
         );
     }
 }
 
-/// Adds/removes projectile billboards to match the manager's active set,
-/// restricted to the player's own layer (see the module doc comment).
-/// Positions are synced separately each frame by
-/// [`position_projectile_meshes`].
-fn sync_projectile_meshes(
-    manager: &ProjectileManager,
-    effects: &mut ProjectileTickEffects,
-    player_layer_index: usize,
-) {
-    let visible: Vec<&Projectile> = manager
-        .get_all()
-        .iter()
-        .filter(|projectile| projectile.layer_index == player_layer_index)
-        .collect();
+/// Adds/removes projectile billboards to match the manager's active set —
+/// every projectile on every layer, matching TS's `getAll()` sync
+/// (`projectileSystem.ts:46`; a background-layer fireball renders at the
+/// scene-build group height like everything else). Positions are synced
+/// separately each frame by [`position_projectile_meshes`].
+fn sync_projectile_meshes(manager: &ProjectileManager, effects: &mut ProjectileTickEffects) {
+    let visible: Vec<&Projectile> = manager.get_all().iter().collect();
     let active_ids: HashSet<&str> = visible
         .iter()
         .map(|projectile| projectile.id.as_str())
@@ -586,11 +595,17 @@ fn sync_projectile_meshes(
         if effects.billboards.by_id.contains_key(&projectile.id) {
             continue;
         }
+        let translation = Vec3::new(
+            projectile.col as f32 * CELL_SIZE,
+            effects.group_y.0 + PROJECTILE_HEIGHT,
+            projectile.row as f32 * CELL_SIZE,
+        );
         let visual = spawn_projectile_visual(
             &mut effects.item_render.commands,
             &mut effects.item_render.meshes,
             &mut effects.item_render.materials,
             &projectile.projectile_type,
+            translation,
         );
         effects
             .billboards
@@ -631,8 +646,10 @@ pub fn tick_projectiles(
 
     for layer_index in active_layers {
         session.game.active_layer_index = layer_index;
-        let render_visuals = layer_index == player_layer_index;
-        let (player_col, player_row) = if render_visuals {
+        // TS passes the real player cell only for the player's own layer
+        // (`projectileSystem.ts:31-32`); background layers get (-1,-1) so a
+        // projectile there can't hit the player.
+        let (player_col, player_row) = if layer_index == player_layer_index {
             (
                 i64::from(session.last_player_pose.0),
                 i64::from(session.last_player_pose.1),
@@ -672,12 +689,12 @@ pub fn tick_projectiles(
         };
 
         for event in events {
-            apply_projectile_hit(&mut session.game, &mut effects, event, render_visuals);
+            apply_projectile_hit(&mut session.game, &mut effects, event);
         }
     }
     session.game.active_layer_index = player_layer_index;
 
-    sync_projectile_meshes(&manager.0, &mut effects, player_layer_index);
+    sync_projectile_meshes(&manager.0, &mut effects);
 }
 
 /// Moves every active projectile's mesh (and fireball light) to its current
@@ -687,23 +704,25 @@ pub fn tick_projectiles(
 pub fn position_projectile_meshes(
     manager: Res<ProjectileManagerRes>,
     billboards: Res<ProjectileBillboards>,
+    group_y: Res<ProjectileGroupY>,
     mut transforms: Query<&mut Transform>,
 ) {
     for projectile in manager.0.get_all() {
         let Some(visual) = billboards.by_id.get(&projectile.id) else {
             continue;
         };
-        let world_x = projectile.col as f32 * CELL_SIZE;
-        let world_z = projectile.row as f32 * CELL_SIZE;
+        let translation = Vec3::new(
+            projectile.col as f32 * CELL_SIZE,
+            group_y.0 + PROJECTILE_HEIGHT,
+            projectile.row as f32 * CELL_SIZE,
+        );
         if let Ok(mut transform) = transforms.get_mut(visual.mesh) {
-            transform.translation.x = world_x;
-            transform.translation.z = world_z;
+            transform.translation = translation;
         }
         if let Some(light) = visual.light
             && let Ok(mut transform) = transforms.get_mut(light)
         {
-            transform.translation.x = world_x;
-            transform.translation.z = world_z;
+            transform.translation = translation;
         }
     }
 }

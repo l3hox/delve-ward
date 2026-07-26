@@ -591,6 +591,12 @@ pub fn spawn_level_scene(
     );
     commands.insert_resource(water_drips);
     commands.insert_resource(particles::EmbersPending);
+    // `levelSceneBuilder.ts:565`: the projectile group's Y, from the plain
+    // index multiply (not the layer's explicit yOffset override), captured
+    // at build time like the zone map above.
+    commands.insert_resource(crate::projectiles::ProjectileGroupY(
+        scene.game.active_layer_index as f32 * dungeon::LAYER_HEIGHT,
+    ));
 
     LevelSceneHandles {
         door_panels,
