@@ -92,6 +92,62 @@ fn area_average(
     })
 }
 
+/// The bilinearly interpolated color at a continuous source coordinate: the
+/// four surrounding pixels weighted by how close each is. This is the sampling
+/// `ctx.drawImage` performs when *enlarging* with `imageSmoothingEnabled` at
+/// its default `true`.
+///
+/// Enlarging by a fraction — 32 source pixels across 40 stored ones — has no
+/// whole-number mapping, so point sampling has to double one source pixel in
+/// five and leave the rest single, and that irregularity is visible as a
+/// wobble in what should be an even grid. Interpolating trades the hard pixel
+/// edges for an even gradient instead.
+///
+/// Coordinates outside the source clamp to its edge pixels rather than
+/// wrapping or fading, so sprite borders stay solid. Premultiplied by alpha
+/// for the same reason [`area_average`] is: an interpolation that reaches a
+/// transparent pixel must lose opacity, not take on its color.
+fn bilinear_sample(source: &RgbaImage, sample_x: f32, sample_y: f32, alpha: f32) -> Option<Rgba> {
+    let max_x = source.width as i32 - 1;
+    let max_y = source.height as i32 - 1;
+    let left = sample_x.floor();
+    let top = sample_y.floor();
+    let fraction_x = sample_x - left;
+    let fraction_y = sample_y - top;
+
+    let mut red = 0.0;
+    let mut green = 0.0;
+    let mut blue = 0.0;
+    let mut coverage = 0.0;
+    for (offset_y, weight_y) in [(0, 1.0 - fraction_y), (1, fraction_y)] {
+        for (offset_x, weight_x) in [(0, 1.0 - fraction_x), (1, fraction_x)] {
+            let weight = weight_x * weight_y;
+            if weight <= 0.0 {
+                continue;
+            }
+            let x = (left as i32 + offset_x).clamp(0, max_x) as usize;
+            let y = (top as i32 + offset_y).clamp(0, max_y) as usize;
+            let offset = (y * source.width + x) * 4;
+            let source_alpha = f32::from(source.pixels[offset + 3]) / 255.0;
+            let premultiplied = source_alpha * weight;
+            red += f32::from(source.pixels[offset]) * premultiplied;
+            green += f32::from(source.pixels[offset + 1]) * premultiplied;
+            blue += f32::from(source.pixels[offset + 2]) * premultiplied;
+            coverage += premultiplied;
+        }
+    }
+    if coverage <= 0.0 {
+        return None;
+    }
+    Some(Rgba {
+        red: (red / coverage).round() as u8,
+        green: (green / coverage).round() as u8,
+        blue: (blue / coverage).round() as u8,
+        // Weights sum to 1, so this is already the weighted mean alpha.
+        alpha: coverage * alpha,
+    })
+}
+
 pub struct PixelCanvas {
     width: usize,
     height: usize,
@@ -255,16 +311,16 @@ impl PixelCanvas {
     ///
     /// The rectangle covers `target * scale` stored pixels, so at
     /// `hud::HUD_SCALE` 2 a 20-unit item slot has 40 of them for a 32x32
-    /// sprite. That is an *upscale*, where point sampling reaches every source
-    /// pixel — nothing is dropped and pixel-art edges stay hard, which
-    /// averaging would soften. Only when the sprite is larger than its stored
-    /// footprint does it need averaging, and then
-    /// [`Self::blit_area_averaged_stored`] keeps the detail that point sampling
-    /// would throw away.
+    /// sprite. Which filter is right depends on the direction: enlarging calls
+    /// for interpolation between source pixels
+    /// ([`Self::blit_bilinear_stored`]), while shrinking calls for averaging
+    /// the pixels that fall inside each target
+    /// ([`Self::blit_area_averaged_stored`]) — interpolation would skip past
+    /// most of them.
     ///
     /// Either way the sprite fills the slot exactly as before, at the same
     /// on-screen size: `scale` changes how finely it is stored, not how large
-    /// it is drawn. Returns whether the upscale path was taken.
+    /// it is drawn. Returns whether the enlarging path was taken.
     pub fn blit_icon(
         &mut self,
         source: &RgbaImage,
@@ -281,41 +337,35 @@ impl PixelCanvas {
             target_w * self.scale as i32,
             target_h * self.scale as i32,
         );
-        let fits = stored.2 as usize >= source.width && stored.3 as usize >= source.height;
-        if fits {
-            self.blit_nearest_stored(source, stored, alpha);
+        let enlarging = stored.2 as usize >= source.width && stored.3 as usize >= source.height;
+        if enlarging {
+            self.blit_bilinear_stored(source, stored, alpha);
         } else {
             self.blit_area_averaged_stored(source, stored, alpha);
         }
-        fits
+        enlarging
     }
 
-    /// Point-sampled blit over stored pixels. Only meaningful as an upscale —
-    /// see [`Self::blit_icon`], its one caller, for why that is the right
-    /// sampling there.
-    fn blit_nearest_stored(
+    /// Bilinear blit over stored pixels — see [`bilinear_sample`]. Sample
+    /// points sit at stored-pixel centres mapped back into source space, the
+    /// half-pixel offsets being what keeps the sprite from drifting half a
+    /// pixel toward one corner.
+    fn blit_bilinear_stored(
         &mut self,
         source: &RgbaImage,
         stored: (i32, i32, i32, i32),
         alpha: f32,
     ) {
         let (stored_x, stored_y, stored_w, stored_h) = stored;
+        let x_ratio = source.width as f32 / stored_w as f32;
+        let y_ratio = source.height as f32 / stored_h as f32;
         for py in 0..stored_h {
-            let source_y = (py as usize * source.height / stored_h as usize).min(source.height - 1);
+            let sample_y = (py as f32 + 0.5) * y_ratio - 0.5;
             for px in 0..stored_w {
-                let source_x =
-                    (px as usize * source.width / stored_w as usize).min(source.width - 1);
-                let offset = (source_y * source.width + source_x) * 4;
-                let color = Rgba {
-                    red: source.pixels[offset],
-                    green: source.pixels[offset + 1],
-                    blue: source.pixels[offset + 2],
-                    alpha: f32::from(source.pixels[offset + 3]) / 255.0 * alpha,
-                };
-                if color.alpha <= 0.0 {
-                    continue;
+                let sample_x = (px as f32 + 0.5) * x_ratio - 0.5;
+                if let Some(color) = bilinear_sample(source, sample_x, sample_y, alpha) {
+                    self.blend_stored_pixel(stored_x + px, stored_y + py, color);
                 }
-                self.blend_stored_pixel(stored_x + px, stored_y + py, color);
             }
         }
     }
@@ -544,35 +594,15 @@ mod tests {
         assert_eq!(alpha, 128, "coverage halved by the transparent neighbour");
     }
 
-    /// A slot with room to spare magnifies by a whole number, so each source
-    /// pixel becomes an exact block rather than an unevenly stretched one.
+    /// The item slot's exact case: a 32-pixel-wide sprite across the 40 stored
+    /// pixels a 20-unit slot holds at `HUD_SCALE` 2. Interpolating must produce
+    /// a monotonic ramp from a monotonic source — no value may step backwards,
+    /// which is what the uneven pixel doubling of point sampling looks like in
+    /// numbers — and it must span the full range of the source.
     #[test]
-    fn upscale_replicates_source_pixels() {
-        let source = RgbaImage {
-            width: 2,
-            height: 1,
-            pixels: vec![10, 20, 30, 255, 200, 210, 220, 255],
-        };
-        let mut canvas = PixelCanvas::with_dimensions(4, 2);
-        canvas.blit_icon(&source, (0, 0, 4, 2), 1.0);
-        for y in 0..2 {
-            assert_eq!(pixel_at(&canvas, 0, y), (10, 20, 30, 255));
-            assert_eq!(pixel_at(&canvas, 1, y), (10, 20, 30, 255));
-            assert_eq!(pixel_at(&canvas, 2, y), (200, 210, 220, 255));
-            assert_eq!(pixel_at(&canvas, 3, y), (200, 210, 220, 255));
-        }
-    }
-
-    /// The item slot's exact case, and the whole point of the supersampled
-    /// canvas: a 32x32 sprite in a 20-unit slot at `HUD_SCALE` 2 has 40 stored
-    /// pixels to fill, so every one of the 32 source columns must appear
-    /// somewhere in the output. At `HUD_SCALE` 1 the same sprite has only 20 to
-    /// work with and cannot.
-    #[test]
-    fn a_supersampled_slot_keeps_every_source_column() {
+    fn enlarging_interpolates_into_a_monotonic_ramp() {
         let mut pixels = Vec::with_capacity(32 * 4);
         for x in 0..32 {
-            // Distinct value per column: a dropped column is a missing value.
             pixels.extend_from_slice(&[(x * 8) as u8, 0, 0, 255]);
         }
         let source = RgbaImage {
@@ -584,15 +614,70 @@ mod tests {
         let mut canvas = PixelCanvas::supersampled(20, 1, 2);
         assert!(
             canvas.blit_icon(&source, (0, 0, 20, 1), 1.0),
-            "40 stored pixels should take the upscale path"
+            "40 stored pixels for 32 source pixels is the enlarging path"
         );
         let stored: Vec<u8> = (0..40).map(|x| pixel_at(&canvas, x, 0).0).collect();
-        for x in 0..32u8 {
+        assert!(
+            stored.windows(2).all(|pair| pair[1] >= pair[0]),
+            "ramp is not monotonic: {stored:?}"
+        );
+        assert_eq!(stored[0], 0, "clamps to the first source pixel");
+        assert_eq!(stored[39], 248, "clamps to the last source pixel");
+        // Intermediate values the source never contained prove interpolation
+        // happened rather than nearest-pixel duplication.
+        assert!(
+            stored.iter().any(|value| value % 8 != 0),
+            "expected blended values, got {stored:?}"
+        );
+    }
+
+    /// Halfway between two colors must land halfway, and the sample grid must
+    /// be centred: with two source pixels over four stored ones, the two
+    /// middle outputs straddle the boundary symmetrically.
+    #[test]
+    fn interpolation_is_centred_between_source_pixels() {
+        let source = RgbaImage {
+            width: 2,
+            height: 1,
+            pixels: vec![0, 0, 0, 255, 100, 100, 100, 255],
+        };
+        let mut canvas = PixelCanvas::supersampled(4, 1, 1);
+        canvas.blit_icon(&source, (0, 0, 4, 1), 1.0);
+        let row: Vec<u8> = (0..4).map(|x| pixel_at(&canvas, x, 0).0).collect();
+        assert_eq!(row[0], 0, "edge clamps to the first pixel");
+        assert_eq!(row[3], 100, "edge clamps to the last pixel");
+        assert!(
+            (i32::from(row[1]) - 25).abs() <= 1,
+            "quarter point, got {row:?}"
+        );
+        assert!(
+            (i32::from(row[2]) - 75).abs() <= 1,
+            "three-quarter point, got {row:?}"
+        );
+    }
+
+    /// Interpolating toward a transparent pixel must lose opacity, never take
+    /// on that pixel's color — the same premultiplication requirement the
+    /// averaging path has, checked on the enlarging path.
+    #[test]
+    fn interpolation_does_not_bleed_transparent_color() {
+        let source = RgbaImage {
+            width: 2,
+            height: 1,
+            pixels: vec![200, 40, 40, 255, 0, 255, 0, 0],
+        };
+        let mut canvas = PixelCanvas::supersampled(4, 1, 1);
+        canvas.blit_icon(&source, (0, 0, 4, 1), 1.0);
+        for x in 0..4 {
+            let (red, green, blue, _) = pixel_at(&canvas, x, 0);
             assert!(
-                stored.contains(&(x * 8)),
-                "source column {x} never reached the canvas: {stored:?}"
+                green <= red && blue <= red,
+                "stored pixel {x} took on the transparent green: {:?}",
+                (red, green, blue)
             );
         }
+        let (_, _, _, fading) = pixel_at(&canvas, 3, 0);
+        assert!(fading < 255, "opacity should fall toward the clear pixel");
     }
 
     /// The 32-into-20 case without the supersampling headroom: every source
