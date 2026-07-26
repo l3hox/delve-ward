@@ -39,10 +39,76 @@ pub struct RgbaImage {
     pub pixels: Vec<u8>,
 }
 
+/// The averaged color of every source pixel covering one target pixel, where
+/// `(index, count)` locates that pixel along each axis of the target
+/// rectangle. This is the sampling `ctx.drawImage` performs with
+/// `imageSmoothingEnabled` at its default `true`.
+///
+/// Colors are accumulated premultiplied by alpha and then un-premultiplied,
+/// so a transparent source pixel lowers coverage without dragging its
+/// (arbitrary) color into the sprite's edges — the dark-fringe artifact a
+/// naive average produces. Returns `None` when the span is empty or fully
+/// transparent, meaning nothing should be written.
+fn area_average(
+    source: &RgbaImage,
+    (x_index, x_count): (i32, i32),
+    (y_index, y_count): (i32, i32),
+    alpha: f32,
+) -> Option<Rgba> {
+    // Ceiling division over non-negative values; `i32::div_ceil` is still
+    // unstable on this toolchain. Each span is at least one pixel wide so
+    // upscaling stays defined.
+    let span_end = |numerator: i32, denominator: i32| (numerator + denominator - 1) / denominator;
+    let span_top = y_index * source.height as i32 / y_count;
+    let span_bottom = span_end((y_index + 1) * source.height as i32, y_count).max(span_top + 1);
+    let span_left = x_index * source.width as i32 / x_count;
+    let span_right = span_end((x_index + 1) * source.width as i32, x_count).max(span_left + 1);
+
+    let mut red = 0.0;
+    let mut green = 0.0;
+    let mut blue = 0.0;
+    let mut coverage = 0.0;
+    let mut samples = 0.0;
+    for source_y in span_top..span_bottom.min(source.height as i32) {
+        for source_x in span_left..span_right.min(source.width as i32) {
+            let offset = (source_y as usize * source.width + source_x as usize) * 4;
+            let source_alpha = f32::from(source.pixels[offset + 3]) / 255.0;
+            red += f32::from(source.pixels[offset]) * source_alpha;
+            green += f32::from(source.pixels[offset + 1]) * source_alpha;
+            blue += f32::from(source.pixels[offset + 2]) * source_alpha;
+            coverage += source_alpha;
+            samples += 1.0;
+        }
+    }
+    if samples == 0.0 || coverage == 0.0 {
+        return None;
+    }
+    Some(Rgba {
+        // Un-premultiply: divide by accumulated alpha, not the sample count.
+        red: (red / coverage).round() as u8,
+        green: (green / coverage).round() as u8,
+        blue: (blue / coverage).round() as u8,
+        alpha: coverage / samples * alpha,
+    })
+}
+
 pub struct PixelCanvas {
     width: usize,
     height: usize,
     pixels: Vec<u8>,
+    /// Physical pixels per drawing coordinate. Every primitive takes
+    /// coordinates in the canvas's own drawing space and expands each one into
+    /// a `scale` x `scale` block of stored pixels, so raising it multiplies
+    /// the stored resolution without moving or resizing anything drawn: with
+    /// the result upscaled by a nearest-neighbour sampler, one drawing
+    /// coordinate covers exactly the same screen area either way.
+    ///
+    /// The point is headroom for content that has finer detail than the
+    /// drawing grid — [`PixelCanvas::blit_icon`] writes stored pixels directly,
+    /// so a 32x32 sprite reaches a 20-unit slot whole instead of being averaged
+    /// down to 20 pixels. Texture generators keep `scale` at 1, where the block
+    /// is one pixel and this is all a no-op.
+    scale: usize,
 }
 
 impl PixelCanvas {
@@ -51,10 +117,18 @@ impl PixelCanvas {
     }
 
     pub fn with_dimensions(width: usize, height: usize) -> Self {
+        Self::supersampled(width, height, 1)
+    }
+
+    /// A canvas whose drawing space is `width` x `height` but which stores
+    /// `scale` physical pixels per coordinate in each axis.
+    pub fn supersampled(width: usize, height: usize, scale: usize) -> Self {
+        let scale = scale.max(1);
         Self {
-            width,
-            height,
-            pixels: vec![0; width * height * 4],
+            width: width * scale,
+            height: height * scale,
+            pixels: vec![0; width * scale * height * scale * 4],
+            scale,
         }
     }
 
@@ -70,8 +144,23 @@ impl PixelCanvas {
         self.pixels
     }
 
-    /// Source-over blend of `color` onto the pixel at (x, y).
+    /// Source-over blend of `color` onto the drawing coordinate (x, y), which
+    /// covers a `scale` x `scale` block of stored pixels.
     fn blend_pixel(&mut self, x: i32, y: i32, color: Rgba) {
+        if self.scale == 1 {
+            self.blend_stored_pixel(x, y, color);
+            return;
+        }
+        let scale = self.scale as i32;
+        for offset_y in 0..scale {
+            for offset_x in 0..scale {
+                self.blend_stored_pixel(x * scale + offset_x, y * scale + offset_y, color);
+            }
+        }
+    }
+
+    /// Source-over blend onto one stored pixel, bypassing [`Self::scale`].
+    fn blend_stored_pixel(&mut self, x: i32, y: i32, color: Rgba) {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return;
         }
@@ -137,76 +226,96 @@ impl PixelCanvas {
         }
     }
 
-    /// Area-averaged blit of an RGBA source image into the target rectangle,
-    /// matching what `ctx.drawImage` does with `imageSmoothingEnabled` at its
-    /// default of `true` — which is how the TS HUD draws item icons and
-    /// paperdoll art everywhere except its trading overlay and sword swing,
-    /// the two places that opt out explicitly.
+    /// Area-averaged blit over stored pixels: [`area_average`] resolved at the
+    /// canvas's full stored resolution rather than its coarser drawing grid,
+    /// so a sprite that can't fit whole still keeps as much detail as the
+    /// canvas can hold. Reached through [`Self::blit_icon`] when the sprite is
+    /// larger than its stored footprint.
+    fn blit_area_averaged_stored(
+        &mut self,
+        source: &RgbaImage,
+        stored: (i32, i32, i32, i32),
+        alpha: f32,
+    ) {
+        let (stored_x, stored_y, stored_w, stored_h) = stored;
+        if stored_w <= 0 || stored_h <= 0 || source.width == 0 || source.height == 0 {
+            return;
+        }
+        for py in 0..stored_h {
+            for px in 0..stored_w {
+                if let Some(color) = area_average(source, (px, stored_w), (py, stored_h), alpha) {
+                    self.blend_stored_pixel(stored_x + px, stored_y + py, color);
+                }
+            }
+        }
+    }
+
+    /// Fills the drawing-space rectangle `target` with `source` at the finest
+    /// resolution this canvas can hold, choosing the sampling by direction.
     ///
-    /// This matters because the icons are downscaled: a 32x32 sprite drawn
-    /// into a 24-pixel slot's 20x20 inner box. Point sampling that ratio
-    /// throws away 12 of every 32 rows and columns outright, so detail
-    /// present in the source never reaches the screen. Averaging every source
-    /// pixel that falls inside a target pixel's footprint keeps it.
+    /// The rectangle covers `target * scale` stored pixels, so at
+    /// `hud::HUD_SCALE` 2 a 20-unit item slot has 40 of them for a 32x32
+    /// sprite. That is an *upscale*, where point sampling reaches every source
+    /// pixel — nothing is dropped and pixel-art edges stay hard, which
+    /// averaging would soften. Only when the sprite is larger than its stored
+    /// footprint does it need averaging, and then
+    /// [`Self::blit_area_averaged_stored`] keeps the detail that point sampling
+    /// would throw away.
     ///
-    /// Colors are averaged premultiplied by alpha, then un-premultiplied, so
-    /// fully transparent source pixels contribute their coverage without
-    /// dragging their (arbitrary) color into the edges of the sprite.
-    pub fn blit_scaled_smoothed(
+    /// Either way the sprite fills the slot exactly as before, at the same
+    /// on-screen size: `scale` changes how finely it is stored, not how large
+    /// it is drawn. Returns whether the upscale path was taken.
+    pub fn blit_icon(
         &mut self,
         source: &RgbaImage,
         target: (i32, i32, i32, i32),
         alpha: f32,
-    ) {
+    ) -> bool {
         let (target_x, target_y, target_w, target_h) = target;
         if target_w <= 0 || target_h <= 0 || source.width == 0 || source.height == 0 {
-            return;
+            return false;
         }
-        // Ceiling division over non-negative values; `i32::div_ceil` is still
-        // unstable on this toolchain.
-        let span_end =
-            |numerator: i32, denominator: i32| (numerator + denominator - 1) / denominator;
-        for py in 0..target_h {
-            // The half-open source span this target row covers, always at
-            // least one pixel wide so upscaling stays defined.
-            let span_top = py * source.height as i32 / target_h;
-            let span_bottom = span_end((py + 1) * source.height as i32, target_h).max(span_top + 1);
-            for px in 0..target_w {
-                let span_left = px * source.width as i32 / target_w;
-                let span_right =
-                    span_end((px + 1) * source.width as i32, target_w).max(span_left + 1);
+        let stored = (
+            target_x * self.scale as i32,
+            target_y * self.scale as i32,
+            target_w * self.scale as i32,
+            target_h * self.scale as i32,
+        );
+        let fits = stored.2 as usize >= source.width && stored.3 as usize >= source.height;
+        if fits {
+            self.blit_nearest_stored(source, stored, alpha);
+        } else {
+            self.blit_area_averaged_stored(source, stored, alpha);
+        }
+        fits
+    }
 
-                let mut red = 0.0;
-                let mut green = 0.0;
-                let mut blue = 0.0;
-                let mut coverage = 0.0;
-                let mut samples = 0.0;
-                for source_y in span_top..span_bottom.min(source.height as i32) {
-                    for source_x in span_left..span_right.min(source.width as i32) {
-                        let offset = (source_y as usize * source.width + source_x as usize) * 4;
-                        let source_alpha = f32::from(source.pixels[offset + 3]) / 255.0;
-                        red += f32::from(source.pixels[offset]) * source_alpha;
-                        green += f32::from(source.pixels[offset + 1]) * source_alpha;
-                        blue += f32::from(source.pixels[offset + 2]) * source_alpha;
-                        coverage += source_alpha;
-                        samples += 1.0;
-                    }
-                }
-                if samples == 0.0 || coverage == 0.0 {
+    /// Point-sampled blit over stored pixels. Only meaningful as an upscale —
+    /// see [`Self::blit_icon`], its one caller, for why that is the right
+    /// sampling there.
+    fn blit_nearest_stored(
+        &mut self,
+        source: &RgbaImage,
+        stored: (i32, i32, i32, i32),
+        alpha: f32,
+    ) {
+        let (stored_x, stored_y, stored_w, stored_h) = stored;
+        for py in 0..stored_h {
+            let source_y = (py as usize * source.height / stored_h as usize).min(source.height - 1);
+            for px in 0..stored_w {
+                let source_x =
+                    (px as usize * source.width / stored_w as usize).min(source.width - 1);
+                let offset = (source_y * source.width + source_x) * 4;
+                let color = Rgba {
+                    red: source.pixels[offset],
+                    green: source.pixels[offset + 1],
+                    blue: source.pixels[offset + 2],
+                    alpha: f32::from(source.pixels[offset + 3]) / 255.0 * alpha,
+                };
+                if color.alpha <= 0.0 {
                     continue;
                 }
-                self.blend_pixel(
-                    target_x + px,
-                    target_y + py,
-                    Rgba {
-                        // Un-premultiply: divide by the accumulated alpha, not
-                        // the sample count.
-                        red: (red / coverage).round() as u8,
-                        green: (green / coverage).round() as u8,
-                        blue: (blue / coverage).round() as u8,
-                        alpha: coverage / samples * alpha,
-                    },
-                );
+                self.blend_stored_pixel(stored_x + px, stored_y + py, color);
             }
         }
     }
@@ -399,9 +508,10 @@ mod tests {
         )
     }
 
-    /// One black and one white source pixel per target pixel must average to
-    /// mid grey. Nearest sampling would return whichever pixel it happened to
-    /// land on instead, which is how source detail goes missing on downscale.
+    /// A sprite too large for its slot takes the area-averaged fallback: one
+    /// black and one white source pixel per target pixel must average to mid
+    /// grey. Nearest sampling would return whichever pixel it happened to land
+    /// on instead, which is how source detail goes missing on downscale.
     #[test]
     fn downscale_averages_the_source_pixels_it_covers() {
         let source = RgbaImage {
@@ -410,7 +520,7 @@ mod tests {
             pixels: vec![0, 0, 0, 255, 255, 255, 255, 255],
         };
         let mut canvas = PixelCanvas::with_dimensions(1, 1);
-        canvas.blit_scaled_smoothed(&source, (0, 0, 1, 1), 1.0);
+        canvas.blit_icon(&source, (0, 0, 1, 1), 1.0);
         let (red, green, blue, alpha) = pixel_at(&canvas, 0, 0);
         assert_eq!((red, green, blue), (128, 128, 128));
         assert_eq!(alpha, 255);
@@ -428,14 +538,14 @@ mod tests {
             pixels: vec![200, 40, 40, 255, 0, 255, 0, 0],
         };
         let mut canvas = PixelCanvas::with_dimensions(1, 1);
-        canvas.blit_scaled_smoothed(&source, (0, 0, 1, 1), 1.0);
+        canvas.blit_icon(&source, (0, 0, 1, 1), 1.0);
         let (red, green, blue, alpha) = pixel_at(&canvas, 0, 0);
         assert_eq!((red, green, blue), (200, 40, 40), "opaque color preserved");
         assert_eq!(alpha, 128, "coverage halved by the transparent neighbour");
     }
 
-    /// Upscaling has no pixels to average, so it must still reproduce the
-    /// source exactly rather than falling into an empty-span division.
+    /// A slot with room to spare magnifies by a whole number, so each source
+    /// pixel becomes an exact block rather than an unevenly stretched one.
     #[test]
     fn upscale_replicates_source_pixels() {
         let source = RgbaImage {
@@ -444,7 +554,7 @@ mod tests {
             pixels: vec![10, 20, 30, 255, 200, 210, 220, 255],
         };
         let mut canvas = PixelCanvas::with_dimensions(4, 2);
-        canvas.blit_scaled_smoothed(&source, (0, 0, 4, 2), 1.0);
+        canvas.blit_icon(&source, (0, 0, 4, 2), 1.0);
         for y in 0..2 {
             assert_eq!(pixel_at(&canvas, 0, y), (10, 20, 30, 255));
             assert_eq!(pixel_at(&canvas, 1, y), (10, 20, 30, 255));
@@ -453,9 +563,41 @@ mod tests {
         }
     }
 
-    /// The 32-into-20 case the item slots actually use: every source column
-    /// has to reach the target, so no run of identical output columns can
-    /// appear where the source alternates.
+    /// The item slot's exact case, and the whole point of the supersampled
+    /// canvas: a 32x32 sprite in a 20-unit slot at `HUD_SCALE` 2 has 40 stored
+    /// pixels to fill, so every one of the 32 source columns must appear
+    /// somewhere in the output. At `HUD_SCALE` 1 the same sprite has only 20 to
+    /// work with and cannot.
+    #[test]
+    fn a_supersampled_slot_keeps_every_source_column() {
+        let mut pixels = Vec::with_capacity(32 * 4);
+        for x in 0..32 {
+            // Distinct value per column: a dropped column is a missing value.
+            pixels.extend_from_slice(&[(x * 8) as u8, 0, 0, 255]);
+        }
+        let source = RgbaImage {
+            width: 32,
+            height: 1,
+            pixels,
+        };
+
+        let mut canvas = PixelCanvas::supersampled(20, 1, 2);
+        assert!(
+            canvas.blit_icon(&source, (0, 0, 20, 1), 1.0),
+            "40 stored pixels should take the upscale path"
+        );
+        let stored: Vec<u8> = (0..40).map(|x| pixel_at(&canvas, x, 0).0).collect();
+        for x in 0..32u8 {
+            assert!(
+                stored.contains(&(x * 8)),
+                "source column {x} never reached the canvas: {stored:?}"
+            );
+        }
+    }
+
+    /// The 32-into-20 case without the supersampling headroom: every source
+    /// column still has to reach the target, so no run of identical output
+    /// columns can appear where the source alternates.
     #[test]
     fn a_thirty_two_pixel_sprite_keeps_detail_in_a_twenty_pixel_slot() {
         let mut pixels = Vec::with_capacity(32 * 4);
@@ -469,7 +611,7 @@ mod tests {
             pixels,
         };
         let mut canvas = PixelCanvas::with_dimensions(20, 1);
-        canvas.blit_scaled_smoothed(&source, (0, 0, 20, 1), 1.0);
+        canvas.blit_icon(&source, (0, 0, 20, 1), 1.0);
         let columns: Vec<u8> = (0..20).map(|x| pixel_at(&canvas, x, 0).0).collect();
         assert!(
             columns.iter().any(|&value| value > 0 && value < 255),

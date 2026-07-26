@@ -782,10 +782,10 @@ pub fn draw_inventory_overlay(
                 &entity.item_id,
                 (sx, sy, SLOT_SIZE),
                 ICON_FALLBACK,
-                IconSampling::Smoothed,
+                IconSampling::Native,
             );
         } else if let Some(ghost) = icons.get(crate::hud::paperdoll_path(slot)) {
-            canvas.blit_scaled_smoothed(
+            canvas.blit_icon(
                 ghost,
                 (
                     sx + PAPERDOLL_PAD,
@@ -835,7 +835,7 @@ pub fn draw_inventory_overlay(
                 &entity.item_id,
                 (sx, sy, SLOT_SIZE),
                 ICON_FALLBACK,
-                IconSampling::Smoothed,
+                IconSampling::Native,
             );
         }
     }
@@ -867,7 +867,7 @@ pub fn draw_inventory_overlay(
                 SLOT_SIZE,
             ),
             ICON_FALLBACK,
-            IconSampling::Smoothed,
+            IconSampling::Native,
         );
     }
 

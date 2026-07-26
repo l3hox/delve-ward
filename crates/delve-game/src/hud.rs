@@ -43,6 +43,20 @@ use std::collections::HashMap;
 
 pub const HUD_WIDTH: usize = 640;
 pub const HUD_HEIGHT: usize = 360;
+
+/// Stored pixels per HUD drawing unit. TS's HUD canvas is exactly
+/// `HUD_WIDTH` x `HUD_HEIGHT` and gets stretched over the viewport with
+/// `image-rendering: pixelated`; this port keeps the same drawing grid but
+/// stores each unit as a `HUD_SCALE` x `HUD_SCALE` block, so every panel,
+/// bar, and glyph lands on exactly the same screen pixels as before while
+/// item sprites get enough room to appear at their own resolution (see
+/// `PixelCanvas::blit_icon`).
+///
+/// 2 is the smallest value that fits a 32x32 item sprite in a 24-unit slot's
+/// 20-unit inner box (20 * 2 = 40 stored pixels). Raising it costs fill work
+/// and memory quadratically and buys nothing for the shipped 32x32 art;
+/// setting it to 1 restores TS's exact storage resolution.
+pub const HUD_SCALE: usize = 2;
 const MARGIN: i32 = 8;
 
 /// Window-pixel cursor position to HUD-canvas (`HUD_WIDTH`x`HUD_HEIGHT`)
@@ -378,12 +392,12 @@ fn draw_level_up_toast(canvas: &mut PixelCanvas, hud: &mut HudState, delta: f32)
 pub fn setup_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let mut image = Image::new(
         Extent3d {
-            width: HUD_WIDTH as u32,
-            height: HUD_HEIGHT as u32,
+            width: (HUD_WIDTH * HUD_SCALE) as u32,
+            height: (HUD_HEIGHT * HUD_SCALE) as u32,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
-        vec![0; HUD_WIDTH * HUD_HEIGHT * 4],
+        vec![0; HUD_WIDTH * HUD_SCALE * HUD_HEIGHT * HUD_SCALE * 4],
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
     );
@@ -444,7 +458,7 @@ pub fn draw_hud(
     let hud = &mut *hud;
     let delta = time.delta_secs();
     hud.time += delta;
-    let mut canvas = PixelCanvas::with_dimensions(HUD_WIDTH, HUD_HEIGHT);
+    let mut canvas = PixelCanvas::supersampled(HUD_WIDTH, HUD_HEIGHT, HUD_SCALE);
 
     if *sources.overlay == ActiveOverlay::CharCreation {
         draw_char_creation(&mut canvas, &sources.creation);
@@ -937,17 +951,20 @@ fn draw_slot(canvas: &mut PixelCanvas, x: i32, y: i32) {
     canvas.stroke_rect(x, y, SLOT_SIZE, SLOT_SIZE, SLOT_BORDER);
 }
 
-/// How an icon's sprite is resampled into its slot. TS's HUD leaves
-/// `imageSmoothingEnabled` at its default `true` when drawing item icons in
-/// the inventory panel and the full inventory overlay, and sets it to `false`
-/// in the trading overlay (`tradingOverlay.ts:389`) — the only item surface
-/// that opts out. Each call site names its own mode so that split stays
-/// visible instead of hiding behind a single default.
+/// How an icon's sprite is fitted into its slot.
+///
+/// TS resamples in both of its modes: its HUD leaves `imageSmoothingEnabled`
+/// at the default `true` for the inventory panel and the full inventory
+/// overlay, and sets it to `false` in the trading overlay
+/// (`tradingOverlay.ts:389`), the one item surface that opts out. Each call
+/// site names its own mode so that split stays visible.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IconSampling {
-    /// Averaged, as `drawImage` does by default — keeps the source sprite's
-    /// detail through the downscale into a slot.
-    Smoothed,
+    /// Every source pixel preserved at whole-number magnification, centred in
+    /// the slot — sharper than either TS mode, made possible by [`HUD_SCALE`].
+    /// Sprites too large to fit whole are area-averaged over the slot's stored
+    /// pixels instead, still finer than the drawing grid allows.
+    Native,
     /// Point-sampled, as `imageSmoothingEnabled = false` does.
     Nearest,
 }
@@ -981,7 +998,9 @@ pub(crate) fn draw_item_icon(
             let icon_size = size - padding * 2;
             let target = (x + padding, y + padding, icon_size, icon_size);
             match sampling {
-                IconSampling::Smoothed => canvas.blit_scaled_smoothed(image, target, 1.0),
+                IconSampling::Native => {
+                    canvas.blit_icon(image, target, 1.0);
+                }
                 IconSampling::Nearest => canvas.blit_scaled(image, target, 1.0),
             }
         }
@@ -1297,11 +1316,11 @@ fn draw_inventory_panel(
                 &item_id,
                 (slot_x, slot_y, SLOT_SIZE),
                 equip_slot_color(slot),
-                IconSampling::Smoothed,
+                IconSampling::Native,
             );
         } else if let Some(ghost) = icons.get(paperdoll_path(slot)) {
             let pad = 3;
-            canvas.blit_scaled_smoothed(
+            canvas.blit_icon(
                 ghost,
                 (
                     slot_x + pad,
@@ -1393,7 +1412,7 @@ fn draw_inventory_panel(
                     &item_id,
                     (slot_x, slot_y, SLOT_SIZE),
                     fallback,
-                    IconSampling::Smoothed,
+                    IconSampling::Native,
                 );
             }
 
@@ -1445,7 +1464,7 @@ fn draw_inventory_panel(
                 SLOT_SIZE,
             ),
             Rgba::opaque(0x88, 0x88, 0x88),
-            IconSampling::Smoothed,
+            IconSampling::Native,
         );
     }
 }

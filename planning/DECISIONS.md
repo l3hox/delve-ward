@@ -75,3 +75,9 @@ TS hands its player controller the same `string[]` the game state mutates, so `d
 ## D18: Ground item sprites render at double the TS size
 
 `EQUIPMENT_SIZE`/`CONSUMABLE_SIZE` in `ground_items.rs` are 0.8/0.7 against TS's 0.4/0.35 — a deliberate art-direction deviation requested during playtesting, not a port bug. `height` still derives from `size` (`size / 2 + 0.02`), so the larger sprites rest on the floor unchanged. `SPREAD_RADIUS` stays at TS's 0.3, so several items dropped in one cell now overlap more than in TS; revisit only if that reads badly. The first intentional break from numeric parity (D9 covers faithful porting of behaviour).
+
+## D19: The HUD canvas stores two pixels per drawing unit
+
+TS's HUD is a 640x360 canvas stretched over the viewport with `image-rendering: pixelated`, which caps every icon at the canvas' own resolution: the 32x32 item PNGs had to be resampled down to a slot's 20x20 inner box, discarding detail the art contains. `PixelCanvas` now stores `HUD_SCALE` (2) pixels per drawing coordinate, so the drawing grid, layout constants, and on-screen appearance are all unchanged while `blit_icon` gets 40 stored pixels for a 32-pixel sprite — an upscale, where point sampling reaches every source pixel and keeps pixel-art edges hard.
+
+Measured on ruins, release build, vsync off: total frame time 2.2ms at scale 1 against 4.7ms at scale 2, both inside the 8.3ms a 120Hz display allows and well inside 16.7ms for 60. The cost is fill work over four times the pixels; an opaque-write fast path in `blend_stored_pixel` was tried and measured no better (1093us against 1084us for the HUD alone), so the cost is pixel volume rather than blend arithmetic. Setting `HUD_SCALE` to 1 restores TS's storage resolution and the lower cost; going past 2 buys nothing for 32x32 art and costs quadratically.
