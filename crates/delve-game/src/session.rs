@@ -158,8 +158,12 @@ pub(crate) fn find_level_by_id<'a>(
 
 /// Whether `character` represents solid ground — TS's `ch === '#' ||
 /// (def?.solid && !def?.seeThrough)`, the "not a hole" half of the
-/// fall-trigger predicate in `main.ts:646-681`/`:770-783`.
-fn is_solid_floor_char(character: char, char_defs: &[CharDef]) -> bool {
+/// fall-trigger predicate in `main.ts:646-681`/`:770-783`. TS re-inlines the
+/// same formula in `rendering/dungeon.ts:163-175` and
+/// `rendering/wallEntityRenderer.ts:131-142` (the open-floor/open-ceiling
+/// auto-detect); `dungeon.rs::VerticalOpenness` calls this one instead so
+/// the fall trigger and the rendered holes can never disagree.
+pub(crate) fn is_solid_floor_char(character: char, char_defs: &[CharDef]) -> bool {
     character == '#'
         || char_defs
             .iter()

@@ -91,6 +91,100 @@ fn is_solid_for_wall(
     is_solid(grid, col, row, renderable)
 }
 
+/// Per-cell vertical openness for one layer, ported from the
+/// isOpenBottom/isOpenTop block TS repeats in `rendering/dungeon.ts:157-185`
+/// and `rendering/wallEntityRenderer.ts:125-150`: a cell's floor is skipped
+/// when the layer below's cell at the same coordinates is not a solid wall
+/// (that's a hole — the fall system uses the identical predicate, so
+/// wherever the player can fall, no floor renders), and its ceiling is
+/// skipped when the layer above's cell is open the same way. An area's
+/// explicit `openBottom`/`openTop` overrides the auto-detect in both
+/// directions (`true` forces the surface open, `false` forces it closed).
+pub(crate) struct VerticalOpenness<'a> {
+    above: Option<&'a [String]>,
+    below: Option<&'a [String]>,
+    areas: Option<&'a [delve_core::types::TextureArea]>,
+    char_defs: &'a [CharDef],
+}
+
+impl<'a> VerticalOpenness<'a> {
+    pub(crate) fn for_layer(layer: &'a LayerSpawn<'a>, char_defs: &'a [CharDef]) -> Self {
+        let (_, areas) = layer.texture_style();
+        Self {
+            above: layer
+                .level
+                .layers
+                .get(layer.index + 1)
+                .map(|layer_def| layer_def.grid.as_slice()),
+            below: layer
+                .index
+                .checked_sub(1)
+                .and_then(|below_index| layer.level.layers.get(below_index))
+                .map(|layer_def| layer_def.grid.as_slice()),
+            areas,
+            char_defs,
+        }
+    }
+
+    pub(crate) fn open_bottom(&self, col: usize, row: usize) -> bool {
+        self.resolve(self.below, col, row, |area| area.open_bottom)
+    }
+
+    pub(crate) fn open_top(&self, col: usize, row: usize) -> bool {
+        self.resolve(self.above, col, row, |area| area.open_top)
+    }
+
+    fn resolve(
+        &self,
+        adjacent: Option<&[String]>,
+        col: usize,
+        row: usize,
+        area_flag: impl Fn(&delve_core::types::TextureArea) -> Option<bool>,
+    ) -> bool {
+        let mut open = adjacent_cell_is_open(adjacent, col, row, self.char_defs);
+        let (col, row) = (col as i32, row as i32);
+        for area in self.areas.unwrap_or(&[]) {
+            if col >= area.from_col
+                && col <= area.to_col
+                && row >= area.from_row
+                && row <= area.to_row
+                && let Some(explicit) = area_flag(area)
+            {
+                open = explicit;
+            }
+        }
+        open
+    }
+}
+
+/// TS bounds-checks against the adjacent grid's first row (`row <
+/// grid.length && col < grid[0].length`) — a cell past those bounds, or with
+/// no adjacent layer at all, is NOT open (the surface renders). Inside
+/// bounds, a row shorter than row 0 indexes to `undefined` in TS, which its
+/// solid-wall formula treats as open; `chars().nth` returning `None` maps to
+/// the same answer here.
+fn adjacent_cell_is_open(
+    adjacent: Option<&[String]>,
+    col: usize,
+    row: usize,
+    char_defs: &[CharDef],
+) -> bool {
+    let Some(grid) = adjacent else {
+        return false;
+    };
+    if row >= grid.len()
+        || grid
+            .first()
+            .is_none_or(|first| col >= first.chars().count())
+    {
+        return false;
+    }
+    !grid[row]
+        .chars()
+        .nth(col)
+        .is_some_and(|character| crate::session::is_solid_floor_char(character, char_defs))
+}
+
 // Wall faces against a solid charDef neighbor use that neighbor's wallTexture.
 fn wall_material_for_face(
     grid: &[Vec<char>],
@@ -168,6 +262,7 @@ pub fn spawn_dungeon(
 
     let tile_mesh = meshes.add(Rectangle::new(CELL_SIZE, CELL_SIZE));
     let wall_mesh = meshes.add(Rectangle::new(CELL_SIZE, WALL_HEIGHT));
+    let openness = VerticalOpenness::for_layer(layer, char_defs);
 
     for (row_index, row) in grid.iter().enumerate() {
         for (col_index, &cell_char) in row.iter().enumerate() {
@@ -203,7 +298,7 @@ pub fn spawn_dungeon(
             // instead of this one — TS's `onPitTrapSignalChanged` only ever
             // toggles the floor mesh's visibility, never the surrounding
             // ceiling/walls for that cell.
-            if !pit_trap_cells.contains(&key) {
+            if !pit_trap_cells.contains(&key) && !openness.open_bottom(col_index, row_index) {
                 let floor = commands
                     .spawn((
                         LevelEntity,
@@ -227,7 +322,8 @@ pub fn spawn_dungeon(
             // would be — TS's `buildRampInfo` marks every ramp base cell
             // `skipCeiling: true` unconditionally.
             let ramp_facing = ramp_base_cells.get(&key).copied();
-            if ceiling_enabled && ramp_facing.is_none() {
+            if ceiling_enabled && ramp_facing.is_none() && !openness.open_top(col_index, row_index)
+            {
                 let ceiling = commands
                     .spawn((
                         LevelEntity,
@@ -319,8 +415,16 @@ pub fn spawn_pit_floors(
     }
     let (layer_defaults, layer_areas) = layer.texture_style();
     let tile_mesh = meshes.add(Rectangle::new(CELL_SIZE, CELL_SIZE));
+    let char_defs: &[CharDef] = layer.level.char_defs.as_deref().unwrap_or(&[]);
+    let openness = VerticalOpenness::for_layer(layer, char_defs);
 
     for pit in layer_state.pit_traps.values() {
+        // TS only tracks a pit floor mesh when `buildDungeon` built one —
+        // an open-bottom pit cell gets no floor tile at all
+        // (`rendering/dungeon.ts:204,255`).
+        if openness.open_bottom(pit.col as usize, pit.row as usize) {
+            continue;
+        }
         let (col, row) = (pit.col as i32, pit.row as i32);
         let cell_char = layer
             .layer_def
@@ -407,5 +511,127 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn lines(rows: &[&str]) -> Vec<String> {
+        rows.iter().map(|row| (*row).to_string()).collect()
+    }
+
+    fn open_area(
+        open_bottom: Option<bool>,
+        open_top: Option<bool>,
+    ) -> delve_core::types::TextureArea {
+        delve_core::types::TextureArea {
+            from_col: 0,
+            to_col: 9,
+            from_row: 0,
+            to_row: 9,
+            environment: None,
+            open_bottom,
+            open_top,
+            textures: delve_core::types::TextureSet {
+                wall_texture: None,
+                floor_texture: None,
+                ceiling_texture: None,
+            },
+        }
+    }
+
+    #[test]
+    fn floor_is_open_over_a_walkable_below_cell_and_closed_over_solid_rock() {
+        let below = lines(&["#."]);
+        let openness = VerticalOpenness {
+            above: None,
+            below: Some(&below),
+            areas: None,
+            char_defs: &[],
+        };
+        assert!(!openness.open_bottom(0, 0));
+        assert!(openness.open_bottom(1, 0));
+    }
+
+    #[test]
+    fn surfaces_stay_closed_when_there_is_no_adjacent_layer() {
+        let openness = VerticalOpenness {
+            above: None,
+            below: None,
+            areas: None,
+            char_defs: &[],
+        };
+        assert!(!openness.open_bottom(0, 0));
+        assert!(!openness.open_top(0, 0));
+    }
+
+    /// A solid-but-seeThrough charDef in the layer above is not a solid wall
+    /// under TS's formula (`def.solid && !def.seeThrough`), so the ceiling
+    /// under it opens; a plain solid charDef keeps it closed.
+    #[test]
+    fn ceiling_openness_honors_see_through_char_defs() {
+        let char_defs = [
+            CharDef {
+                character: 'w',
+                solid: true,
+                see_through: Some(true),
+                textures: delve_core::types::TextureSet {
+                    wall_texture: None,
+                    floor_texture: None,
+                    ceiling_texture: None,
+                },
+            },
+            CharDef {
+                character: 'r',
+                solid: true,
+                see_through: None,
+                textures: delve_core::types::TextureSet {
+                    wall_texture: None,
+                    floor_texture: None,
+                    ceiling_texture: None,
+                },
+            },
+        ];
+        let above = lines(&["wr"]);
+        let openness = VerticalOpenness {
+            above: Some(&above),
+            below: None,
+            areas: None,
+            char_defs: &char_defs,
+        };
+        assert!(openness.open_top(0, 0));
+        assert!(!openness.open_top(1, 0));
+    }
+
+    /// Explicit area flags override the auto-detect in both directions:
+    /// `openBottom: false` closes a floor the below-grid says is open, and
+    /// `openTop: true` opens a ceiling that has no above-grid evidence.
+    #[test]
+    fn area_flags_override_the_auto_detect() {
+        let below = lines(&[".."]);
+        let areas = [open_area(Some(false), Some(true))];
+        let openness = VerticalOpenness {
+            above: None,
+            below: Some(&below),
+            areas: Some(&areas),
+            char_defs: &[],
+        };
+        assert!(!openness.open_bottom(0, 0));
+        assert!(openness.open_top(0, 0));
+    }
+
+    /// TS bounds-checks column against the adjacent grid's FIRST row
+    /// (`col < grid[0].length`), then indexes the actual row — a cell past
+    /// row 0's width is closed, while an in-bounds column over a shorter
+    /// ragged row reads `undefined` and counts as open.
+    #[test]
+    fn adjacent_bounds_follow_ts_first_row_indexing() {
+        let below = lines(&["###", "#"]);
+        let openness = VerticalOpenness {
+            above: None,
+            below: Some(&below),
+            areas: None,
+            char_defs: &[],
+        };
+        assert!(!openness.open_bottom(3, 0));
+        assert!(!openness.open_bottom(0, 2));
+        assert!(openness.open_bottom(1, 1));
     }
 }

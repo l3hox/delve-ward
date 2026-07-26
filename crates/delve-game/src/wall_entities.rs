@@ -133,6 +133,10 @@ pub fn spawn_wall_entities(
 
     let tile_mesh = meshes.add(Rectangle::new(CELL_SIZE, CELL_SIZE));
     let wall_mesh = meshes.add(Rectangle::new(CELL_SIZE, WALL_HEIGHT));
+    // TS mirrors buildDungeon's open-surface skip here too
+    // (`wallEntityRenderer.ts:125-164`) so an opened secret wall over a hole
+    // reveals no floor and one under an open layer reveals no ceiling.
+    let openness = crate::dungeon::VerticalOpenness::for_layer(layer_spawn, char_defs);
 
     for (key, &(col, row)) in cells {
         let (col32, row32) = (col as i32, row as i32);
@@ -229,20 +233,22 @@ pub fn spawn_wall_entities(
             }
         }
 
-        let floor = commands
-            .spawn((
-                LevelEntity,
-                hidden_visibility,
-                Mesh3d(tile_mesh.clone()),
-                MeshMaterial3d(materials.floor(&own_textures.floor)),
-                Transform::from_xyz(center_x, layer_y_offset, center_z)
-                    .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-            ))
-            .id();
-        zones::tag_cell(commands, zones, layer_spawn.index, floor, col, row);
-        cell.hidden.push(floor);
+        if !openness.open_bottom(col as usize, row as usize) {
+            let floor = commands
+                .spawn((
+                    LevelEntity,
+                    hidden_visibility,
+                    Mesh3d(tile_mesh.clone()),
+                    MeshMaterial3d(materials.floor(&own_textures.floor)),
+                    Transform::from_xyz(center_x, layer_y_offset, center_z)
+                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
+                ))
+                .id();
+            zones::tag_cell(commands, zones, layer_spawn.index, floor, col, row);
+            cell.hidden.push(floor);
+        }
 
-        if ceiling_enabled {
+        if ceiling_enabled && !openness.open_top(col as usize, row as usize) {
             let ceiling = commands
                 .spawn((
                     LevelEntity,
