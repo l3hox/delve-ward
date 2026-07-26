@@ -8,7 +8,14 @@ use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::level_scene::LevelEntity;
 use crate::pixel_canvas::{PixelCanvas, Rgba};
 use crate::textures::canvas_to_image;
+use bevy::mesh::MeshVertexBufferLayoutRef;
+use bevy::pbr::{
+    ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline,
+};
 use bevy::prelude::*;
+use bevy::render::render_resource::{
+    AsBindGroup, CompareFunction, RenderPipelineDescriptor, SpecializedMeshPipelineError,
+};
 
 const FLOAT_SPEED: f32 = 1.5;
 const LIFETIME: f32 = 0.7;
@@ -17,10 +24,46 @@ const NUMBER_SIZE: f32 = 0.5;
 const CANVAS_SIZE: usize = 64;
 const TEXT_SCALE: i32 = 8;
 
+/// Ports the `depthTest: false` on TS's damage-number `SpriteMaterial`
+/// (`rendering/damageNumbers.ts:23`), the one material in the TS renderer
+/// that opts out of depth testing (its health-bar sprites keep
+/// `depthTest: true`). Without it a number spawned at a cell's center is
+/// hidden by that cell's own geometry — striking a breakable wall reads as
+/// the wall not reacting at all, since the wall face stands between the
+/// camera and the number.
+///
+/// Bevy has no per-material depth-test flag, so the pipeline descriptor is
+/// edited directly: an always-passing compare with no depth write, matching
+/// what THREE's flag sets on its own pipeline state. Carries no bindings of
+/// its own — the base `StandardMaterial`'s shaders and data are reused
+/// verbatim (`MaterialExtension`'s shader hooks all default to the base).
+#[derive(Asset, AsBindGroup, Reflect, Clone, Default)]
+pub struct DrawOnTop {}
+
+impl MaterialExtension for DrawOnTop {
+    fn specialize(
+        _pipeline: &MaterialExtensionPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialExtensionKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
+            depth_stencil.depth_compare = Some(CompareFunction::Always);
+            depth_stencil.depth_write_enabled = Some(false);
+        }
+        Ok(())
+    }
+}
+
+/// The damage number's material type: a standard material that ignores the
+/// depth buffer. Aliased because the full generic pair appears in every
+/// `SystemParam` that spawns a number.
+pub type DamageNumberMaterial = ExtendedMaterial<StandardMaterial, DrawOnTop>;
+
 #[derive(Component)]
 pub struct DamageNumber {
     age: f32,
-    material: Handle<StandardMaterial>,
+    material: Handle<DamageNumberMaterial>,
 }
 
 fn number_texture(damage: f64) -> PixelCanvas {
@@ -68,19 +111,22 @@ pub fn spawn_damage_number(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     images: &mut Assets<Image>,
-    materials: &mut Assets<StandardMaterial>,
+    materials: &mut Assets<DamageNumberMaterial>,
     damage: f64,
     (col, row): (i64, i64),
     layer_y_offset: f32,
 ) {
     let texture = images.add(canvas_to_image(number_texture(damage)));
-    let material = materials.add(StandardMaterial {
-        base_color_texture: Some(texture),
-        unlit: true,
-        fog_enabled: false,
-        alpha_mode: AlphaMode::Blend,
-        cull_mode: None,
-        ..default()
+    let material = materials.add(ExtendedMaterial {
+        base: StandardMaterial {
+            base_color_texture: Some(texture),
+            unlit: true,
+            fog_enabled: false,
+            alpha_mode: AlphaMode::Blend,
+            cull_mode: None,
+            ..default()
+        },
+        extension: DrawOnTop::default(),
     });
     let center_x = col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
     let center_z = row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
@@ -101,7 +147,7 @@ pub fn spawn_damage_number(
 pub fn update_damage_numbers(
     time: Res<Time>,
     mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<DamageNumberMaterial>>,
     mut numbers: Query<(Entity, &mut DamageNumber, &mut Transform)>,
 ) {
     let delta = time.delta_secs();
@@ -116,7 +162,7 @@ pub fn update_damage_numbers(
         let t = number.age / LIFETIME;
         let opacity = if t < 0.4 { 1.0 } else { 1.0 - (t - 0.4) / 0.6 };
         if let Some(mut material) = materials.get_mut(&number.material) {
-            material.base_color = Color::WHITE.with_alpha(opacity);
+            material.base.base_color = Color::WHITE.with_alpha(opacity);
         }
         let scale = NUMBER_SIZE * (1.0 + t * 0.3);
         transform.scale = Vec3::splat(scale);

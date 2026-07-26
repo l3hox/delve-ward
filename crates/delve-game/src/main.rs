@@ -413,6 +413,8 @@ fn main() {
                     ..Default::default()
                 }),
         )
+        // Damage numbers ignore the depth buffer — see `DrawOnTop`.
+        .add_plugins(MaterialPlugin::<damage_numbers::DamageNumberMaterial>::default())
         .init_resource::<transition::Transition>()
         .init_resource::<debug::DebugFlags>()
         .init_resource::<LevelSnapshots>()

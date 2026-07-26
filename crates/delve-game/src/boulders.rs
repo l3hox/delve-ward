@@ -321,6 +321,7 @@ pub struct BoulderRenderState<'w, 's> {
     plate_render: PlateRender<'w, 's>,
     rng: ResMut<'w, GameRng>,
     images: ResMut<'w, Assets<Image>>,
+    damage_number_materials: ResMut<'w, Assets<crate::damage_numbers::DamageNumberMaterial>>,
 }
 
 fn apply_boulder_moved(moved: &BoulderMoved, render: &mut BoulderRenderState) {
@@ -417,7 +418,7 @@ fn apply_boulder_events(
                     &mut render.item_render.commands,
                     &mut render.item_render.meshes,
                     &mut render.images,
-                    &mut render.item_render.materials,
+                    &mut render.damage_number_materials,
                     damage,
                     (col, row),
                     layer_y_offset,

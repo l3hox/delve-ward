@@ -189,6 +189,32 @@ impl Player {
         self.state.set_walkable(walkable);
     }
 
+    /// Opens one cell in the grid this player's moves are checked against.
+    ///
+    /// TS hands its player controller the very `string[]` the game state
+    /// mutates (`levelSceneBuilder.ts` passes `ls.layerGrids[idx]` straight
+    /// into the controller), so `damageBreakableWall`'s and
+    /// `openSecretWall`'s in-place `grid[row] = ...` writes are visible to
+    /// walkability checks the same frame. This port can't share one `Vec`
+    /// across the `Session` resource and the `Player` component, so every
+    /// runtime grid mutation has to reach both — see D17.
+    pub fn open_cell(&mut self, col: i64, row: i64) {
+        let Ok(row_index) = usize::try_from(row) else {
+            return;
+        };
+        let Ok(col_index) = usize::try_from(col) else {
+            return;
+        };
+        let Some(line) = self.grid.get_mut(row_index) else {
+            return;
+        };
+        let mut characters: Vec<char> = line.chars().collect();
+        if let Some(cell) = characters.get_mut(col_index) {
+            *cell = '.';
+            *line = characters.into_iter().collect();
+        }
+    }
+
     /// Sets the ordinary-lerp Y-offset target directly — ramp crossings use
     /// this (`ls.player.targetYOffset = destLayer * LAYER_HEIGHT` in
     /// `main.ts`'s ramp-detection block), climbing smoothly via the same
@@ -433,5 +459,44 @@ impl Player {
         }
 
         landed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn walled_player() -> Player {
+        Player::new(
+            vec!["###".to_string(), "#.#".to_string(), "###".to_string()],
+            1,
+            1,
+            Facing::N,
+            HashSet::from(['.']),
+            HashMap::new(),
+        )
+    }
+
+    /// Move checks read the player's own grid copy, so a wall that crumbles
+    /// (or a secret wall that opens) in `Session`'s grid alone leaves the
+    /// cell unwalkable here — the desync `open_cell` closes.
+    #[test]
+    fn a_cell_opened_on_the_player_grid_becomes_walkable() {
+        let mut player = walled_player();
+        player.move_forward(&MoveRules::default(), false);
+        assert_eq!(player.grid_state().row, 1, "north is walled to begin with");
+
+        player.open_cell(1, 0);
+        player.move_forward(&MoveRules::default(), false);
+        assert_eq!(player.grid_state().row, 0, "the opened cell is walkable");
+    }
+
+    #[test]
+    fn open_cell_ignores_coordinates_outside_the_grid() {
+        let mut player = walled_player();
+        player.open_cell(99, 0);
+        player.open_cell(0, 99);
+        player.open_cell(-1, -1);
+        assert_eq!(player.grid, vec!["###", "#.#", "###"]);
     }
 }

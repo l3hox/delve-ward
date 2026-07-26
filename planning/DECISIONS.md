@@ -67,3 +67,7 @@ The TS shell's production fallback is `/levels/ruins.json` with a `?level=` URL 
 ## D16: All runtime visual randomness is seeded
 
 D10's seeding convention extends past startup textures to every runtime visual RNG in `delve-game` — light flicker, particle spawn and drift — even where TS uses unseeded `Math.random()`. Each system seeds its own `Mulberry32` with a fixed per-system constant (first instances: `sconces.rs`'s `SconceFlicker` and `torch.rs`'s `TorchFlicker`), so behavior is reproducible across runs while only the visual character must match TS.
+
+## D17: The player's grid copy is synced explicitly on every runtime mutation
+
+TS hands its player controller the same `string[]` the game state mutates, so `damageBreakableWall`'s and `openSecretWall`'s in-place writes reach walkability checks for free. Rust can't share one `Vec<String>` between the `Session` resource and the `Player` component, so `Player` keeps a clone and every site that opens a cell calls `Player::open_cell` alongside the `GameState` call. Chosen over threading the grid through `Player`'s whole move API (`run`, `debug_move`, `update`, plus every call site) or wrapping it in shared interior mutability; the mutation sites are few and each is a single added line. New grid-mutating features must call both.

@@ -344,6 +344,7 @@ fn move_with_blocked_handling(
         if should_open {
             let (opened, persistent) = session.game.open_secret_wall(col, row, &mut session.grid);
             if opened {
+                player.open_cell(col, row);
                 wall_entities::reveal_wall_entity(
                     &render.wall_entities.handles,
                     &mut render.wall_entities.visibility,

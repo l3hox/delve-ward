@@ -657,13 +657,13 @@ pub fn attack_input(
     gate: crate::overlay::InputGate,
     mut rng: ResMut<GameRng>,
     mut billboards: ResMut<EnemyBillboards>,
-    players: Query<&Player>,
+    mut players: Query<&mut Player>,
     mut kill_effects: KillEffects,
 ) {
     if gate.blocked() || !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
-    let Ok(player) = players.single() else {
+    let Ok(mut player) = players.single_mut() else {
         return;
     };
     // TS: `if (ctx.debugState.debugFullbright) { ... enemy.hp = 1; }`
@@ -772,6 +772,10 @@ pub fn attack_input(
                     game.damage_breakable_wall(col, row, result.damage.unwrap_or(0.0), grid);
                 if outcome.destroyed {
                     info!("The wall crumbles!");
+                    // The passage the crumbled wall leaves behind has to open
+                    // in the player's own grid copy too, or the cell stays
+                    // unwalkable — see `Player::open_cell`.
+                    player.open_cell(col, row);
                     wall_entities::reveal_wall_entity(
                         &kill_effects.wall_entities,
                         &mut kill_effects.visibility,
@@ -844,7 +848,7 @@ fn spawn_hit_number(
         &mut effects.item_render.commands,
         &mut effects.item_render.meshes,
         &mut effects.images,
-        &mut effects.item_render.materials,
+        &mut effects.damage_number_materials,
         result.damage.unwrap_or(0.0),
         (col, row),
         layer_y_offset,
@@ -865,6 +869,7 @@ pub struct KillEffects<'w, 's> {
     loot_tables: Res<'w, LootTablesRes>,
     item_render: GroundItemRender<'w, 's>,
     images: ResMut<'w, Assets<Image>>,
+    damage_number_materials: ResMut<'w, Assets<crate::damage_numbers::DamageNumberMaterial>>,
     wall_entities: Res<'w, crate::wall_entities::WallEntityHandles>,
     visibility: Query<'w, 's, &'static mut Visibility>,
     feedback: crate::enemy_feedback::CombatFeedback<'w, 's>,
