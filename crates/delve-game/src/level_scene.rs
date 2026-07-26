@@ -176,6 +176,16 @@ pub fn spawn_level_scene(
             .map(|ramp| (door_key(ramp.col, ramp.row), ramp.facing))
             .collect();
 
+        // Only the active layer's doors split their cell, and only in a
+        // multi-zone level — TS's own `(li === activeLayerIdx && multiZone) ?
+        // ldDoorCells : undefined` (`levelSceneBuilder.ts:274`).
+        let door_cells: HashSet<String> =
+            if level_zones.multi_zone && layer_index == scene.game.active_layer_index {
+                layer.doors.keys().cloned().collect()
+            } else {
+                HashSet::new()
+            };
+
         dungeon::spawn_dungeon(
             commands,
             assets.meshes,
@@ -186,6 +196,7 @@ pub fn spawn_level_scene(
             &pit_trap_cells,
             &ramp_base_cells,
             &level_zones,
+            &door_cells,
         );
         ramps::spawn_ramps(
             commands,

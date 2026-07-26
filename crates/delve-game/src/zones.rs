@@ -134,6 +134,15 @@ pub fn tag_cell(
     }
 }
 
+/// Tags an entity with a zone chosen by the caller rather than looked up from
+/// its cell — the boundary halves in `dungeon.rs`, where the two pieces of one
+/// cell belong to different zones and so can't both take the cell's own.
+pub fn tag_zone(commands: &mut Commands, entity: Entity, zone: usize) {
+    commands
+        .entity(entity)
+        .insert(RenderLayers::from_layers(&[zone]));
+}
+
 /// Ported from `buildLevelScene`'s `zones.indexOf(levelEnv) + 1 || 1`: the
 /// zone index the level's own default environment landed at when `zones`
 /// (the active layer's first-encountered-order environment list) was built,

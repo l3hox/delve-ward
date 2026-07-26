@@ -185,6 +185,94 @@ fn adjacent_cell_is_open(
         .is_some_and(|character| crate::session::is_solid_floor_char(character, char_defs))
 }
 
+/// Which way a cell's geometry is cut when the zone changes across it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SplitAxis {
+    /// The boundary runs east-west; the cell splits into north and south
+    /// halves, and the walls that cross it are the ones running along Z.
+    NorthSouth,
+    /// The boundary runs north-south; the cell splits into west and east
+    /// halves, and the walls crossing it run along X.
+    WestEast,
+}
+
+/// A door cell that two environment zones meet inside, and the zone each half
+/// belongs to.
+///
+/// Ported from `rendering/dungeon.ts:187-200`. Environment zones are rendered
+/// by separate cameras, so the seam between indoors and outdoors falls
+/// wherever the geometry is tagged — with whole cells, that puts it at a tile
+/// edge, one full cell to whichever side. TS splits the door cell itself so
+/// the seam lands in the doorway, which is where a doorway between two
+/// environments should change.
+struct ZoneSplit {
+    axis: SplitAxis,
+    /// Zone for the north (or west) half.
+    leading: usize,
+    /// Zone for the south (or east) half.
+    trailing: usize,
+}
+
+/// TS checks the four neighbours in order and takes the first whose zone
+/// differs, so a cell between two different zones resolves by that order
+/// rather than being split twice. The half nearest the differing neighbour
+/// takes that neighbour's zone; the other keeps the cell's own.
+fn zone_split(
+    zone_of_neighbor: impl Fn(i64, i64) -> Option<usize>,
+    own_zone: usize,
+) -> Option<ZoneSplit> {
+    let north = zone_of_neighbor(0, -1);
+    let south = zone_of_neighbor(0, 1);
+    let east = zone_of_neighbor(1, 0);
+    let west = zone_of_neighbor(-1, 0);
+
+    if let Some(zone) = north.filter(|zone| *zone != own_zone) {
+        return Some(ZoneSplit {
+            axis: SplitAxis::NorthSouth,
+            leading: zone,
+            trailing: own_zone,
+        });
+    }
+    if let Some(zone) = south.filter(|zone| *zone != own_zone) {
+        return Some(ZoneSplit {
+            axis: SplitAxis::NorthSouth,
+            leading: own_zone,
+            trailing: zone,
+        });
+    }
+    if let Some(zone) = east.filter(|zone| *zone != own_zone) {
+        return Some(ZoneSplit {
+            axis: SplitAxis::WestEast,
+            leading: own_zone,
+            trailing: zone,
+        });
+    }
+    if let Some(zone) = west.filter(|zone| *zone != own_zone) {
+        return Some(ZoneSplit {
+            axis: SplitAxis::WestEast,
+            leading: zone,
+            trailing: own_zone,
+        });
+    }
+    None
+}
+
+/// A rectangle whose UVs are squeezed onto the half of the texture the piece
+/// covers, so a split tile keeps the texture scale of a whole one — TS scales
+/// the same attribute on its shared half-tile geometries
+/// (`rendering/dungeon.ts:18-36`). `uv_axis` is 0 for U, 1 for V.
+fn half_mesh(width: f32, height: f32, uv_axis: usize) -> Mesh {
+    let mut mesh = Mesh::from(Rectangle::new(width, height));
+    if let Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) =
+        mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
+    {
+        for uv in uvs.iter_mut() {
+            uv[uv_axis] *= 0.5;
+        }
+    }
+    mesh
+}
+
 // Wall faces against a solid charDef neighbor use that neighbor's wallTexture.
 fn wall_material_for_face(
     grid: &[Vec<char>],
@@ -211,14 +299,9 @@ fn wall_material_for_face(
 }
 
 /// Every cell's floor, ceiling, and walls are tagged as one unit to that
-/// cell's own environment zone (`zones::tag_cell`, a no-op when `zones`
-/// isn't multi-zone). TS additionally splits geometry into zone-tagged
-/// half-tiles/half-walls at door cells whose neighbor is in a different zone
-/// (`dungeon.ts`'s `halfTileNS`/`halfTileEW`/`halfWallGeo`); that half-tile
-/// infrastructure doesn't exist in this port yet, so a door cell straddling
-/// two zones renders whole and tagged to its own cell's zone rather than
-/// split — a visible seam only at that specific boundary, not a missing- or
-/// wrong-zone entity anywhere else.
+/// cell's own environment zone (`zones::tag_cell`, a no-op when `zones` isn't
+/// multi-zone) — except door cells that two zones meet inside, whose geometry
+/// is cut in half so the seam falls in the doorway (see [`ZoneSplit`]).
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_dungeon(
     commands: &mut Commands,
@@ -230,6 +313,7 @@ pub fn spawn_dungeon(
     pit_trap_cells: &HashSet<String>,
     ramp_base_cells: &HashMap<String, Facing>,
     zones: &LevelZones,
+    door_cells: &HashSet<String>,
 ) {
     let grid: Vec<Vec<char>> = layer
         .layer_def
@@ -262,6 +346,10 @@ pub fn spawn_dungeon(
 
     let tile_mesh = meshes.add(Rectangle::new(CELL_SIZE, CELL_SIZE));
     let wall_mesh = meshes.add(Rectangle::new(CELL_SIZE, WALL_HEIGHT));
+    // Halves for door cells that two zones meet inside — see [`ZoneSplit`].
+    let half_tile_north_south = meshes.add(half_mesh(CELL_SIZE, CELL_SIZE / 2.0, 1));
+    let half_tile_west_east = meshes.add(half_mesh(CELL_SIZE / 2.0, CELL_SIZE, 0));
+    let half_wall_mesh = meshes.add(half_mesh(CELL_SIZE / 2.0, WALL_HEIGHT, 0));
     let openness = VerticalOpenness::for_layer(layer, char_defs);
 
     for (row_index, row) in grid.iter().enumerate() {
@@ -293,29 +381,84 @@ pub fn spawn_dungeon(
                 layer_areas,
             );
 
+            // A door standing on a zone boundary has its geometry cut so the
+            // seam falls inside the doorway rather than at a tile edge.
+            let split = if door_cells.contains(&key) {
+                zones
+                    .zone_at(layer.index, i64::from(col), i64::from(row))
+                    .and_then(|own| {
+                        zone_split(
+                            |dcol, drow| {
+                                zones.zone_at(
+                                    layer.index,
+                                    i64::from(col) + dcol,
+                                    i64::from(row) + drow,
+                                )
+                            },
+                            own,
+                        )
+                    })
+            } else {
+                None
+            };
+            // The two halves' offsets from the cell centre, along whichever
+            // axis the split runs.
+            let half_offset = CELL_SIZE / 4.0;
+
             // Pit-trap cells keep their normal ceiling/walls here but get a
             // separate, toggleable floor tile from `spawn_pit_floors`
             // instead of this one — TS's `onPitTrapSignalChanged` only ever
             // toggles the floor mesh's visibility, never the surrounding
             // ceiling/walls for that cell.
             if !pit_trap_cells.contains(&key) && !openness.open_bottom(col_index, row_index) {
-                let floor = commands
-                    .spawn((
-                        LevelEntity,
-                        Mesh3d(tile_mesh.clone()),
-                        MeshMaterial3d(materials.floor(&textures.floor)),
-                        Transform::from_xyz(center_x, layer_y_offset, center_z)
-                            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
-                    ))
-                    .id();
-                zones::tag_cell(
-                    commands,
-                    zones,
-                    layer.index,
-                    floor,
-                    i64::from(col),
-                    i64::from(row),
-                );
+                let floor_material = materials.floor(&textures.floor);
+                let flat = Quat::from_rotation_x(-FRAC_PI_2);
+                if let Some(split) = &split {
+                    let (mesh, leading_position, trailing_position) = match split.axis {
+                        SplitAxis::NorthSouth => (
+                            half_tile_north_south.clone(),
+                            Vec3::new(center_x, layer_y_offset, center_z - half_offset),
+                            Vec3::new(center_x, layer_y_offset, center_z + half_offset),
+                        ),
+                        SplitAxis::WestEast => (
+                            half_tile_west_east.clone(),
+                            Vec3::new(center_x - half_offset, layer_y_offset, center_z),
+                            Vec3::new(center_x + half_offset, layer_y_offset, center_z),
+                        ),
+                    };
+                    for (position, zone) in [
+                        (leading_position, split.leading),
+                        (trailing_position, split.trailing),
+                    ] {
+                        let half = commands
+                            .spawn((
+                                LevelEntity,
+                                Mesh3d(mesh.clone()),
+                                MeshMaterial3d(floor_material.clone()),
+                                Transform::from_translation(position).with_rotation(flat),
+                            ))
+                            .id();
+                        zones::tag_zone(commands, half, zone);
+                    }
+                } else {
+                    let floor = commands
+                        .spawn((
+                            LevelEntity,
+                            Mesh3d(tile_mesh.clone()),
+                            MeshMaterial3d(floor_material),
+                            Transform::from_xyz(center_x, layer_y_offset, center_z)
+                                .with_rotation(flat),
+                        ))
+                        .id();
+                    zones::tag_cell(
+                        commands,
+                        zones,
+                        layer.index,
+                        floor,
+                        i64::from(col),
+                        i64::from(row),
+                    );
+                }
             }
 
             // A ramp based at this cell rises up through where the ceiling
@@ -324,33 +467,78 @@ pub fn spawn_dungeon(
             let ramp_facing = ramp_base_cells.get(&key).copied();
             if ceiling_enabled && ramp_facing.is_none() && !openness.open_top(col_index, row_index)
             {
-                let ceiling = commands
-                    .spawn((
-                        LevelEntity,
-                        Mesh3d(tile_mesh.clone()),
-                        MeshMaterial3d(materials.ceiling(&textures.ceiling)),
-                        Transform::from_xyz(center_x, WALL_HEIGHT + layer_y_offset, center_z)
-                            .with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
-                    ))
-                    .id();
-                zones::tag_cell(
-                    commands,
-                    zones,
-                    layer.index,
-                    ceiling,
-                    i64::from(col),
-                    i64::from(row),
-                );
+                let ceiling_material = materials.ceiling(&textures.ceiling);
+                let ceiling_y = WALL_HEIGHT + layer_y_offset;
+                let facing_down = Quat::from_rotation_x(FRAC_PI_2);
+                if let Some(split) = &split {
+                    let (mesh, leading_position, trailing_position) = match split.axis {
+                        SplitAxis::NorthSouth => (
+                            half_tile_north_south.clone(),
+                            Vec3::new(center_x, ceiling_y, center_z - half_offset),
+                            Vec3::new(center_x, ceiling_y, center_z + half_offset),
+                        ),
+                        SplitAxis::WestEast => (
+                            half_tile_west_east.clone(),
+                            Vec3::new(center_x - half_offset, ceiling_y, center_z),
+                            Vec3::new(center_x + half_offset, ceiling_y, center_z),
+                        ),
+                    };
+                    for (position, zone) in [
+                        (leading_position, split.leading),
+                        (trailing_position, split.trailing),
+                    ] {
+                        let half = commands
+                            .spawn((
+                                LevelEntity,
+                                Mesh3d(mesh.clone()),
+                                MeshMaterial3d(ceiling_material.clone()),
+                                Transform::from_translation(position).with_rotation(facing_down),
+                            ))
+                            .id();
+                        zones::tag_zone(commands, half, zone);
+                    }
+                } else {
+                    let ceiling = commands
+                        .spawn((
+                            LevelEntity,
+                            Mesh3d(tile_mesh.clone()),
+                            MeshMaterial3d(ceiling_material),
+                            Transform::from_xyz(center_x, ceiling_y, center_z)
+                                .with_rotation(facing_down),
+                        ))
+                        .id();
+                    zones::tag_cell(
+                        commands,
+                        zones,
+                        layer.index,
+                        ceiling,
+                        i64::from(col),
+                        i64::from(row),
+                    );
+                }
             }
 
-            // (rotation, neighbor delta, wall plane center offset)
+            // (rotation, neighbor delta, wall plane center offset, the axis the
+            // wall runs along — a wall only splits when the zone boundary
+            // crosses its length, so north/south walls answer to an east-west
+            // boundary and east/west walls to a north-south one)
             let faces = [
-                (0.0, (0, -1), (0.0, -CELL_SIZE / 2.0)),
-                (PI, (0, 1), (0.0, CELL_SIZE / 2.0)),
-                (-FRAC_PI_2, (1, 0), (CELL_SIZE / 2.0, 0.0)),
-                (FRAC_PI_2, (-1, 0), (-CELL_SIZE / 2.0, 0.0)),
+                (0.0, (0, -1), (0.0, -CELL_SIZE / 2.0), SplitAxis::WestEast),
+                (PI, (0, 1), (0.0, CELL_SIZE / 2.0), SplitAxis::WestEast),
+                (
+                    -FRAC_PI_2,
+                    (1, 0),
+                    (CELL_SIZE / 2.0, 0.0),
+                    SplitAxis::NorthSouth,
+                ),
+                (
+                    FRAC_PI_2,
+                    (-1, 0),
+                    (-CELL_SIZE / 2.0, 0.0),
+                    SplitAxis::NorthSouth,
+                ),
             ];
-            for (rotation_y, (dcol, drow), (offset_x, offset_z)) in faces {
+            for (rotation_y, (dcol, drow), (offset_x, offset_z), split_when) in faces {
                 // The wall a ramp opens through is skipped too — TS's
                 // `rampDirs?.includes(direction)` check.
                 if ramp_facing.is_some_and(|facing| facing.delta() == (dcol, drow)) {
@@ -379,17 +567,59 @@ pub fn spawn_dungeon(
                     &textures.wall,
                     char_defs,
                 );
+                let wall_material = materials.wall(&wall_texture);
+                let wall_y = WALL_HEIGHT / 2.0 + layer_y_offset;
+                let rotation = Quat::from_rotation_y(rotation_y);
+                if let Some(split) = split.as_ref().filter(|split| split.axis == split_when) {
+                    let (leading_position, trailing_position) = match split.axis {
+                        SplitAxis::NorthSouth => (
+                            Vec3::new(
+                                center_x + offset_x,
+                                wall_y,
+                                center_z + offset_z - half_offset,
+                            ),
+                            Vec3::new(
+                                center_x + offset_x,
+                                wall_y,
+                                center_z + offset_z + half_offset,
+                            ),
+                        ),
+                        SplitAxis::WestEast => (
+                            Vec3::new(
+                                center_x + offset_x - half_offset,
+                                wall_y,
+                                center_z + offset_z,
+                            ),
+                            Vec3::new(
+                                center_x + offset_x + half_offset,
+                                wall_y,
+                                center_z + offset_z,
+                            ),
+                        ),
+                    };
+                    for (position, zone) in [
+                        (leading_position, split.leading),
+                        (trailing_position, split.trailing),
+                    ] {
+                        let half = commands
+                            .spawn((
+                                LevelEntity,
+                                Mesh3d(half_wall_mesh.clone()),
+                                MeshMaterial3d(wall_material.clone()),
+                                Transform::from_translation(position).with_rotation(rotation),
+                            ))
+                            .id();
+                        zones::tag_zone(commands, half, zone);
+                    }
+                    continue;
+                }
                 let wall = commands
                     .spawn((
                         LevelEntity,
                         Mesh3d(wall_mesh.clone()),
-                        MeshMaterial3d(materials.wall(&wall_texture)),
-                        Transform::from_xyz(
-                            center_x + offset_x,
-                            WALL_HEIGHT / 2.0 + layer_y_offset,
-                            center_z + offset_z,
-                        )
-                        .with_rotation(Quat::from_rotation_y(rotation_y)),
+                        MeshMaterial3d(wall_material),
+                        Transform::from_xyz(center_x + offset_x, wall_y, center_z + offset_z)
+                            .with_rotation(rotation),
                     ))
                     .id();
                 zones::tag_cell(
@@ -528,6 +758,67 @@ mod tests {
 
     fn lines(rows: &[&str]) -> Vec<String> {
         rows.iter().map(|row| (*row).to_string()).collect()
+    }
+
+    /// A doorway between an indoor and an outdoor zone splits across the
+    /// passage, and the half nearest the differing neighbour takes that
+    /// neighbour's zone — that is what puts the seam in the doorway instead of
+    /// a tile edge.
+    #[test]
+    fn a_zone_boundary_to_the_north_splits_the_cell_north_to_south() {
+        let split = zone_split(|dcol, drow| ((dcol, drow) == (0, -1)).then_some(4), 1)
+            .expect("a differing neighbour splits the cell");
+        assert!(split.axis == SplitAxis::NorthSouth);
+        assert_eq!(split.leading, 4, "north half joins the northern zone");
+        assert_eq!(split.trailing, 1, "south half keeps the cell's own");
+    }
+
+    /// The mirror case: the differing neighbour is south, so the halves swap
+    /// which zone each takes while the axis stays the same.
+    #[test]
+    fn a_zone_boundary_to_the_south_keeps_the_axis_and_swaps_the_halves() {
+        let split = zone_split(|dcol, drow| ((dcol, drow) == (0, 1)).then_some(4), 1)
+            .expect("a differing neighbour splits the cell");
+        assert!(split.axis == SplitAxis::NorthSouth);
+        assert_eq!(split.leading, 1);
+        assert_eq!(split.trailing, 4);
+    }
+
+    #[test]
+    fn a_zone_boundary_to_the_west_splits_the_cell_west_to_east() {
+        let split = zone_split(|dcol, drow| ((dcol, drow) == (-1, 0)).then_some(2), 5)
+            .expect("a differing neighbour splits the cell");
+        assert!(split.axis == SplitAxis::WestEast);
+        assert_eq!(split.leading, 2, "west half joins the western zone");
+        assert_eq!(split.trailing, 5);
+    }
+
+    /// A cell whose neighbours are all in its own zone is not a boundary and
+    /// keeps its geometry whole.
+    #[test]
+    fn a_cell_inside_one_zone_is_not_split() {
+        assert!(zone_split(|_, _| Some(3), 3).is_none());
+        assert!(zone_split(|_, _| None, 3).is_none());
+    }
+
+    /// TS resolves in north, south, east, west order and stops at the first
+    /// differing neighbour, so a corner cell splits once rather than twice.
+    #[test]
+    fn the_first_differing_neighbour_wins_over_later_ones() {
+        let split = zone_split(
+            |dcol, drow| match (dcol, drow) {
+                (0, 1) => Some(7),
+                (1, 0) => Some(9),
+                _ => Some(1),
+            },
+            1,
+        )
+        .expect("two differing neighbours still split the cell");
+        assert!(
+            split.axis == SplitAxis::NorthSouth,
+            "south is checked before east"
+        );
+        assert_eq!(split.trailing, 7);
     }
 
     fn open_area(
