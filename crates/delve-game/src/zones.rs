@@ -38,8 +38,10 @@ use crate::environment::{
 };
 use crate::player::Player;
 use crate::session::Session;
+use bevy::camera::primitives::Frustum;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera3dDepthLoadOp, SubCameraView};
+use bevy::math::primitives::ViewFrustum;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use delve_core::env_zones::{build_env_zone_map, build_env_zone_map_with_existing_zones};
@@ -410,6 +412,46 @@ pub fn apply_camera_view_crop(
     }
 }
 
+/// Rebuilds each cropped camera's culling frustum from the projection it
+/// actually renders with. Bevy 0.19's `update_frusta` computes the frustum
+/// from the base projection alone (`bevy_camera-0.19.0/src/visibility/
+/// mod.rs:627-636` calls `compute_frustum`, which uses `get_clip_from_view`,
+/// never `get_clip_from_view_for_sub`), while rendering uses the sub-view
+/// matrix the `camera_system` stored in `computed.clip_from_view`
+/// (`bevy_render-0.19.0/src/camera.rs:430-433`). Our crop *extends* the
+/// frame — 20% more floor below, 2.5% more on each side — so everything
+/// rendered in those bands sits outside the base frustum and gets culled:
+/// floor tiles vanish at the bottom edge of the screen, and culled wall or
+/// floor meshes expose the coplanar geometry behind them (a layer's ceiling
+/// shares its plane with the floor above, so a culled floor tile shows the
+/// ceiling below it in its place). THREE never had this split:
+/// `setViewOffset` rewrites the one `projectionMatrix` its frustum culling
+/// also reads. Runs between `UpdateFrusta` (whose stale value it replaces)
+/// and `CheckVisibility` (which consumes it).
+pub fn sync_cropped_frusta(
+    mut cameras: Query<(&Camera, &GlobalTransform, &Projection, &mut Frustum), With<Camera3d>>,
+) {
+    for (camera, transform, projection, mut frustum) in &mut cameras {
+        if camera.sub_camera_view.is_none() {
+            continue;
+        }
+        *frustum = frustum_for(camera.clip_from_view(), transform, projection.far());
+    }
+}
+
+/// Mirrors `CameraProjection::compute_frustum` (`bevy_camera-0.19.0/src/
+/// projection.rs:70-78`) with the caller's clip-from-view matrix instead of
+/// the base projection's.
+fn frustum_for(clip_from_view: Mat4, transform: &GlobalTransform, far: f32) -> Frustum {
+    let clip_from_world = clip_from_view * transform.affine().inverse();
+    Frustum(ViewFrustum::from_clip_from_world_custom_far(
+        &clip_from_world,
+        &transform.translation(),
+        &transform.back(),
+        far,
+    ))
+}
+
 /// TS's `delta * 2` rate in `lerpEnvironment(ctx.scene, ctx.ambient,
 /// targetCfg, delta * 2)` (`game/statusEffectSystem.ts:27`).
 const ENVIRONMENT_LERP_RATE: f32 = 2.0;
@@ -501,6 +543,7 @@ pub fn lerp_zone_environment(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::camera::CameraProjection;
     use delve_core::level_loader::{ValidationContext, validate_dungeon_str};
 
     fn layered_level() -> DungeonLevel {
@@ -601,6 +644,40 @@ mod tests {
         assert_eq!(crop.full_size, UVec2::new(777, 333));
         assert_eq!(crop.offset, Vec2::new(-20.0, 49.0));
         assert_eq!(crop.size, UVec2::new(817, 351));
+    }
+
+    /// The crop extends the frame 20% past the base frustum's bottom plane,
+    /// so geometry rendered there must be inside the culling frustum built
+    /// from the sub-view matrix and outside the one built from the base
+    /// projection — the exact mismatch `sync_cropped_frusta` exists to fix
+    /// (floor tiles vanishing at the bottom of the screen). Sphere placement:
+    /// fov 45° puts the base bottom plane at y = -tan(22.5°)·10 ≈ -4.14 at
+    /// depth 10; the extended bottom (`bottom - 0.2·height`) reaches ≈ -5.80,
+    /// so y = -4.8 sits between the two.
+    #[test]
+    fn cropped_frustum_keeps_the_extended_bottom_band_the_base_frustum_culls() {
+        let mut projection = PerspectiveProjection::default();
+        projection.update(1920.0, 1080.0);
+        let crop = camera_view_crop(1920.0, 1080.0);
+        let transform = GlobalTransform::default();
+
+        let base = frustum_for(
+            projection.get_clip_from_view(),
+            &transform,
+            projection.far(),
+        );
+        let cropped = frustum_for(
+            projection.get_clip_from_view_for_sub(&crop),
+            &transform,
+            projection.far(),
+        );
+
+        let floor_tile_at_screen_bottom = bevy::camera::primitives::Sphere {
+            center: bevy::math::Vec3A::new(0.0, -4.8, -10.0),
+            radius: 0.1,
+        };
+        assert!(!base.intersects_sphere(&floor_tile_at_screen_bottom, true));
+        assert!(cropped.intersects_sphere(&floor_tile_at_screen_bottom, true));
     }
 
     /// The midpoint is 0.5 in LINEAR channels — the space THREE's

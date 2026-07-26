@@ -538,5 +538,13 @@ fn main() {
         // once at spawn plus a resize listener (TS's own split) — see
         // `zones::apply_camera_view_crop`'s doc comment for why that's safe.
         .add_systems(Update, zones::apply_camera_view_crop)
+        // Between the stale frustum write and the culling that consumes it —
+        // see `zones::sync_cropped_frusta` for the Bevy gap this closes.
+        .add_systems(
+            PostUpdate,
+            zones::sync_cropped_frusta
+                .after(bevy::camera::visibility::VisibilitySystems::UpdateFrusta)
+                .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+        )
         .run();
 }
