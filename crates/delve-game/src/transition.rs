@@ -217,6 +217,23 @@ fn replay_destroyed_walls(game: &delve_core::game_state::GameState, grid: &mut [
     }
 }
 
+/// The grid the session runs its walkability checks against: the active
+/// layer's own, falling back to the level-wide copy exactly as TS's
+/// `ls.layerGrids[ctx.gameState.activeLayerIndex] ?? ls.level.grid` does
+/// (`transitionSystem.ts:95,99,184,188`).
+///
+/// `DungeonLevel::grid` is only a convenience copy of `layers[0].grid` that
+/// validation fills in, so using it directly hands the session the *bottom*
+/// layer's walls whenever the active layer isn't index 0 — which reads as
+/// movement being dead while turning still works, since turning is the one
+/// command that never consults the grid.
+fn active_layer_grid(level: &DungeonLevel, active_layer_index: usize) -> Vec<String> {
+    level
+        .layers
+        .get(active_layer_index)
+        .map_or_else(|| level.grid.clone(), |layer| layer.grid.clone())
+}
+
 fn find_stair_level<'a>(dungeon: &'a DungeonRes, stair_id: &str) -> Option<&'a DungeonLevel> {
     dungeon.0.levels.iter().find(|level| {
         get_all_level_entities(level)
@@ -492,7 +509,7 @@ pub fn perform_restart(
     session.current_level_id = start_level_id;
     session.environment = start_level.environment.unwrap_or(Environment::Dungeon);
     session.areas = start_level.areas.clone().unwrap_or_default();
-    session.grid = start_level.grid.clone();
+    session.grid = active_layer_grid(&start_level, session.game.active_layer_index);
     session.walkable = build_walkable_set(
         start_level
             .char_defs
@@ -654,12 +671,7 @@ pub fn perform_load(
 
     session.environment = target_level.environment.unwrap_or(Environment::Dungeon);
     session.areas = target_level.areas.clone().unwrap_or_default();
-    // `apply_save_data` restores the level-level convenience grid (matching
-    // `data.level_grids`'s own per-level, not per-layer, granularity); TS's
-    // `loadGame` falls back to this same `level.grid` when it has no
-    // rebuilt `layerGrids[activeLayerIndex]` yet, which is always the case
-    // here since this port has no per-layer grid tracking.
-    session.grid = target_level.grid.clone();
+    session.grid = active_layer_grid(&target_level, session.game.active_layer_index);
     replay_destroyed_walls(&session.game, &mut session.grid);
     session.walkable = build_walkable_set(
         target_level
@@ -744,4 +756,50 @@ pub fn perform_load(
         grid,
     );
     game.take_events();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::active_layer_grid;
+    use delve_core::level_loader::{ValidationContext, validate_dungeon_str};
+    use delve_core::types::DungeonLevel;
+
+    fn ruins_forest() -> DungeonLevel {
+        let path = crate::assets_dir().join("levels/ruins.json");
+        let json = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let mut warnings = Vec::new();
+        let dungeon = validate_dungeon_str(
+            &json,
+            "ruins.json",
+            &ValidationContext::default(),
+            &mut warnings,
+        )
+        .expect("shipped ruins.json validates");
+        dungeon
+            .levels
+            .into_iter()
+            .find(|level| level.id.as_deref() == Some("level_forest"))
+            .expect("ruins.json has level_forest")
+    }
+
+    /// Ruins' forest is where this bites: the playable surface is layer index
+    /// 1, sitting above a basement, so the level-wide convenience grid (a copy
+    /// of layer 0) describes the wrong floor entirely.
+    #[test]
+    fn the_active_layers_grid_wins_over_the_level_wide_copy() {
+        let level = ruins_forest();
+        assert_eq!(active_layer_grid(&level, 1), level.layers[1].grid);
+        assert_ne!(
+            active_layer_grid(&level, 1),
+            level.grid,
+            "layer 1 and the level-wide copy must differ, or this proves nothing"
+        );
+    }
+
+    #[test]
+    fn a_missing_layer_falls_back_to_the_level_wide_grid() {
+        let level = ruins_forest();
+        assert_eq!(active_layer_grid(&level, 99), level.grid);
+    }
 }
