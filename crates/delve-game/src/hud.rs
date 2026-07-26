@@ -937,6 +937,21 @@ fn draw_slot(canvas: &mut PixelCanvas, x: i32, y: i32) {
     canvas.stroke_rect(x, y, SLOT_SIZE, SLOT_SIZE, SLOT_BORDER);
 }
 
+/// How an icon's sprite is resampled into its slot. TS's HUD leaves
+/// `imageSmoothingEnabled` at its default `true` when drawing item icons in
+/// the inventory panel and the full inventory overlay, and sets it to `false`
+/// in the trading overlay (`tradingOverlay.ts:389`) — the only item surface
+/// that opts out. Each call site names its own mode so that split stays
+/// visible instead of hiding behind a single default.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IconSampling {
+    /// Averaged, as `drawImage` does by default — keeps the source sprite's
+    /// detail through the downscale into a slot.
+    Smoothed,
+    /// Point-sampled, as `imageSmoothingEnabled = false` does.
+    Nearest,
+}
+
 /// Draws `item_id`'s real sprite (cached, loaded from `sprites/items/`) into
 /// a `size`x`size` square at `(x, y)`, falling back to a colored square plus
 /// the item's first initial when the item has no def or its sprite fails to
@@ -953,6 +968,7 @@ pub(crate) fn draw_item_icon(
     item_id: &str,
     slot: (i32, i32, i32),
     fallback_color: Rgba,
+    sampling: IconSampling,
 ) {
     let (x, y, size) = slot;
     let def = items.get_item(item_id);
@@ -963,7 +979,11 @@ pub(crate) fn draw_item_icon(
         if let Some(image) = icons.get(&path) {
             let padding = 2;
             let icon_size = size - padding * 2;
-            canvas.blit_scaled(image, (x + padding, y + padding, icon_size, icon_size), 1.0);
+            let target = (x + padding, y + padding, icon_size, icon_size);
+            match sampling {
+                IconSampling::Smoothed => canvas.blit_scaled_smoothed(image, target, 1.0),
+                IconSampling::Nearest => canvas.blit_scaled(image, target, 1.0),
+            }
         }
         return;
     }
@@ -1277,10 +1297,11 @@ fn draw_inventory_panel(
                 &item_id,
                 (slot_x, slot_y, SLOT_SIZE),
                 equip_slot_color(slot),
+                IconSampling::Smoothed,
             );
         } else if let Some(ghost) = icons.get(paperdoll_path(slot)) {
             let pad = 3;
-            canvas.blit_scaled(
+            canvas.blit_scaled_smoothed(
                 ghost,
                 (
                     slot_x + pad,
@@ -1372,6 +1393,7 @@ fn draw_inventory_panel(
                     &item_id,
                     (slot_x, slot_y, SLOT_SIZE),
                     fallback,
+                    IconSampling::Smoothed,
                 );
             }
 
@@ -1423,6 +1445,7 @@ fn draw_inventory_panel(
                 SLOT_SIZE,
             ),
             Rgba::opaque(0x88, 0x88, 0x88),
+            IconSampling::Smoothed,
         );
     }
 }

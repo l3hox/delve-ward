@@ -9,7 +9,7 @@
 
 use crate::equip_layout::{EQUIP_SLOTS, equip_slot_index, subtype_to_equip_slot};
 use crate::ground_items::{GroundItemRender, ItemDb};
-use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, draw_item_icon};
+use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, IconSampling, draw_item_icon};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::item_tooltip::draw_item_tooltip;
 use crate::mouse::MouseState;
@@ -782,9 +782,10 @@ pub fn draw_inventory_overlay(
                 &entity.item_id,
                 (sx, sy, SLOT_SIZE),
                 ICON_FALLBACK,
+                IconSampling::Smoothed,
             );
         } else if let Some(ghost) = icons.get(crate::hud::paperdoll_path(slot)) {
-            canvas.blit_scaled(
+            canvas.blit_scaled_smoothed(
                 ghost,
                 (
                     sx + PAPERDOLL_PAD,
@@ -834,6 +835,7 @@ pub fn draw_inventory_overlay(
                 &entity.item_id,
                 (sx, sy, SLOT_SIZE),
                 ICON_FALLBACK,
+                IconSampling::Smoothed,
             );
         }
     }
@@ -865,6 +867,7 @@ pub fn draw_inventory_overlay(
                 SLOT_SIZE,
             ),
             ICON_FALLBACK,
+            IconSampling::Smoothed,
         );
     }
 

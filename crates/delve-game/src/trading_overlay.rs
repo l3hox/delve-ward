@@ -20,7 +20,7 @@
 //! `_handleBuy` mutates it. Buying is effectively unlimited-supply, ported
 //! faithfully as such.
 
-use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, draw_item_icon};
+use crate::hud::{HUD_HEIGHT, HUD_WIDTH, HudState, IconCache, IconSampling, draw_item_icon};
 use crate::hud_font::{draw_pixel_text, measure_pixel_text};
 use crate::mouse::MouseState;
 use crate::overlay::ActiveOverlay;
@@ -396,6 +396,9 @@ pub fn draw_trading_overlay(
             item_id,
             (x, y, ROW_ICON_SIZE),
             ICON_FALLBACK,
+            // TS's trading overlay is the one item surface that turns
+            // smoothing off (`tradingOverlay.ts:389`).
+            IconSampling::Nearest,
         );
         let text_color = if can_buy { ROW_TEXT } else { ROW_TEXT_DIM };
         draw_pixel_text(
@@ -443,6 +446,7 @@ pub fn draw_trading_overlay(
             &entity.item_id,
             (x, y, ROW_ICON_SIZE),
             ICON_FALLBACK,
+            IconSampling::Nearest,
         );
         let text_color = if can_sell { ROW_TEXT } else { ROW_TEXT_DIM };
         draw_pixel_text(

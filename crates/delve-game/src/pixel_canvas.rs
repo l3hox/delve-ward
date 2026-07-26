@@ -137,6 +137,80 @@ impl PixelCanvas {
         }
     }
 
+    /// Area-averaged blit of an RGBA source image into the target rectangle,
+    /// matching what `ctx.drawImage` does with `imageSmoothingEnabled` at its
+    /// default of `true` — which is how the TS HUD draws item icons and
+    /// paperdoll art everywhere except its trading overlay and sword swing,
+    /// the two places that opt out explicitly.
+    ///
+    /// This matters because the icons are downscaled: a 32x32 sprite drawn
+    /// into a 24-pixel slot's 20x20 inner box. Point sampling that ratio
+    /// throws away 12 of every 32 rows and columns outright, so detail
+    /// present in the source never reaches the screen. Averaging every source
+    /// pixel that falls inside a target pixel's footprint keeps it.
+    ///
+    /// Colors are averaged premultiplied by alpha, then un-premultiplied, so
+    /// fully transparent source pixels contribute their coverage without
+    /// dragging their (arbitrary) color into the edges of the sprite.
+    pub fn blit_scaled_smoothed(
+        &mut self,
+        source: &RgbaImage,
+        target: (i32, i32, i32, i32),
+        alpha: f32,
+    ) {
+        let (target_x, target_y, target_w, target_h) = target;
+        if target_w <= 0 || target_h <= 0 || source.width == 0 || source.height == 0 {
+            return;
+        }
+        // Ceiling division over non-negative values; `i32::div_ceil` is still
+        // unstable on this toolchain.
+        let span_end =
+            |numerator: i32, denominator: i32| (numerator + denominator - 1) / denominator;
+        for py in 0..target_h {
+            // The half-open source span this target row covers, always at
+            // least one pixel wide so upscaling stays defined.
+            let span_top = py * source.height as i32 / target_h;
+            let span_bottom = span_end((py + 1) * source.height as i32, target_h).max(span_top + 1);
+            for px in 0..target_w {
+                let span_left = px * source.width as i32 / target_w;
+                let span_right =
+                    span_end((px + 1) * source.width as i32, target_w).max(span_left + 1);
+
+                let mut red = 0.0;
+                let mut green = 0.0;
+                let mut blue = 0.0;
+                let mut coverage = 0.0;
+                let mut samples = 0.0;
+                for source_y in span_top..span_bottom.min(source.height as i32) {
+                    for source_x in span_left..span_right.min(source.width as i32) {
+                        let offset = (source_y as usize * source.width + source_x as usize) * 4;
+                        let source_alpha = f32::from(source.pixels[offset + 3]) / 255.0;
+                        red += f32::from(source.pixels[offset]) * source_alpha;
+                        green += f32::from(source.pixels[offset + 1]) * source_alpha;
+                        blue += f32::from(source.pixels[offset + 2]) * source_alpha;
+                        coverage += source_alpha;
+                        samples += 1.0;
+                    }
+                }
+                if samples == 0.0 || coverage == 0.0 {
+                    continue;
+                }
+                self.blend_pixel(
+                    target_x + px,
+                    target_y + py,
+                    Rgba {
+                        // Un-premultiply: divide by the accumulated alpha, not
+                        // the sample count.
+                        red: (red / coverage).round() as u8,
+                        green: (green / coverage).round() as u8,
+                        blue: (blue / coverage).round() as u8,
+                        alpha: coverage / samples * alpha,
+                    },
+                );
+            }
+        }
+    }
+
     /// Nearest-neighbor blit of `source`, matching the canvas
     /// `translate(pivot); rotate(angle); drawImage(source, offset.0, offset.1, draw_size.0, draw_size.1)`
     /// sequence: `source` is scaled to `draw_size` and its top-left corner
@@ -308,5 +382,98 @@ impl CanvasRng {
     pub fn vary(&mut self, base: i32, amount: i32) -> u8 {
         let offset = (self.random() * f64::from(amount * 2)).floor() as i32 - amount;
         (base + offset).clamp(0, 255) as u8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PixelCanvas, RgbaImage};
+
+    fn pixel_at(canvas: &PixelCanvas, x: usize, y: usize) -> (u8, u8, u8, u8) {
+        let offset = (y * canvas.width() + x) * 4;
+        (
+            canvas.pixels[offset],
+            canvas.pixels[offset + 1],
+            canvas.pixels[offset + 2],
+            canvas.pixels[offset + 3],
+        )
+    }
+
+    /// One black and one white source pixel per target pixel must average to
+    /// mid grey. Nearest sampling would return whichever pixel it happened to
+    /// land on instead, which is how source detail goes missing on downscale.
+    #[test]
+    fn downscale_averages_the_source_pixels_it_covers() {
+        let source = RgbaImage {
+            width: 2,
+            height: 1,
+            pixels: vec![0, 0, 0, 255, 255, 255, 255, 255],
+        };
+        let mut canvas = PixelCanvas::with_dimensions(1, 1);
+        canvas.blit_scaled_smoothed(&source, (0, 0, 1, 1), 1.0);
+        let (red, green, blue, alpha) = pixel_at(&canvas, 0, 0);
+        assert_eq!((red, green, blue), (128, 128, 128));
+        assert_eq!(alpha, 255);
+    }
+
+    /// A transparent neighbour must lower coverage without tinting the colour
+    /// toward its own RGB — the dark-fringe artifact that averaging
+    /// non-premultiplied values produces. The source's transparent pixel is
+    /// deliberately bright green so a naive average would be visible.
+    #[test]
+    fn transparent_source_pixels_do_not_bleed_their_color() {
+        let source = RgbaImage {
+            width: 2,
+            height: 1,
+            pixels: vec![200, 40, 40, 255, 0, 255, 0, 0],
+        };
+        let mut canvas = PixelCanvas::with_dimensions(1, 1);
+        canvas.blit_scaled_smoothed(&source, (0, 0, 1, 1), 1.0);
+        let (red, green, blue, alpha) = pixel_at(&canvas, 0, 0);
+        assert_eq!((red, green, blue), (200, 40, 40), "opaque color preserved");
+        assert_eq!(alpha, 128, "coverage halved by the transparent neighbour");
+    }
+
+    /// Upscaling has no pixels to average, so it must still reproduce the
+    /// source exactly rather than falling into an empty-span division.
+    #[test]
+    fn upscale_replicates_source_pixels() {
+        let source = RgbaImage {
+            width: 2,
+            height: 1,
+            pixels: vec![10, 20, 30, 255, 200, 210, 220, 255],
+        };
+        let mut canvas = PixelCanvas::with_dimensions(4, 2);
+        canvas.blit_scaled_smoothed(&source, (0, 0, 4, 2), 1.0);
+        for y in 0..2 {
+            assert_eq!(pixel_at(&canvas, 0, y), (10, 20, 30, 255));
+            assert_eq!(pixel_at(&canvas, 1, y), (10, 20, 30, 255));
+            assert_eq!(pixel_at(&canvas, 2, y), (200, 210, 220, 255));
+            assert_eq!(pixel_at(&canvas, 3, y), (200, 210, 220, 255));
+        }
+    }
+
+    /// The 32-into-20 case the item slots actually use: every source column
+    /// has to reach the target, so no run of identical output columns can
+    /// appear where the source alternates.
+    #[test]
+    fn a_thirty_two_pixel_sprite_keeps_detail_in_a_twenty_pixel_slot() {
+        let mut pixels = Vec::with_capacity(32 * 4);
+        for x in 0..32 {
+            let value = if x % 2 == 0 { 0 } else { 255 };
+            pixels.extend_from_slice(&[value, value, value, 255]);
+        }
+        let source = RgbaImage {
+            width: 32,
+            height: 1,
+            pixels,
+        };
+        let mut canvas = PixelCanvas::with_dimensions(20, 1);
+        canvas.blit_scaled_smoothed(&source, (0, 0, 20, 1), 1.0);
+        let columns: Vec<u8> = (0..20).map(|x| pixel_at(&canvas, x, 0).0).collect();
+        assert!(
+            columns.iter().any(|&value| value > 0 && value < 255),
+            "expected blended columns, got {columns:?}"
+        );
     }
 }
