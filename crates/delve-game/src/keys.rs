@@ -53,16 +53,6 @@ pub fn spawn_keys(
     }
 
     let texture = images.add(canvas_to_image(generate_key_texture()));
-    let material = materials.add(StandardMaterial {
-        base_color_texture: Some(texture),
-        perceptual_roughness: 1.0,
-        metallic: 0.0,
-        reflectance: 0.0,
-        alpha_mode: AlphaMode::Mask(0.5),
-        double_sided: true,
-        cull_mode: None,
-        ..default()
-    });
     let mesh = meshes.add(Rectangle::new(KEY_SIZE, KEY_SIZE));
 
     for (map_key, key_instance) in &layer.keys {
@@ -71,12 +61,25 @@ pub fn spawn_keys(
         }
         let center_x = key_instance.col as f32 * CELL_SIZE + CELL_SIZE / 2.0;
         let center_z = key_instance.row as f32 * CELL_SIZE + CELL_SIZE / 2.0;
+        // One material per key rather than one shared by all of them:
+        // `billboard::apply_neutral_lighting` writes each sprite's own
+        // brightness into its `base_color`, so a shared handle would leave
+        // every key lit for whichever one was written last.
+        let material = materials.add(StandardMaterial {
+            base_color_texture: Some(texture.clone()),
+            unlit: true,
+            alpha_mode: AlphaMode::Mask(0.5),
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
         let entity = commands
             .spawn((
                 LevelEntity,
                 FacesCamera,
+                crate::billboard::NeutrallyLit,
                 Mesh3d(mesh.clone()),
-                MeshMaterial3d(material.clone()),
+                MeshMaterial3d(material),
                 Transform::from_xyz(center_x, KEY_HEIGHT + layer_y_offset, center_z),
             ))
             .id();

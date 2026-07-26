@@ -155,12 +155,20 @@ Reverted rather than kept, because the buffer round-trip added a latent
 invariant — `image.data` sits `None` mid-function, so any future early return
 in `draw_hud` would leave the HUD image empty — and bought nothing measurable.
 
-**`tick_enemies` rebuilds per-layer snapshots every tick** — a full grid clone
-plus fresh door and thin-wall edge sets, per layer, per frame. The fix shape is
-caches invalidated by the existing `WorldEvent`s (wall destroyed, door state
-changed). Highest-risk item here: a missed invalidation is a subtle behaviour
-bug, not a crash. Do it last, and only if a measurement on the heaviest level
-justifies it — the phase 6 pass found no observed cost.
+**`tick_enemies` rebuilds per-layer snapshots every tick — measured, not worth
+doing.** The concern was a full grid clone plus fresh door and thin-wall edge
+sets, per layer, per frame. Measured on an idle machine, release build:
+**median 9us on `ruins`** (p95 11us, max 22us, n=2491) and **1us on
+`test_m4f`** — against a frame budget of 8.3ms at 120Hz. It is 0.2% of a frame.
+
+No caching, no `WorldEvent` invalidation, no risk of a missed invalidation
+silently changing enemy behaviour. The phase 6 pass reporting "no observed
+cost" was right.
+
+Measuring it needs one trick worth recording: `tick_enemies` returns early
+while any overlay is open, and the game boots into character creation, so a
+smoke run logs nothing at all. Bypassing the gate for the duration of the
+measurement is what produces samples.
 
 ## 7. Refresh `PARITY-GAPS.md`
 

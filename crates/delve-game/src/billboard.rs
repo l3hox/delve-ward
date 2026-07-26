@@ -35,6 +35,17 @@ const MAX_INTENSITY: f32 = 1.2;
 /// second shader, and unlit materials still receive distance fog
 /// (`main_pass_post_lighting_processing` in Bevy's own `pbr_functions.wgsl`
 /// applies fog outside the lighting branch), which the TS shader also does.
+///
+/// The cost of that choice: brightness is written into the material, so every
+/// sprite needs its own. Item drops, enemies, NPCs, and keys all get one.
+/// Forest trees do not — `forest.rs` shares one material per tree variant
+/// across every instance of it, which TS can afford because its shader
+/// computes the same lighting on the GPU per object (its `USE_INSTANCING`
+/// branch reads the instance matrix for the center). Giving each tree its own
+/// material to match would trade that sharing away for hundreds of materials,
+/// so forest trees stay ordinary lit surfaces and still take a tint from
+/// coloured light. Closing that properly means a real shader, not more of
+/// this.
 #[derive(Component)]
 pub struct NeutrallyLit;
 
