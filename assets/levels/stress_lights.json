@@ -11,7 +11,7 @@
         {
             "id": "stress",
             "name": "Grand Atrium",
-            "environment": "dungeon",
+            "environment": "outdoor",
             "layers": [
                 {
                     "id": "0",

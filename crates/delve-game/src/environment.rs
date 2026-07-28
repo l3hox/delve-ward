@@ -39,6 +39,13 @@ pub struct EnvironmentConfig {
     pub ambient_color: Color,
 }
 
+/// The farthest any environment's fog reaches ([`Environment::Outdoor`]'s 80).
+/// Nothing past it is visible at all, so it is the horizon this renderer works
+/// to — `particles.rs` culls lights against it. Raise this alongside any
+/// environment whose `fog_far` grows beyond it, or lights will wink out inside
+/// a view that can still see them.
+pub const MAX_FOG_FAR: f32 = 80.0;
+
 #[must_use]
 pub fn environment_config(environment: Environment) -> EnvironmentConfig {
     match environment {

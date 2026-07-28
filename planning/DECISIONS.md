@@ -83,3 +83,11 @@ TS's HUD is a 640x360 canvas stretched over the viewport with `image-rendering: 
 `blit_icon` picks its filter by direction: bilinear interpolation when the sprite is smaller than its stored footprint, area averaging when larger (the 43x43 paperdoll silhouettes). Interpolation was chosen over point sampling on request: 32 pixels across 40 has no whole-number mapping, so point sampling doubles one pixel in five and leaves an uneven grid, which reads worse than the softness interpolation trades it for. Swapping `blit_bilinear_stored` for a point-sampled equivalent in that one branch reverts the look.
 
 Measured on ruins, release build, vsync off: total frame time 2.2ms at scale 1 against 4.7ms at scale 2, both inside the 8.3ms a 120Hz display allows and well inside 16.7ms for 60. The cost is fill work over four times the pixels; an opaque-write fast path in `blend_stored_pixel` was tried and measured no better (1093us against 1084us for the HUD alone), so the cost is pixel volume rather than blend arithmetic. Setting `HUD_SCALE` to 1 restores TS's storage resolution and the lower cost; going past 2 buys nothing for 32x32 art and costs quadratically.
+
+## D20: Lights are culled at the fog horizon, not TS's 14 units
+
+TS hides any light more than 14 world units from the camera (`main.ts:93-95,1419-1431`) and this port matched it until it was measured. That number is tighter than the view: dungeon fog reaches 26, so lights died at barely half the distance the player can see, and a large room lost its far lights while still showing its far wall. `LIGHT_CULL_DISTANCE` is now `environment::MAX_FOG_FAR` (80, the longest fog any environment uses) plus the longest light range (12), the point past which a light cannot affect anything visible.
+
+Affordable because it was measured, not assumed: on `stress_lights` (300 lit sconces across six galleries, release, vsync off) culled ran 4.57ms, unculled 4.63ms, and unculled with every range raised to 40 so all 300 overlap ran 4.62ms. One frame's noise apart — the frame is CPU-bound on HUD rasterisation, not lighting. Deferred rendering was A/B tested on the same scene and made no difference either (4.54ms), so the port stays on clustered forward.
+
+Raise `MAX_FOG_FAR` alongside any new environment whose `fog_far` exceeds it, or lights will wink out inside a view that can still see them.

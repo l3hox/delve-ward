@@ -23,6 +23,20 @@ GRID = 48
 LAYERS = 6
 SCONCES_PER_LAYER = 50
 
+# The knob that decides whether you can actually see the scene. Fog is per
+# environment and hardcoded in crates/delve-game/src/environment.rs:
+#
+#   dungeon   fog  6 -> 26    black; the far gallery is invisible here
+#   mist      fog  2 -> 14    worse
+#   forest    fog  4 -> 20    worse
+#   outdoor   fog 20 -> 80    the only preset that can see across the atrium
+#
+# The atrium alone is 16 cells (32 world units) and the whole grid is 96, so
+# "dungeon" hides most of what this scene exists to show. Use "outdoor" to see
+# the full stack of galleries, at the cost of its daylight-blue fog colour —
+# a proper night-cavern preset (dark fog, far distance) does not exist yet.
+ENVIRONMENT = "outdoor"
+
 # Atrium: open on every layer, so it renders neither floor nor ceiling and you
 # can see straight through the whole stack.
 ATRIUM_MIN, ATRIUM_MAX = 16, 31
@@ -127,7 +141,7 @@ def main():
             {
                 "id": "stress",
                 "name": "Grand Atrium",
-                "environment": "dungeon",
+                "environment": ENVIRONMENT,
                 "layers": layers,
             }
         ],

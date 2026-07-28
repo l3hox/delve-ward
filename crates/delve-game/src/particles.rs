@@ -214,7 +214,30 @@ const FLY_SEED: u32 = 0xF17E_1177;
 
 // --- Light distance culling (main.ts:93-95,1419-1431) ---
 
-const LIGHT_CULL_DISTANCE: f32 = 14.0;
+/// How far from the camera a light may sit before it is switched off.
+///
+/// TS culls at 14 (`main.ts:93-95,1419-1431`), which this port matched until
+/// it was measured. Two problems with that number. It is tighter than the view
+/// itself — dungeon fog reaches 26 — so lights died at barely half the distance
+/// the player can see, and a large room lost its far lights while still showing
+/// its far wall. And it caps how grand a scene can get: a cavern lit by
+/// hundreds of sconces would have kept about twenty of them.
+///
+/// The cull now sits where things genuinely stop being visible: the farthest
+/// fog distance, plus the reach of a light itself, since a light just past the
+/// horizon still illuminates geometry this side of it. Measured on
+/// `stress_lights` (300 lit sconces over six galleries, release, vsync off):
+/// culled 4.57ms, unculled 4.63ms, unculled with every light's range raised to
+/// 40 so they all overlap 4.62ms — one frame's noise apart. The cull is not
+/// what pays for the frame, so buying back the view costs nothing.
+///
+/// A deliberate break from TS parity, recorded as D20.
+const LIGHT_CULL_DISTANCE: f32 = crate::environment::MAX_FOG_FAR + MAX_LIGHT_RANGE;
+
+/// The longest range any light in this game is given — the player's torch
+/// (`torch.rs`'s `TORCH_RANGE`). Lights this far beyond the fog horizon can
+/// still light something inside it.
+const MAX_LIGHT_RANGE: f32 = 12.0;
 
 fn random_signed(rng: &mut Mulberry32) -> f32 {
     rng.next_f64() as f32 - 0.5
