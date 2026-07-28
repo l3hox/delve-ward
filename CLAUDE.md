@@ -76,6 +76,28 @@ On phase end: update `planning/PROGRESS.md`, add a CHANGELOG.md entry, merge to 
 - Branch per phase (`port/phase-1-walkable-skeleton`), merge to main when gates pass.
 - Conventional commits: `type: description`, lowercase, no scope.
 - Main always compiles, always passes tests.
+- Public remote: `l3hox/delve-ward`. Push `main`; the `port/phase-*` branches are local history.
+
+---
+
+## Benchmarking
+
+Performance claims here are measured, never argued. Three rules learned the hard way:
+
+- **Measure on an idle machine.** A baseline taken while anything else compiles is worthless — one such reading "proved" a 31% win that was 0.4% when re-run alone.
+- **Put the probe around the whole thing you changed**, allocation included, or you measure the wrong span.
+- **`tick_enemies` and other gated systems log nothing** in a smoke run: the game boots into character creation and they return early. Bypass the gate for the duration of the measurement.
+
+Recipe: `PresentMode::AutoNoVsync` plus `FrameTimeDiagnosticsPlugin`, release build, ~16s run, take the median. Revert every probe before gating, and grep to confirm none survived.
+
+Negative results are worth committing. Two allocation-shaped optimisations of `draw_hud` measured flat (D19, PHASE7-PLAN); recording that stopped a third attempt.
+
+## Subagent Briefs
+
+- Agents get their own worktree (`isolation: "worktree"`) so their gate runs don't collide, and disjoint file ownership stated explicitly.
+- Agents never commit. The integrator verifies each claim against the TS source, re-runs gates in the main tree, then commits.
+- **No screen capture.** One agent's `screencapture` caught the user's live desktop instead of the game window.
+- Treat `PARITY-GAPS.md` as untrusted when working from it: it has carried claims that were false in both directions, and one propagated into a work plan before anyone checked the TS source.
 
 ---
 

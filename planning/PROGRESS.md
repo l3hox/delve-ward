@@ -12,6 +12,14 @@ Session-to-session state. Read this at the start of every session.
 
 Phase 6 merged along with a run of playthrough fixes the user found: player spawn height, culling frustum vs the cropped camera, stair targets, hollow-layer rendering, projectile height, breakable-wall walkability and geometry, damage-number depth, item icon resolution, particle sizing, neutral billboard lighting, and the zone-boundary splits for dungeon geometry and doors. See `planning/PHASE6-PLAN.md` for that phase's record.
 
+**Distribution is moving to this port; TS is being dropped for distribution.** Parity is therefore no longer the ceiling — deviating where it buys something is allowed, with D18/D19/D20 as the precedents. `planning/GRAPHICS-NOTES.md` holds the rendering-capability investigation that followed: the 300-light benchmark and its numbers, why the port stays on clustered forward rather than deferred, Bevy 0.19's verified feature inventory, how to flicker a baked lightmap, and the two real blockers for grand scenes (no dark-and-long fog preset, and billboard lighting still being CPU-side per sprite).
+
+**Verified in play by the user, not just by gates:** the 300-light cavern (`stress_lights`) performs fine and is beyond what the TS build could do. Everything else from phase 7 — trap launcher meshes, ramp landings, pit chambers, fuel-scaled torch light, key lighting — has passed gates and smoke runs but has not been looked at by human eyes.
+
+## Repository
+
+Public on GitHub at `l3hox/delve-ward`, `main` tracking `origin/main`. The five `port/phase-*` branches stayed local; their history is already in `main`.
+
 ## Next Steps
 
 Landed on this branch (all verified against TS source and cross-reviewed):
